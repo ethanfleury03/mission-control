@@ -1,0 +1,19 @@
+node_modules/
+.next/
+out/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# local db
+server/data/*.db
+
+*.tsbuildinfo
+
+_local_notes/

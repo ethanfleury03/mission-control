@@ -1,0 +1,58 @@
+{
+  "agents": [
+    {
+      "id": "1",
+      "name": "Clawd",
+      "teamId": "team-sales",
+      "isManager": true,
+      "status": "active",
+      "model": "CLAUDE-OPUS-4-6",
+      "runtime": "grok-4.1-fast",
+      "lastSeen": "2026-02-10T12:00:00Z",
+      "tokensUsed": 14000,
+      "description": "Casual, resourceful ghost. No fluff.",
+      "tokens": "14.0K",
+      "avatarType": "cat"
+    },
+    {
+      "id": "2",
+      "name": "Forge",
+      "teamId": "team-marketing",
+      "isManager": true,
+      "status": "active",
+      "model": "CLAUDE-OPUS-4-6",
+      "runtime": "claude-opus-4-6",
+      "lastSeen": "2026-02-10T12:00:00Z",
+      "tokensUsed": 8500,
+      "description": "Code blacksmith. Debug/deploy. Git...",
+      "tokens": "8.5K",
+      "avatarType": "robot-teal"
+    },
+    {
+      "id": "3",
+      "name": "Athena",
+      "teamId": "team-marketing",
+      "isManager": false,
+      "status": "idle",
+      "model": "GPT-4-TURBO",
+      "runtime": "gpt-4-turbo",
+      "lastSeen": "2026-02-10T11:55:00Z",
+      "tokensUsed": 5200,
+      "tokens": "5.2K",
+      "avatarType": "robot-orange"
+    },
+    {
+      "id": "4",
+      "name": "Quill",
+      "teamId": "team-labels",
+      "isManager": true,
+      "status": "active",
+      "model": "CLAUDE-3-5-SONNET",
+      "runtime": "claude-3-5-sonnet",
+      "lastSeen": "2026-02-10T12:00:00Z",
+      "tokensUsed": 23000,
+      "tokens": "23.0K",
+      "avatarType": "robot-purple"
+    }
+  ]
+}

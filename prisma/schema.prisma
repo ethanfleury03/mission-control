@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") ?? "file:./dev.db"
+}
+
+// Organization Departments
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String   // Hex color code
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  people Person[]
+
+  @@map("departments")
+}
+
+// Organization People/Employees
+model Person {
+  id        String   @id @default(uuid())
+  name      String
+  role      String
+  email     String?
+  level     Int      @default(1)
+  status    String   @default("active") // active, inactive, pending
+  type      String   @default("leaf")   // root, leaf, manager
+  avatar    String?
+  permissions String? // JSON array stored as string
+  profileFile String?
+
+  // Department relation
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  // Hierarchy - Self-referential relations
+  managerId   String?
+  manager     Person?  @relation("Manages", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports Person[] @relation("Manages")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Org Chart Position (for visual layout)
+  posX      Float?   @default(0)
+  posY      Float?   @default(0)
+
+  // Events/Changes tracking
+  events    OrgEvent[]
+
+  @@map("people")
+}
+
+// Organization Events - Track changes for incremental updates
+model OrgEvent {
+  id        String   @id @default(uuid())
+  type      String   // create, update, delete, move, promote, demote
+  personId  String
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  // Change details
+  field     String?  // Which field changed (for updates)
+  oldValue  String?  // JSON string of old value
+  newValue  String?  // JSON string of new value
+
+  // Context
+  metadata  String?  // JSON string with additional context
+
+  createdAt DateTime @default(now())
+
+  @@index([personId])
+  @@index([createdAt])
+  @@map("org_events")
+}
+
+// Snapshots for versioning
+model OrgSnapshot {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  data        String   // JSON string of full org chart state
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+  @@map("org_snapshots")
+}

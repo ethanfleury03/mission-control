@@ -1,0 +1,30 @@
+{
+  "agents": [
+    {
+      "id": "seed-1",
+      "name": "Clawd",
+      "teamId": "seed-team",
+      "isManager": true,
+      "status": "active",
+      "model": "CLAUDE-OPUS-4-6",
+      "runtime": "claude-opus-4-6",
+      "lastSeen": "2026-02-10T12:00:00Z",
+      "tokensUsed": 0,
+      "description": "General-purpose assistant.",
+      "avatarType": "cat"
+    },
+    {
+      "id": "seed-2",
+      "name": "Forge",
+      "teamId": "seed-team",
+      "isManager": false,
+      "status": "active",
+      "model": "CLAUDE-OPUS-4-6",
+      "runtime": "claude-opus-4-6",
+      "lastSeen": "2026-02-10T12:00:00Z",
+      "tokensUsed": 0,
+      "description": "Code and deployment specialist.",
+      "avatarType": "robot-teal"
+    }
+  ]
+}

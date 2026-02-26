@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mission Control - Agent Office</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-panel: #12121a;
+            --bg-card: #1a1a2e;
+            --accent-blue: #00d4ff;
+            --accent-green: #00ff88;
+            --accent-yellow: #ffdd00;
+            --accent-red: #ff3366;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --border: #2a2a3e;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-dark) 100%);
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Office Floor Layout */
+        .office-container {
+            padding: 30px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .office-floor {
+            background: linear-gradient(135deg, var(--bg-panel) 0%, rgba(26, 26, 46, 0.5) 100%);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid var(--border);
+            position: relative;
+            min-height: 600px;
+        }
+
+        .floor-title {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: var(--text-secondary);
+        }
+
+        .floor-title::before,
+        .floor-title::after {
+            content: '';
+            display: inline-block;
+            width: 100px;
+            height: 1px;
+            background: var(--border);
+            vertical-align: middle;
+            margin: 0 20px;
+        }
+
+        /* Agent Desks Grid */
+        .desks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        /* Agent Desk Card */
+        .agent-desk {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .agent-desk:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 10px 40px rgba(0, 212, 255, 0.1);
+        }
+
+        .agent-desk::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--status-color, var(--accent-green));
+        }
+
+        .agent-desk.ready { --status-color: var(--accent-green); }
+        .agent-desk.busy { --status-color: var(--accent-yellow); }
+        .agent-desk.error { --status-color: var(--accent-red); }
+        .agent-desk.offline { --status-color: var(--text-secondary); }
+
+        .desk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .agent-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-green) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            position: relative;
+        }
+
+        .agent-avatar::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--status-color, var(--accent-green));
+            border: 3px solid var(--bg-card);
+        }
+
+        .agent-desk.ready .agent-avatar { background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%); }
+        .agent-desk.busy .agent-avatar { background: linear-gradient(135deg, #ffdd00 0%, #ccaa00 100%); }
+        .agent-desk.error .agent-avatar { background: linear-gradient(135deg, #ff3366 0%, #cc0044 100%); }
+        .agent-desk.offline .agent-avatar { background: linear-gradient(135deg, #666 0%, #444 100%); }
+
+        .agent-info h3 {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+
+        .agent-role {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .task-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-ready { background: rgba(0, 255, 136, 0.15); color: var(--accent-green); }
+        .badge-busy { background: rgba(255, 221, 0, 0.15); color: var(--accent-yellow); }
+        .badge-error { background: rgba(255, 51, 102, 0.15); color: var(--accent-red); }
+        .badge-offline { background: rgba(160, 160, 176, 0.15); color: var(--text-secondary); }
+
+        .desk-content {
+            margin-bottom: 20px;
+        }
+
+        .current-task {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .current-task-label {
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .current-task-text {
+            color: var(--text-primary);
+        }
+
+        .no-task {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .desk-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: #33ddff;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+
+        /* Assignment Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-panel);
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+            border: 1px solid var(--border);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            margin-bottom: 25px;
+        }
+
+        .modal-header h2 {
+            font-size: 22px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+        }
+
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 25px;
+        }
+
+        .btn-cancel {
+            padding: 12px 24px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-assign {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+            border: none;
+            color: #000;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Activity Feed */
+        .activity-panel {
+            margin-top: 30px;
+            background: var(--bg-panel);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid var(--border);
+        }
+
+        .activity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .activity-header h3 {
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .activity-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg-card);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-title {
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <h1>🎯 MISSION CONTROL</h1>
+        </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-indicator"></div>
+                <span>System Online</span>
+            </div>
+            <div class="status-item">
+                <span>Active Agents: <strong id="active-count">0</strong></span>
+            </div>
+            <div class="status-item">
+                <span>Tasks Running: <strong id="task-count">0</strong></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="office-container">
+        <div class="office-floor">
+            <div class="floor-title">Agent Operations Floor</div>
+            
+            <div class="desks-grid" id="agent-desks">
+                <!-- Agent desks will be rendered here -->
+            </div>
+        </div>
+
+        <div class="activity-panel">
+            <div class="activity-header">
+                <h3>📋 Activity Feed</h3>
+                <span style="color: var(--text-secondary); font-size: 13px;">Real-time updates</span>
+            </div>
+            <div class="activity-list" id="activity-feed">
+                <!-- Activity items will be rendered here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Task Assignment Modal -->
+    <div class="modal-overlay" id="assign-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>🚀 Assign New Task</h2>
+            </div>
+            <form id="assign-form">
+                <div class="form-group">
+                    <label>Select Agent</label>
+                    <select id="agent-select" required>
+                        <option value="">Choose an agent...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Task Description</label>
+                    <textarea id="task-description" placeholder="Describe what you want the agent to do..." required></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-assign">Launch Agent</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Agent data - this would come from OpenClaw API
+        let agents = [
+            {
+                id: 'sales-agent',
+                name: 'Sales Agent',
+                role: 'Lead Qualification & Outreach',
+                status: 'ready',
+                currentTask: null,
+                emoji: '💼',
+                capabilities: ['Email', 'Calendar', 'Research']
+            },
+            {
+                id: 'support-agent',
+                name: 'Support Agent',
+                role: 'Customer Support & Tickets',
+                status: 'ready',
+                currentTask: null,
+                emoji: '🎧',
+                capabilities: ['Email', 'Discord', 'Escalation']
+            },
+            {
+                id: 'research-agent',
+                name: 'Research Agent',
+                role: 'Market Research & Analysis',
+                status: 'ready',
+                currentTask: null,
+                emoji: '🔬',
+                capabilities: ['Web Search', 'Analysis', 'Reports']
+            },
+            {
+                id: 'ops-agent',
+                name: 'Ops Agent',
+                role: 'Operations & Coordination',
+                status: 'ready',
+                currentTask: null,
+                emoji: '⚙️',
+                capabilities: ['Monitoring', 'Approvals', 'Reports']
+            }
+        ];
+
+        let activities = [];
+
+        // Render agent desks
+        function renderDesks() {
+            const container = document.getElementById('agent-desks');
+            container.innerHTML = agents.map(agent => `
+                <div class="agent-desk ${agent.status}">
+                    <div class="desk-header">
+                        <div style="display: flex; gap: 15px;">
+                            <div class="agent-avatar">${agent.emoji}</div>
+                            <div class="agent-info">
+                                <h3>${agent.name}</h3>
+                                <div class="agent-role">${agent.role}</div>
+                            </div>
+                        </div>
+                        <span class="task-badge badge-${agent.status}">${agent.status}</span>
+                    </div>
+                    <div class="desk-content">
+                        <div class="current-task">
+                            <div class="current-task-label">Current Assignment</div>
+                            <div class="current-task-text">
+                                ${agent.currentTask ? agent.currentTask : '<span class="no-task">No active task - Ready for assignment</span>'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="desk-actions">
+                        <button class="btn btn-primary" onclick="openAssignModal('${agent.id}')">Assign Task</button>
+                        <button class="btn btn-secondary" onclick="viewAgentDetails('${agent.id}')">Details</button>
+                    </div>
+                </div>
+            `).join('');
+
+            updateStatusBar();
+        }
+
+        // Update status bar
+        function updateStatusBar() {
+            const activeCount = agents.filter(a => a.status !== 'offline').length;
+            const taskCount = agents.filter(a => a.currentTask !== null).length;
+            document.getElementById('active-count').textContent = activeCount;
+            document.getElementById('task-count').textContent = taskCount;
+        }
+
+        // Open assign modal
+        function openAssignModal(agentId = null) {
+            const modal = document.getElementById('assign-modal');
+            const select = document.getElementById('agent-select');
+            
+            // Populate agent select
+            select.innerHTML = '<option value="">Choose an agent...</option>' +
+                agents.filter(a => a.status === 'ready')
+                    .map(a => `<option value="${a.id}" ${a.id === agentId ? 'selected' : ''}>${a.name}</option>`)
+                    .join('');
+            
+            modal.classList.add('active');
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('assign-modal').classList.remove('active');
+            document.getElementById('assign-form').reset();
+        }
+
+        // View agent details (placeholder)
+        function viewAgentDetails(agentId) {
+            const agent = agents.find(a => a.id === agentId);
+            addActivity(`Viewed details for ${agent.name}`, '📊');
+            alert(`${agent.name} Capabilities:\n\n${agent.capabilities.join('\n')}`);
+        }
+
+        // Add activity
+        function addActivity(title, icon = '📝') {
+            const time = new Date().toLocaleTimeString();
+            activities.unshift({ title, icon, time });
+            if (activities.length > 20) activities.pop();
+            renderActivities();
+        }
+
+        // Render activities
+        function renderActivities() {
+            const container = document.getElementById('activity-feed');
+            if (activities.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 40px;">No recent activity</div>';
+                return;
+            }
+            container.innerHTML = activities.map(act => `
+                <div class="activity-item">
+                    <div class="activity-icon">${act.icon}</div>
+                    <div class="activity-content">
+                        <div class="activity-title">${act.title}</div>
+                        <div class="activity-time">${act.time}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Handle form submission
+        document.getElementById('assign-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const agentId = document.getElementById('agent-select').value;
+            const taskDesc = document.getElementById('task-description').value;
+            
+            if (!agentId || !taskDesc) return;
+
+            const agent = agents.find(a => a.id === agentId);
+            
+            // Update agent status
+            agent.status = 'busy';
+            agent.currentTask = taskDesc;
+            
+            // Add activity
+            addActivity(`Assigned task to ${agent.name}: ${taskDesc.substring(0, 50)}...`, '🚀');
+            
+            // In real implementation, this would call OpenClaw API:
+            // await fetch('/api/spawn-agent', {
+            //     method: 'POST',
+            //     body: JSON.stringify({ agentId, task: taskDesc })
+            // });
+            
+            console.log(`Spawning ${agentId} with task: ${taskDesc}`);
+            
+            renderDesks();
+            closeModal();
+            
+            // Simulate task completion after 5 seconds (for demo)
+            setTimeout(() => {
+                agent.status = 'ready';
+                agent.currentTask = null;
+                addActivity(`${agent.name} completed task`, '✅');
+                renderDesks();
+            }, 5000);
+        });
+
+        // Close modal on overlay click
+        document.getElementById('assign-modal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeModal();
+            }
+        });
+
+        // Initialize
+        renderDesks();
+        renderActivities();
+        addActivity('Mission Control initialized', '🎯');
+        addActivity('All agents online and ready', '✅');
+
+        // Simulate periodic updates
+        setInterval(() => {
+            // In real implementation, fetch agent status from OpenClaw
+            console.log('Polling agent status...');
+        }, 30000);
+    </script>
+</body>
+</html>

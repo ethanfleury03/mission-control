@@ -1,0 +1,12 @@
+{
+  "teams": [
+    {
+      "id": "seed-team",
+      "name": "Ops",
+      "description": "Operations team",
+      "color": "#22d3ee",
+      "managerId": "seed-1",
+      "createdAt": "2026-02-10T00:00:00Z"
+    }
+  ]
+}

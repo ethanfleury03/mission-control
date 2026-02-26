@@ -1,0 +1,28 @@
+{
+  "name": "@mission-control/sdk",
+  "version": "0.1.0",
+  "description": "Agent SDK for Mission Control Dashboard",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "keywords": [
+    "openclaw",
+    "agent",
+    "dashboard",
+    "observability"
+  ],
+  "author": "Ethan Fleury",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.0.0"
+  }
+}
