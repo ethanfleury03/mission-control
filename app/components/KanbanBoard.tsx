@@ -4,10 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { Plus, MoreHorizontal, Clock, AlertCircle, CheckCircle2, User, X, GripVertical, RefreshCw, Trash2 } from 'lucide-react';
 
-const WORK_API_BASE =
-  (typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_MISSION_CONTROL_API_URL : undefined) ||
-  'http://127.0.0.1:3001';
-const WORK_BOARD_URL = `${WORK_API_BASE.replace(/\/$/, '')}/work`;
+const WORK_BOARD_URL = '/api/work';
 
 type KanbanColumn = 'queue' | 'ongoing' | 'need_human' | 'completed';
 
@@ -91,13 +88,13 @@ export function KanbanBoard() {
 
   const loadAgents = useCallback(async () => {
     try {
-      const teamsRes = await fetch(`${WORK_API_BASE.replace(/\/$/, '')}/api/teams`);
+      const teamsRes = await fetch('/api/registry/teams');
       if (!teamsRes.ok) return;
       const teamsData = await teamsRes.json();
       const teams = teamsData.teams || [];
       if (teams.length === 0) return;
       const teamId = teams[0].id;
-      const teamRes = await fetch(`${WORK_API_BASE.replace(/\/$/, '')}/api/teams/${teamId}`);
+      const teamRes = await fetch(`/api/registry/teams/${teamId}`);
       if (!teamRes.ok) return;
       const teamData = await teamRes.json();
       setAgents(teamData.agents || []);
