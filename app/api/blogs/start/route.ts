@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_ORCHESTRATOR_AGENT_ID, BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
+import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
 
@@ -56,12 +57,22 @@ function dispatchOrchestratorAsync(params: {
     `niche: ${inferred.niche}`,
     `primary_keyword: ${inferred.primaryKeyword}`,
     `target_words: ${targetWords}`,
-    `requirements: produce draft markdown, and store it as metadata.content_markdown and/or metadata.content_html. Set metadata.current_stage to Human approval wait when draft preview is ready.`,
+    `requirements: produce draft markdown, and store it as metadata.content_markdown and/or metadata.content_html. Set metadata.current_stage to Human approval wait when draft preview is ready. Emit a final JSON handoff with schema=handoff.blog.v1.`,
   ].join('\n');
 
   execFile('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], { timeout: 120000, maxBuffer: 1024 * 1024 }, async (err, stdout) => {
     const out = String(stdout || '');
-    const looksLikeHandoff = out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
+    const parsedHandoffs = extractBlogHandoffs(out);
+    let appliedHandoff = false;
+    for (const h of parsedHandoffs) {
+      try {
+        const r = await applyBlogHandoff(item.id, h as any);
+        if (r.applied) appliedHandoff = true;
+      } catch {
+        // ignore handoff apply errors here; reconcile can still recover
+      }
+    }
+    const looksLikeHandoff = appliedHandoff || parsedHandoffs.length > 0 || out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
 
     if (err && !looksLikeHandoff) {
       await fetch(`${API_BASE}/work/items/${item.id}`, {

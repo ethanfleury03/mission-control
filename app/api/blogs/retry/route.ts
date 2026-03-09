@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_ORCHESTRATOR_AGENT_ID } from '../_lib/agents';
+import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
 const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       `niche: ${item?.metadata?.niche || ''}`,
       `primary_keyword: ${item?.metadata?.primary_keyword || ''}`,
       `target_words: ${item?.metadata?.target_words || 1800}`,
-      'requirements: generate/update metadata.content_markdown and advance to Human approval wait when preview is ready.',
+      'requirements: generate/update metadata.content_markdown and advance to Human approval wait when preview is ready. Emit final JSON handoff schema=handoff.blog.v1.',
     ].join('\n');
 
     await fetch(`${API_BASE}/work/items/${itemId}`, {
@@ -52,12 +53,15 @@ export async function POST(request: NextRequest) {
         timeout: 120000,
         maxBuffer: 1024 * 1024,
       });
-      return NextResponse.json({ ok: true, itemId, dispatch: stdout });
+      const handoffs = extractBlogHandoffs(String(stdout || ''));
+      for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
+      return NextResponse.json({ ok: true, itemId, dispatch: stdout, handoffsApplied: handoffs.length });
     } catch (err: any) {
       const out = String(err?.stdout || '');
-      const looksLikeHandoff = out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
-      if (looksLikeHandoff) {
-        return NextResponse.json({ ok: true, itemId, dispatch: out, warning: 'non-zero exit but handoff detected' });
+      const handoffs = extractBlogHandoffs(out);
+      if (handoffs.length) {
+        for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
+        return NextResponse.json({ ok: true, itemId, dispatch: out, warning: 'non-zero exit but handoff detected', handoffsApplied: handoffs.length });
       }
       await fetch(`${API_BASE}/work/items/${itemId}`, {
         method: 'PATCH',

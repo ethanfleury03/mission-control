@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_PUBLISHER_AGENT_ID } from '../_lib/agents';
+import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
 const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       `title: ${item.title}`,
       `topic: ${item?.metadata?.topic || ''}`,
       `content_markdown: ${(item?.metadata?.content_markdown || '').slice(0, 12000)}`,
-      'requirements: publish to wordpress if possible, then set metadata.current_stage to Status report back and include metadata.wp_url and metadata.wp_post_id when available. If publish fails set metadata.error_summary and metadata.next_action.',
+      'requirements: publish to wordpress if possible, then set metadata.current_stage to Status report back and include metadata.wp_url and metadata.wp_post_id when available. If publish fails set metadata.error_summary and metadata.next_action. Emit final JSON handoff schema=handoff.blog.v1.',
     ].join('\n');
 
     try {
@@ -51,6 +52,9 @@ export async function POST(request: NextRequest) {
         timeout: 120000,
         maxBuffer: 1024 * 1024,
       });
+
+      const handoffs = extractBlogHandoffs(String(stdout || ''));
+      for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
 
       await fetch(`${API_BASE}/work/items/${itemId}`, {
         method: 'PATCH',
@@ -63,9 +67,9 @@ export async function POST(request: NextRequest) {
           metadata: {
             ...(item.metadata || {}),
             approval_state: 'approved',
-            current_stage: 'Publish result parse',
-            next_action: 'Waiting for publish result write-back',
-            publish_status: 'processing',
+            current_stage: handoffs.length ? (item.metadata?.current_stage || 'Publish result parse') : 'Publish result parse',
+            next_action: handoffs.length ? 'Publish handoff applied' : 'Waiting for publish result write-back',
+            publish_status: handoffs.length ? (item.metadata?.publish_status || 'processing') : 'processing',
             publisher_dispatch_raw: stdout,
           },
         }),
@@ -73,6 +77,13 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ ok: true, itemId });
     } catch (err: any) {
+      const out = String(err?.stdout || '');
+      const handoffs = extractBlogHandoffs(out);
+      if (handoffs.length) {
+        for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
+        return NextResponse.json({ ok: true, itemId, warning: 'non-zero exit but handoff detected', handoffsApplied: handoffs.length });
+      }
+
       await fetch(`${API_BASE}/work/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
