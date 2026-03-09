@@ -9,6 +9,7 @@ import { BottomBar } from './components/BottomBar';
 import { KanbanBoard } from './components/KanbanBoard';
 import { AgentOffice } from './components/AgentOffice';
 import { MapTab } from './components/MapTab';
+import { BlogsTab } from './components/BlogsTab';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
 
 const EMPTY_METRICS: SystemMetrics = {
@@ -91,12 +92,14 @@ export default function MissionControl() {
       <Header activeTab={activeTab} onTabChange={setActiveTab} />
 
       <div className="flex-1 flex overflow-hidden">
-        {activeTab !== 'MAP' && activeTab !== 'AGENTS' && <LeftSidebar agents={agents} sessions={sessions} />}
+        {activeTab !== 'MAP' && activeTab !== 'AGENTS' && activeTab !== 'BLOGS' && <LeftSidebar agents={agents} sessions={sessions} />}
 
         {activeTab === 'MAP' ? (
           <MapTab />
         ) : activeTab === 'KANBAN' ? (
           <KanbanBoard />
+        ) : activeTab === 'BLOGS' ? (
+          <BlogsTab />
         ) : activeTab === 'AGENTS' ? (
           <AgentOffice />
         ) : (
@@ -108,7 +111,7 @@ export default function MissionControl() {
           />
         )}
 
-        {activeTab !== 'KANBAN' && activeTab !== 'MAP' && activeTab !== 'AGENTS' && (
+        {activeTab !== 'KANBAN' && activeTab !== 'MAP' && activeTab !== 'AGENTS' && activeTab !== 'BLOGS' && (
           <RightSidebar alerts={alerts} crons={crons} />
         )}
       </div>

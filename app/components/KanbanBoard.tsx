@@ -40,7 +40,7 @@ const priorityLabels: Record<number, string> = {
   2: 'high',
 };
 
-export function KanbanBoard() {
+export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' }: { initialContextKey?: string } = {}) {
   const [tasks, setTasks] = useState<WorkItem[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [draggedTask, setDraggedTask] = useState<WorkItem | null>(null);
@@ -48,7 +48,7 @@ export function KanbanBoard() {
   const [showModal, setShowModal] = useState(false);
   const [selectedColumn, setSelectedColumn] = useState<KanbanColumn | null>(null);
   const [newTask, setNewTask] = useState({ title: '', priority: 0, agentId: '' });
-  const [contextKey, setContextKey] = useState('channel:1469858204237299956');
+  const [contextKey, setContextKey] = useState(initialContextKey);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<WorkItem | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -104,6 +104,10 @@ export function KanbanBoard() {
       console.error('Failed to load agents:', err);
     }
   }, []);
+
+  useEffect(() => {
+    setContextKey(initialContextKey);
+  }, [initialContextKey]);
 
   useEffect(() => {
     loadBoard();
