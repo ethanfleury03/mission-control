@@ -1,28 +1,26 @@
 import { NextResponse } from 'next/server';
-import { fetchBackend } from '../_lib/backend';
-
-type BoardItem = { status: 'queue' | 'ongoing' | 'need_human' | 'completed' };
-type BoardResponse = { columns: Array<{ id: string; items: BoardItem[] }> };
+import { getOpenClawStatus } from '../_lib/openclaw';
 
 export async function GET() {
-  try {
-    const board = await fetchBackend<BoardResponse>('/work/board');
-    const items = (board.columns ?? []).flatMap((c) => c.items ?? []);
-    const ongoing = items.filter((i) => i.status === 'ongoing').length;
-    const needHuman = items.filter((i) => i.status === 'need_human').length;
+  const status = await getOpenClawStatus();
+  const recent = status?.sessions?.recent ?? [];
 
-    const now = Date.now();
-    const points = Array.from({ length: 12 }).map((_, idx) => {
-      const t = new Date(now - (11 - idx) * 5 * 60 * 1000);
-      return {
-        timestamp: t.toISOString(),
-        tokens: Math.max(0, ongoing * 120 + needHuman * 40),
-        sessions: ongoing
-      };
+  const now = Date.now();
+  const points = Array.from({ length: 12 }).map((_, idx) => {
+    const bucketStart = now - (11 - idx) * 5 * 60 * 1000;
+    const bucketEnd = bucketStart + 5 * 60 * 1000;
+
+    const inBucket = recent.filter((s) => {
+      const ts = s.updatedAt ?? 0;
+      return ts >= bucketStart && ts < bucketEnd;
     });
 
-    return NextResponse.json(points);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 502 });
-  }
+    return {
+      timestamp: new Date(bucketStart).toISOString(),
+      tokens: inBucket.reduce((sum, s) => sum + (s.totalTokens ?? 0), 0),
+      sessions: inBucket.length,
+    };
+  });
+
+  return NextResponse.json(points);
 }
