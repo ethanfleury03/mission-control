@@ -62,8 +62,8 @@ export async function POST(request: NextRequest) {
 
     try {
       const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', prompt, '--json'], {
-        timeout: 120000,
-        maxBuffer: 1024 * 1024,
+        timeout: 600000,
+        maxBuffer: 4 * 1024 * 1024,
       });
       const handoffs = extractBlogHandoffs(String(stdout || ''));
       for (const h of handoffs) await applyBlogHandoff(itemId, h as any);

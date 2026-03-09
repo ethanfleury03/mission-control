@@ -48,6 +48,23 @@ function dispatchOrchestratorAsync(params: {
   targetWords: number;
 }) {
   const { item, runId, inferred, targetWords } = params;
+
+  fetch(`${API_BASE}/work/items/${item.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      title: item.title,
+      description: item.description || null,
+      status: item.status,
+      priority: item.priority ?? 0,
+      metadata: {
+        ...(item.metadata || {}),
+        orchestration_status: 'processing',
+        last_agent_update_at: new Date().toISOString(),
+        next_action: 'Orchestrator running',
+      },
+    }),
+  }).catch(() => null);
   const orchestrationPrompt = [
     `Start a blog generation run and update work item metadata for context ${BLOG_CONTEXT}.`,
     `run_id: ${runId}`,
@@ -60,7 +77,7 @@ function dispatchOrchestratorAsync(params: {
     `requirements: produce draft markdown, and store it as metadata.content_markdown and/or metadata.content_html. Set metadata.current_stage to Human approval wait when draft preview is ready. Emit a final JSON handoff with schema=handoff.blog.v1.`,
   ].join('\n');
 
-  execFile('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], { timeout: 120000, maxBuffer: 1024 * 1024 }, async (err, stdout) => {
+  execFile('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], { timeout: 600000, maxBuffer: 4 * 1024 * 1024 }, async (err, stdout, stderr) => {
     const out = String(stdout || '');
     const parsedHandoffs = extractBlogHandoffs(out);
     let appliedHandoff = false;
@@ -86,7 +103,7 @@ function dispatchOrchestratorAsync(params: {
           metadata: {
             ...(item.metadata || {}),
             orchestration_status: 'failed',
-            error_summary: `Orchestrator dispatch failed: ${err.message}`,
+            error_summary: `Orchestrator dispatch failed: ${err.message}${stderr ? ` | ${String(stderr).slice(0, 500)}` : ''}`,
             next_action: 'Retry start run',
           },
         }),
