@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Clock3, FileText, Plus, RefreshCw, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Eye, FileText, Plus, RefreshCw, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const WORK_BOARD_URL = '/api/work';
@@ -66,6 +66,7 @@ export function BlogsTab() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [viewMode, setViewMode] = useState<'boss' | 'operator'>('boss');
   const [form, setForm] = useState({
     title: '',
     requested_mode: 'dry_run',
@@ -190,11 +191,22 @@ export function BlogsTab() {
 
   const approvalItems = items.filter(i => normalizeStage(i.metadata?.current_stage) === 'Human approval wait');
 
+  const bossPriority = useMemo(() => {
+    const blocked = items.filter(i => !!i.metadata?.error_summary);
+    const waiting = approvalItems;
+    const publishReady = items.filter(i => normalizeStage(i.metadata?.current_stage) === 'WordPress publish handoff' && i.metadata?.approval_state === 'approved');
+    return { blocked, waiting, publishReady };
+  }, [items, approvalItems]);
+
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-text-primary tracking-wide">BLOGS • FUNCTIONAL PIPELINE</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <div className="inline-flex rounded border border-white/10 overflow-hidden">
+            <button onClick={() => setViewMode('boss')} className={cn('px-2 py-1.5 text-xs inline-flex items-center gap-1', viewMode === 'boss' ? 'bg-accent-cyan/15 text-accent-cyan' : 'text-text-secondary')}><Eye className="w-3.5 h-3.5"/>Boss</button>
+            <button onClick={() => setViewMode('operator')} className={cn('px-2 py-1.5 text-xs inline-flex items-center gap-1 border-l border-white/10', viewMode === 'operator' ? 'bg-accent-cyan/15 text-accent-cyan' : 'text-text-secondary')}><SlidersHorizontal className="w-3.5 h-3.5"/>Operator</button>
+          </div>
           <button onClick={loadBoard} className="px-2 py-1.5 text-xs border border-white/10 rounded text-text-secondary hover:text-text-primary inline-flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5"/>Refresh</button>
           <button onClick={() => setShowCreate(true)} className="px-2 py-1.5 text-xs border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan rounded inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>New Blog Run</button>
         </div>
@@ -207,6 +219,14 @@ export function BlogsTab() {
         <MetricCard icon={CheckCircle2} label="Published" value={String(kpis.published)} tone="green" />
       </div>
 
+      {viewMode === 'boss' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <DecisionPanel title="Needs Decision" items={bossPriority.waiting} empty="No approvals waiting." />
+          <DecisionPanel title="Publish Ready" items={bossPriority.publishReady} empty="No approved publish handoffs yet." />
+          <DecisionPanel title="Blocked" items={bossPriority.blocked} empty="No blocked items." />
+        </div>
+      )}
+
       <div className="bg-bg-secondary border border-white/10 rounded-lg p-4">
         <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Approval Queue</h3>
         {approvalItems.length === 0 ? (
@@ -217,7 +237,7 @@ export function BlogsTab() {
               <div key={item.id} className="p-2 rounded border border-white/10 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-sm text-text-primary">{item.title}</p>
-                  <p className="text-xs text-text-muted">{item.metadata?.run_id || item.id} • {item.metadata?.requested_mode || 'dry_run'}</p>
+                  <p className="text-xs text-text-muted">{item.metadata?.run_id || item.id} • {item.metadata?.requested_mode || 'dry_run'} • {item.metadata?.next_action || 'Awaiting decision'}</p>
                 </div>
                 <div className="flex gap-2">
                   <button disabled={savingId === item.id} onClick={() => revise(item)} className="px-2 py-1 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
@@ -231,7 +251,7 @@ export function BlogsTab() {
 
       {loading ? (
         <div className="text-sm text-text-muted">Loading blog pipeline…</div>
-      ) : (
+      ) : viewMode === 'operator' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {byStage.map(col => (
             <div key={col.stage} className={cn('rounded-lg border bg-bg-secondary p-3', stageColors[col.stage])}>
@@ -267,6 +287,10 @@ export function BlogsTab() {
             </div>
           ))}
         </div>
+      ) : (
+        <div className="bg-bg-secondary border border-white/10 rounded-lg p-4 text-xs text-text-secondary">
+          Boss view focuses on decisions and exceptions. Switch to <span className="text-accent-cyan">Operator</span> to move cards stage-by-stage.
+        </div>
       )}
 
       {showCreate && (
@@ -296,6 +320,27 @@ export function BlogsTab() {
               <button onClick={createItem} className="px-3 py-1.5 text-xs rounded border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan">Create</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DecisionPanel({ title, items, empty }: { title: string; items: WorkItem[]; empty: string }) {
+  return (
+    <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
+      <h4 className="text-xs uppercase tracking-wide text-text-secondary mb-2">{title}</h4>
+      {items.length === 0 ? (
+        <p className="text-xs text-text-muted">{empty}</p>
+      ) : (
+        <div className="space-y-2 max-h-48 overflow-auto">
+          {items.slice(0, 8).map(item => (
+            <div key={item.id} className="rounded border border-white/10 p-2 bg-bg-tertiary/60">
+              <p className="text-sm text-text-primary">{item.title}</p>
+              <p className="text-[11px] text-text-muted mt-1">{item.metadata?.run_id || item.id}</p>
+              {item.metadata?.error_summary ? <p className="text-[11px] text-red-300 mt-1">{item.metadata.error_summary}</p> : null}
+            </div>
+          ))}
         </div>
       )}
     </div>
