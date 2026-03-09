@@ -51,6 +51,7 @@ export function KanbanBoard() {
   const [showModal, setShowModal] = useState(false);
   const [selectedColumn, setSelectedColumn] = useState<KanbanColumn | null>(null);
   const [newTask, setNewTask] = useState({ title: '', priority: 0, agentId: '' });
+  const [contextKey, setContextKey] = useState('channel:1469858204237299956');
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<WorkItem | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -59,7 +60,8 @@ export function KanbanBoard() {
 
   const loadBoard = useCallback(async () => {
     try {
-      const res = await fetch(`${WORK_BOARD_URL}/board`);
+      const qs = contextKey.trim() ? `?contextKey=${encodeURIComponent(contextKey.trim())}` : '';
+      const res = await fetch(`${WORK_BOARD_URL}/board${qs}`);
       if (res.ok) {
         const data = await res.json();
         const all: WorkItem[] = [];
@@ -85,7 +87,7 @@ export function KanbanBoard() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [contextKey]);
 
   const loadAgents = useCallback(async () => {
     try {
@@ -187,6 +189,10 @@ export function KanbanBoard() {
           status: selectedColumn,
           priority: newTask.priority,
           agentId: newTask.agentId || null,
+          metadata: {
+            contextKey: contextKey.trim() || 'global',
+            source: 'manual-ui',
+          },
         }),
       });
       if (res.ok) {
@@ -215,7 +221,7 @@ export function KanbanBoard() {
 
   return (
     <div className="h-full flex flex-col bg-bg-primary">
-      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-text-primary">Task Board</h2>
           <span className="text-sm text-text-muted">{tasks.length} tasks</span>
@@ -228,13 +234,29 @@ export function KanbanBoard() {
             <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
           </button>
         </div>
-        <button
-          onClick={() => openAddModal('queue')}
-          className="flex items-center gap-2 px-3 py-1.5 bg-accent-cyan/10 text-accent-cyan rounded-md border border-accent-cyan/20 hover:bg-accent-cyan/20 transition-colors text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          New Task
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={contextKey}
+            onChange={e => setContextKey(e.target.value)}
+            placeholder="Context key (ex: channel:146...)"
+            className="w-72 px-3 py-1.5 bg-bg-tertiary border border-white/5 rounded text-sm text-text-primary focus:outline-none focus:border-accent-cyan/30"
+          />
+          <button
+            onClick={() => setContextKey('')}
+            className="px-2 py-1.5 text-xs text-text-muted hover:text-text-primary"
+            title="Show all contexts"
+          >
+            All
+          </button>
+          <button
+            onClick={() => openAddModal('queue')}
+            className="flex items-center gap-2 px-3 py-1.5 bg-accent-cyan/10 text-accent-cyan rounded-md border border-accent-cyan/20 hover:bg-accent-cyan/20 transition-colors text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            New Task
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-x-auto overflow-y-hidden">

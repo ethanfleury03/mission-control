@@ -61,10 +61,18 @@ async function appendEvent(
 router.get('/board', async (req, res) => {
   try {
     const pool = getDb();
-    const result = await pool.query(
-      `SELECT id, title, description, status, priority, agent_id, created_at, updated_at, metadata
-       FROM work_kanban_items ORDER BY created_at ASC`
-    );
+    const contextKey = typeof req.query.contextKey === 'string' ? req.query.contextKey : undefined;
+
+    let sql = `SELECT id, title, description, status, priority, agent_id, created_at, updated_at, metadata
+       FROM work_kanban_items`;
+    const params: unknown[] = [];
+    if (contextKey) {
+      sql += ` WHERE metadata->>'contextKey' = $1`;
+      params.push(contextKey);
+    }
+    sql += ' ORDER BY created_at ASC';
+
+    const result = await pool.query(sql, params);
     const items = result.rows;
 
     const columns = [
@@ -107,6 +115,7 @@ router.get('/items', async (req, res) => {
     const schema = z.object({
       status: KanbanStatus.optional(),
       agentId: z.string().uuid().optional(),
+      contextKey: z.string().optional(),
     });
     const parsed = schema.safeParse(req.query);
     if (!parsed.success) {
@@ -127,6 +136,10 @@ router.get('/items', async (req, res) => {
     if (parsed.data.agentId) {
       sql += ` AND agent_id = $${idx++}`;
       params.push(parsed.data.agentId);
+    }
+    if (parsed.data.contextKey) {
+      sql += ` AND metadata->>'contextKey' = $${idx++}`;
+      params.push(parsed.data.contextKey);
     }
 
     sql += ' ORDER BY created_at ASC';
