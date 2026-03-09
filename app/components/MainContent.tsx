@@ -3,9 +3,7 @@
 import { SystemMetrics, Task, ActivityDataPoint, Session } from '../lib/types';
 import { formatNumber, cn } from '../lib/utils';
 import { useTimeAgo } from '../lib/useTimeAgo';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { Inbox, CheckCircle, AlertCircle, XCircle, Clock, Zap, Users, Activity, AlertTriangle } from 'lucide-react';
-import { CostDashboard } from './CostDashboard';
+import { CheckCircle, XCircle, Clock, Zap, Users, Activity, AlertTriangle } from 'lucide-react';
 
 interface MainContentProps {
   metrics: SystemMetrics;
@@ -14,7 +12,7 @@ interface MainContentProps {
   activityData: ActivityDataPoint[];
 }
 
-export function MainContent({ metrics, tasks, sessions, activityData }: MainContentProps) {
+export function MainContent({ metrics, tasks, sessions }: MainContentProps) {
   const queueCount = tasks.filter((t) => t.status === 'queue').length;
   const ongoingCount = tasks.filter((t) => t.status === 'ongoing').length;
   const needHumanCount = tasks.filter((t) => t.status === 'need_human').length;
@@ -29,15 +27,6 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
     ? `${Math.max(1, Math.round((Date.now() - lastActivityAt) / 60000))}m ago`
     : 'n/a';
 
-  const avgTokensPerSession = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + (s.tokens || 0), 0) / sessions.length)
-    : 0;
-
-  const doneIn24h = tasks.filter((t) => {
-    if (!t.completed_at) return false;
-    const completedAt = new Date(t.completed_at).getTime();
-    return !Number.isNaN(completedAt) && completedAt >= Date.now() - 24 * 60 * 60 * 1000;
-  }).length;
 
   return (
     <main className="flex-1 bg-bg-primary overflow-auto p-4">
@@ -96,50 +85,8 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
           </div>
         </div>
 
-        {/* Activity Trend */}
-        <div className="col-span-5 card p-4">
-          <div className="text-2xs text-text-muted uppercase mb-3">Activity Trend (60M)</div>
-          <div className="h-32">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={activityData}>
-                <defs>
-                  <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="timestamp" hide />
-                <YAxis hide />
-                <Tooltip 
-                  contentStyle={{ background: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
-                  itemStyle={{ color: '#22d3ee', fontSize: '12px' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="tokens" 
-                  stroke="#22d3ee" 
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-2 flex items-center justify-between text-2xs text-text-muted">
-            <span>Avg tokens / session</span>
-            <span className="text-text-primary">{formatNumber(avgTokensPerSession)}</span>
-          </div>
-          <div className="flex items-center justify-between text-2xs text-text-muted">
-            <span>Open avg age</span>
-            <span className="text-text-primary">live</span>
-          </div>
-          <div className="flex items-center justify-between text-2xs text-text-muted">
-            <span>Done in 24h</span>
-            <span className="text-accent-green">{doneIn24h}</span>
-          </div>
-        </div>
-
         {/* Health Index */}
-        <div className="col-span-4 card p-4">
+        <div className="col-span-9 card p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xs text-text-muted uppercase">Health Index</span>
             <div className="w-2 h-2 rounded-full bg-accent-green shadow-[0_0_6px_#22c55e]" />
@@ -230,11 +177,8 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
 
       {/* Bottom Row */}
       <div className="grid grid-cols-12 gap-3">
-        {/* Cost Dashboard - replaces Execution Queue */}
-        <CostDashboard />
-
         {/* Runtime Pulse */}
-        <div className="col-span-4 card p-4">
+        <div className="col-span-12 card p-4">
           <div className="text-2xs text-text-muted uppercase mb-3">Runtime Pulse</div>
           <div className="text-2xs text-text-muted mb-2">Online {metrics.agentsOnline}/{Math.max(totalAgents, metrics.agentsOnline)} · live now</div>
           
