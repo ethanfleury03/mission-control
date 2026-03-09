@@ -142,10 +142,17 @@ export function BlogsTab() {
   };
 
   const approve = async (item: WorkItem) => {
-    await patchItem(item, {
-      status: 'ongoing',
-      metadata: { approval_state: 'approved', current_stage: 'WordPress publish handoff', next_action: 'Dispatch to blog-publisher' },
-    });
+    setSavingId(item.id);
+    try {
+      const res = await fetch('/api/blogs/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      if (res.ok) await loadBoard();
+    } finally {
+      setSavingId(null);
+    }
   };
 
   const revise = async (item: WorkItem) => {
@@ -285,7 +292,7 @@ export function BlogsTab() {
                 <div className="flex gap-2">
                   <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">Retry</button>
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
-                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve</button>
+                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve + Publish</button>
                 </div>
                 <select
                   value={normalizeStage(selected.metadata?.current_stage)}
