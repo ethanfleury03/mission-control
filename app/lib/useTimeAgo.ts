@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { formatTimeAgo } from './utils';
 
-export function useTimeAgo(date: Date): string {
+export function useTimeAgo(date: Date | string | number): string {
   const [value, setValue] = useState('--');
 
   useEffect(() => {
@@ -13,7 +13,7 @@ export function useTimeAgo(date: Date): string {
     const intervalId = setInterval(update, 60_000);
 
     return () => clearInterval(intervalId);
-  }, [date.getTime()]);
+  }, [date]);
 
   return value;
 }

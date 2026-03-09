@@ -15,9 +15,13 @@ export function formatNumber(num: number): string {
   return num.toString();
 }
 
-export function formatTimeAgo(date: Date): string {
-  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-  
+export function formatTimeAgo(date: Date | string | number): string {
+  const d = date instanceof Date ? date : new Date(date);
+  const ms = d.getTime();
+  if (Number.isNaN(ms)) return 'n/a';
+
+  const seconds = Math.floor((Date.now() - ms) / 1000);
+
   if (seconds < 60) return 'just now';
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
