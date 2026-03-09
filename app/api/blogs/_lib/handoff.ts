@@ -120,6 +120,7 @@ export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Pr
     ...(handoff.metadata || {}),
     last_handoff_digest: digest,
     last_handoff_at: new Date().toISOString(),
+    last_agent_update_at: new Date().toISOString(),
     handoff_schema: handoff.schema || 'handoff.blog.v1',
   };
 

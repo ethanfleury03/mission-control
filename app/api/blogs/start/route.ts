@@ -104,7 +104,8 @@ function dispatchOrchestratorAsync(params: {
         priority: item.priority ?? 0,
         metadata: {
           ...(item.metadata || {}),
-          orchestration_status: 'processing',
+          orchestration_status: looksLikeHandoff ? 'handoff_received' : 'processing',
+          last_agent_update_at: new Date().toISOString(),
           next_action: looksLikeHandoff ? 'Handoff detected, waiting reconcile' : 'Orchestrator running',
           orchestrator_dispatch_raw: stdout || '',
         },
@@ -155,6 +156,8 @@ export async function POST(request: NextRequest) {
           error_summary: '',
           next_action: 'Queued for generation',
           orchestration_status: 'queued',
+          orchestration_started_at: new Date().toISOString(),
+          last_agent_update_at: '',
           orchestrator_agent_id: BLOG_ORCHESTRATOR_AGENT_ID,
           writer_agent_id: BLOG_WRITER_AGENT_ID,
           publisher_agent_id: BLOG_PUBLISHER_AGENT_ID,

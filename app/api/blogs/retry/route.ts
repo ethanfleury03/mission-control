@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
           current_stage: 'Content/preview generation',
           next_action: 'Retrying generation',
           orchestration_status: 'queued',
+          orchestration_started_at: new Date().toISOString(),
+          last_agent_update_at: new Date().toISOString(),
           retry_count: Number(item?.metadata?.retry_count || 0) + 1,
           error_summary: '',
         },

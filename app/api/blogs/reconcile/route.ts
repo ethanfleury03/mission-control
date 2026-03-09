@@ -52,9 +52,23 @@ export async function POST() {
           current_stage: 'Human approval wait',
           next_action: 'Awaiting human decision',
           orchestration_status: 'ready_for_review',
+          last_agent_update_at: new Date().toISOString(),
         }, 'need_human');
         updated += 1;
         continue;
+      }
+
+      if (stage === 'Content/preview generation' && !hasDraft(item)) {
+        const startedAt = item.metadata?.orchestration_started_at ? new Date(item.metadata.orchestration_started_at).getTime() : 0;
+        const ageMs = startedAt ? Date.now() - startedAt : 0;
+        if (ageMs > 120000 && item.metadata?.orchestration_status !== 'stalled') {
+          await patchItem(item, {
+            orchestration_status: 'stalled',
+            next_action: 'No agent update after 2 min. Retry run or check agent logs.',
+          }, 'need_human');
+          updated += 1;
+          continue;
+        }
       }
 
       if ((stage === 'WordPress publish handoff' || stage === 'Publish result parse') && hasPublishResult(item)) {

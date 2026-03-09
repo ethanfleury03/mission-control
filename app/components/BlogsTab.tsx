@@ -319,7 +319,9 @@ export function BlogsTab() {
                   <div className="flex gap-1 mt-1 flex-wrap">
                     <Badge tone={item.metadata?.error_summary ? 'red' : 'green'}>{item.metadata?.error_summary ? 'blocked' : 'ok'}</Badge>
                     <Badge tone="cyan">{item.metadata?.approval_state || 'pending'}</Badge>
+                    <Badge tone={item.metadata?.orchestration_status === 'stalled' ? 'yellow' : item.metadata?.orchestration_status === 'ready_for_review' ? 'green' : 'cyan'}>{item.metadata?.orchestration_status || 'queued'}</Badge>
                   </div>
+                  <p className="text-[10px] text-text-muted mt-1">last update: {item.metadata?.last_agent_update_at ? new Date(item.metadata.last_agent_update_at).toLocaleTimeString() : 'waiting for first agent update'}</p>
                 </button>
               ))}
               {items.length === 0 && <p className="text-xs text-text-muted">No runs yet.</p>}
@@ -331,6 +333,7 @@ export function BlogsTab() {
             {selected ? (
               <div className="space-y-2">
                 <p className="text-xs text-text-muted">{selected.metadata?.next_action || 'No pending action'}</p>
+                <p className="text-[11px] text-text-muted">Agent status: {selected.metadata?.orchestration_status || 'queued'} • Last update: {selected.metadata?.last_agent_update_at ? new Date(selected.metadata.last_agent_update_at).toLocaleTimeString() : 'waiting'}</p>
                 {selected.metadata?.quality_gate === 'fail' ? (
                   <p className="text-[11px] text-amber-300">Quality gate failed: {selectedQualityReasons.join(' • ') || 'revise required'}</p>
                 ) : null}
