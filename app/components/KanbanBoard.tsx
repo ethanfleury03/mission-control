@@ -5,9 +5,9 @@ import { cn, formatTimeAgo } from '../lib/utils';
 import { Plus, MoreHorizontal, Clock, AlertCircle, CheckCircle2, User, X, GripVertical, RefreshCw, Trash2 } from 'lucide-react';
 
 const WORK_API_BASE =
-  (typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_GATEWAY_URL : undefined) ||
-  'http://localhost:18792';
-const WORK_BOARD_URL = `${WORK_API_BASE.replace(/\/$/, '')}/mission-control/work`;
+  (typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_MISSION_CONTROL_API_URL : undefined) ||
+  'http://127.0.0.1:3001';
+const WORK_BOARD_URL = `${WORK_API_BASE.replace(/\/$/, '')}/work`;
 
 type KanbanColumn = 'queue' | 'ongoing' | 'need_human' | 'completed';
 
@@ -91,18 +91,16 @@ export function KanbanBoard() {
 
   const loadAgents = useCallback(async () => {
     try {
-      const teamsRes = await fetch(`${WORK_API_BASE.replace(/\/$/, '')}/mission-control/registry/teams`);
+      const teamsRes = await fetch(`${WORK_API_BASE.replace(/\/$/, '')}/api/teams`);
       if (!teamsRes.ok) return;
       const teamsData = await teamsRes.json();
       const teams = teamsData.teams || [];
       if (teams.length === 0) return;
       const teamId = teams[0].id;
-      const agentsRes = await fetch(
-        `${WORK_API_BASE.replace(/\/$/, '')}/mission-control/registry/teams/${teamId}/agents`
-      );
-      if (!agentsRes.ok) return;
-      const agentsData = await agentsRes.json();
-      setAgents(agentsData.agents || []);
+      const teamRes = await fetch(`${WORK_API_BASE.replace(/\/$/, '')}/api/teams/${teamId}`);
+      if (!teamRes.ok) return;
+      const teamData = await teamRes.json();
+      setAgents(teamData.agents || []);
     } catch (err) {
       console.error('Failed to load agents:', err);
     }
