@@ -155,6 +155,20 @@ export function BlogsTab() {
     });
   };
 
+  const retryRun = async (item: WorkItem) => {
+    setSavingId(item.id);
+    try {
+      const res = await fetch('/api/blogs/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      if (res.ok) await loadBoard();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const createItem = async () => {
     const res = await fetch('/api/blogs/start', {
       method: 'POST',
@@ -269,6 +283,7 @@ export function BlogsTab() {
               <div className="space-y-2">
                 <p className="text-xs text-text-muted">{selected.metadata?.next_action || 'No pending action'}</p>
                 <div className="flex gap-2">
+                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">Retry</button>
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
                   <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve</button>
                 </div>
@@ -303,7 +318,8 @@ export function BlogsTab() {
           <div className="bg-bg-secondary border border-white/10 rounded-lg h-full flex flex-col min-h-[70vh]">
             <div className="p-4 border-b border-white/10">
               <h3 className="text-sm font-semibold text-text-primary">{selected?.title || 'Blog Preview'}</h3>
-              <p className="text-xs text-text-muted mt-1">{selected ? `${selected.metadata?.run_id || selected.id} • ${selected.metadata?.requested_mode || 'dry_run'} • ${normalizeStage(selected.metadata?.current_stage)}` : 'Select a run from the left to review content.'}</p>
+              <p className="text-xs text-text-muted mt-1">{selected ? `${selected.metadata?.run_id || selected.id} • ${selected.metadata?.requested_mode || 'draft'} • ${normalizeStage(selected.metadata?.current_stage)}` : 'Select a run from the left to review content.'}</p>
+              {selected?.metadata?.orchestrator_agent_id ? <p className="text-[11px] text-text-muted mt-1">agents: {selected.metadata.orchestrator_agent_id} / {selected.metadata.writer_agent_id || 'blog-agent'} / {selected.metadata.publisher_agent_id || 'blog-publisher'}</p> : null}
             </div>
             <div className="flex-1 overflow-auto p-4">
               {!selected ? (

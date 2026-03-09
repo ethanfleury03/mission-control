@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
+import { BLOG_ORCHESTRATOR_AGENT_ID, BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +20,16 @@ const FALLBACK_TOPICS = [
   'How manufacturers can improve label quality consistency',
 ];
 
+async function getAvailableAgentIds(): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('openclaw', ['status', '--json'], { timeout: 15000, maxBuffer: 1024 * 1024 });
+    const parsed = JSON.parse(stdout || '{}');
+    return (parsed?.agents?.agents || []).map((a: any) => a?.id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function inferBlogDraft(input: any) {
   const seed = [input?.title, input?.topic, input?.niche, input?.primary_keyword].find((v: any) => typeof v === 'string' && v.trim()) || '';
   const fallbackTopic = FALLBACK_TOPICS[Math.floor(Math.random() * FALLBACK_TOPICS.length)];
@@ -35,6 +46,13 @@ export async function POST(request: NextRequest) {
     const inferred = inferBlogDraft(body || {});
     const runId = (body?.run_id || '').trim() || `run_${Date.now()}`;
     const targetWords = Number(body?.target_words) || 1800;
+
+    const requiredAgents = [BLOG_ORCHESTRATOR_AGENT_ID, BLOG_WRITER_AGENT_ID, BLOG_PUBLISHER_AGENT_ID];
+    const available = await getAvailableAgentIds();
+    const missing = requiredAgents.filter(id => !available.includes(id));
+    if (missing.length) {
+      return NextResponse.json({ error: `Missing required agents: ${missing.join(', ')}` }, { status: 400 });
+    }
 
     const createRes = await fetch(`${API_BASE}/work/items`, {
       method: 'POST',
@@ -63,6 +81,9 @@ export async function POST(request: NextRequest) {
           error_summary: '',
           next_action: 'Generating draft content',
           orchestration_status: 'queued',
+          orchestrator_agent_id: BLOG_ORCHESTRATOR_AGENT_ID,
+          writer_agent_id: BLOG_WRITER_AGENT_ID,
+          publisher_agent_id: BLOG_PUBLISHER_AGENT_ID,
         },
       }),
     });
@@ -86,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     let dispatch: any = { success: false, error: 'Not attempted' };
     try {
-      const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', 'blog-orchestrator', '--message', orchestrationPrompt, '--json'], {
+      const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], {
         timeout: 120000,
         maxBuffer: 1024 * 1024,
       });
