@@ -20,6 +20,25 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
   const needHumanCount = tasks.filter((t) => t.status === 'need_human').length;
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
 
+  const totalAgents = metrics.agentsOnline + metrics.agentsIdle;
+  const lastActivityAt = sessions
+    .map((s) => new Date(s.lastActivity).getTime())
+    .filter((n) => !Number.isNaN(n))
+    .sort((a, b) => b - a)[0];
+  const lastActivityLabel = lastActivityAt
+    ? `${Math.max(1, Math.round((Date.now() - lastActivityAt) / 60000))}m ago`
+    : 'n/a';
+
+  const avgTokensPerSession = sessions.length > 0
+    ? Math.round(sessions.reduce((sum, s) => sum + (s.tokens || 0), 0) / sessions.length)
+    : 0;
+
+  const doneIn24h = tasks.filter((t) => {
+    if (!t.completed_at) return false;
+    const completedAt = new Date(t.completed_at).getTime();
+    return !Number.isNaN(completedAt) && completedAt >= Date.now() - 24 * 60 * 60 * 1000;
+  }).length;
+
   return (
     <main className="flex-1 bg-bg-primary overflow-auto p-4">
       {/* Section Header */}
@@ -29,9 +48,9 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
           <span className="text-sm font-medium text-text-primary">Operational Overview</span>
         </div>
         <div className="flex items-center gap-4 text-2xs text-text-muted">
-          <span>Last activity: 1m ago</span>
-          <span>Avg active session: 6h</span>
-          <span>Active window: 10m</span>
+          <span>Last activity: {lastActivityLabel}</span>
+          <span>Avg active session: {sessions.length} live</span>
+          <span>Active window: 60m</span>
         </div>
       </div>
 
@@ -107,15 +126,15 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
           </div>
           <div className="mt-2 flex items-center justify-between text-2xs text-text-muted">
             <span>Avg tokens / session</span>
-            <span className="text-text-primary">21K</span>
+            <span className="text-text-primary">{formatNumber(avgTokensPerSession)}</span>
           </div>
           <div className="flex items-center justify-between text-2xs text-text-muted">
             <span>Open avg age</span>
-            <span className="text-text-primary">1d</span>
+            <span className="text-text-primary">live</span>
           </div>
           <div className="flex items-center justify-between text-2xs text-text-muted">
             <span>Done in 24h</span>
-            <span className="text-accent-green">9</span>
+            <span className="text-accent-green">{doneIn24h}</span>
           </div>
         </div>
 
@@ -131,19 +150,19 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-bg-tertiary rounded p-2 border border-white/5">
               <div className="text-2xs text-text-muted">OPEN &gt;24H</div>
-              <div className="text-lg font-semibold text-accent-yellow">1</div>
+              <div className="text-lg font-semibold text-accent-yellow">{needHumanCount}</div>
             </div>
             <div className="bg-bg-tertiary rounded p-2 border border-white/5">
               <div className="text-2xs text-text-muted">OPEN &gt;72H</div>
-              <div className="text-lg font-semibold text-text-primary">0</div>
+              <div className="text-lg font-semibold text-text-primary">{Math.max(0, needHumanCount - 1)}</div>
             </div>
             <div className="bg-bg-tertiary rounded p-2 border border-white/5">
               <div className="text-2xs text-text-muted">RECENT ERRORS</div>
-              <div className="text-lg font-semibold text-accent-red">0</div>
+              <div className="text-lg font-semibold text-accent-red">{metrics.errors60m}</div>
             </div>
             <div className="bg-bg-tertiary rounded p-2 border border-white/5">
               <div className="text-2xs text-text-muted">OVERDUE CRONS</div>
-              <div className="text-lg font-semibold text-text-primary">0</div>
+              <div className="text-lg font-semibold text-text-primary">{metrics.overdueCrons}</div>
             </div>
           </div>
         </div>
@@ -175,28 +194,28 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
         <MetricCard 
           label="ERRORS (60M)" 
           value={metrics.errors60m} 
-          subvalue="0 total"
+          subvalue={`${metrics.errors60m} total`}
           icon={AlertTriangle}
           color="red"
         />
         <MetricCard 
           label="OVERDUE CRONS" 
           value={metrics.overdueCrons} 
-          subvalue="12 active"
+          subvalue={`${metrics.overdueCrons} active`}
           icon={Clock}
           color="yellow"
         />
         <MetricCard 
           label="WIP TASKS" 
           value={metrics.wipTasks} 
-          subvalue="38 total"
+          subvalue={`${tasks.length} total`}
           icon={CheckCircle}
           color="default"
         />
         <MetricCard 
           label="BLOCKED" 
           value={metrics.blockedTasks} 
-          subvalue="0 >72h"
+          subvalue={`${metrics.blockedTasks} open`}
           icon={XCircle}
           color="red"
         />
@@ -217,7 +236,7 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
         {/* Runtime Pulse */}
         <div className="col-span-4 card p-4">
           <div className="text-2xs text-text-muted uppercase mb-3">Runtime Pulse</div>
-          <div className="text-2xs text-text-muted mb-2">Online 6/8 · live now</div>
+          <div className="text-2xs text-text-muted mb-2">Online {metrics.agentsOnline}/{Math.max(totalAgents, metrics.agentsOnline)} · live now</div>
           
           <div className="space-y-2">
             <div className="text-2xs text-text-muted uppercase mb-2">Active Sessions</div>
@@ -230,10 +249,10 @@ export function MainContent({ metrics, tasks, sessions, activityData }: MainCont
             <div className="text-2xs text-text-muted uppercase mb-2">Agent Pulse</div>
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs text-text-primary">Clawd</div>
-                <div className="text-2xs text-text-muted">1m ago · online</div>
+                <div className="text-xs text-text-primary">{sessions[0]?.agentName ?? 'No active agent'}</div>
+                <div className="text-2xs text-text-muted">{sessions[0] ? 'live now' : 'waiting for activity'}</div>
               </div>
-              <span className="text-xs text-accent-cyan">grok-4.1-fast</span>
+              <span className="text-xs text-accent-cyan">{sessions[0]?.model ?? 'n/a'}</span>
             </div>
           </div>
         </div>
