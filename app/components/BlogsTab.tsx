@@ -335,7 +335,7 @@ export function BlogsTab() {
                   <p className="text-[11px] text-amber-300">Quality gate failed: {selectedQualityReasons.join(' • ') || 'revise required'}</p>
                 ) : null}
                 <div className="flex gap-2 flex-wrap">
-                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">Retry</button>
+                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">{selected.metadata?.quality_gate === 'fail' ? 'Retry w/ Fixes' : 'Retry'}</button>
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
                   <button disabled={savingId === selected.id} onClick={() => saveBlog(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-purple-500/30 text-purple-300">Save Blog</button>
                   <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300 disabled:opacity-40">Approve + Publish</button>

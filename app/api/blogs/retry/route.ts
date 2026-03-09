@@ -17,6 +17,15 @@ export async function POST(request: NextRequest) {
     if (!getRes.ok) return NextResponse.json({ error: item?.error || 'Run not found' }, { status: getRes.status });
 
     const runId = item?.metadata?.run_id || itemId;
+    const qualityReasons: string[] = Array.isArray(item?.metadata?.quality_reasons) ? item.metadata.quality_reasons : [];
+    const qualityFixBlock = qualityReasons.length
+      ? [
+          'quality_fixes_required:',
+          ...qualityReasons.map((r: string, i: number) => `  ${i + 1}. ${r}`),
+          'Apply all quality fixes above before finalizing draft.',
+        ].join('\n')
+      : '';
+
     const prompt = [
       'Retry blog generation for existing work item.',
       `work_item_id: ${itemId}`,
@@ -26,8 +35,9 @@ export async function POST(request: NextRequest) {
       `niche: ${item?.metadata?.niche || ''}`,
       `primary_keyword: ${item?.metadata?.primary_keyword || ''}`,
       `target_words: ${item?.metadata?.target_words || 1800}`,
+      qualityFixBlock,
       'requirements: generate/update metadata.content_markdown and advance to Human approval wait when preview is ready. Emit final JSON handoff schema=handoff.blog.v1.',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     await fetch(`${API_BASE}/work/items/${itemId}`, {
       method: 'PATCH',
