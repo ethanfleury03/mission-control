@@ -41,6 +41,31 @@ const CreateFromMessageSchema = z.object({
   priority: z.number().int().optional(),
 });
 
+const IngestDiscordSchema = z.object({
+  messageId: z.string().min(1),
+  text: z.string().min(1).max(5000),
+  author: z.string().optional(),
+  channelId: z.string().optional(),
+  contextKey: z.string().optional(),
+});
+
+function extractTaskFromDiscordText(text: string): { title: string; priority: number } | null {
+  const trimmed = text.trim();
+  const m1 = trimmed.match(/^#task\s+(.+)$/i);
+  const m2 = trimmed.match(/(?:^|\s)task:\s*(.+)$/i);
+  const payload = (m1?.[1] || m2?.[1] || '').trim();
+  if (!payload) return null;
+
+  let priority = 0;
+  let title = payload;
+  if (/\s#high\b/i.test(payload)) priority = 2;
+  if (/\s#low\b/i.test(payload)) priority = -1;
+  title = title.replace(/\s#(?:high|medium|low)\b/gi, '').trim();
+  if (!title) return null;
+
+  return { title, priority };
+}
+
 function sendValidationError(res: import('express').Response, details: z.ZodIssue[]) {
   res.status(400).json({ error: 'validation_error', details });
 }
@@ -167,6 +192,41 @@ router.get('/items', async (req, res) => {
     }));
 
     res.json({ items });
+  } catch (err) {
+    sendInternalError(res, err);
+  }
+});
+
+// POST /work/ingest/discord
+router.post('/ingest/discord', async (req, res) => {
+  try {
+    const parsed = IngestDiscordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error.errors);
+      return;
+    }
+
+    const { messageId, text, author, channelId, contextKey } = parsed.data;
+    const extracted = extractTaskFromDiscordText(text);
+    if (!extracted) {
+      return res.status(200).json({ matched: false, reason: 'no_task_pattern' });
+    }
+
+    const payload = {
+      messageId,
+      text: extracted.title,
+      author,
+      channelId,
+      contextKey,
+      priority: extracted.priority,
+    };
+
+    req.body = payload;
+    return (router as any).handle(
+      { ...req, method: 'POST', url: '/items/from-message', body: payload },
+      res,
+      () => undefined
+    );
   } catch (err) {
     sendInternalError(res, err);
   }
