@@ -7,14 +7,6 @@ import { cn } from '../lib/utils';
 const WORK_BOARD_URL = '/api/work';
 const BLOG_CONTEXT = 'blog:content';
 
-const FALLBACK_TOPICS = [
-  'How to reduce print downtime in production environments',
-  'Top workflow bottlenecks in large format print shops',
-  'Choosing the right RIP strategy for faster throughput',
-  'Common prepress mistakes and how to avoid them',
-  'How manufacturers can improve label quality consistency',
-];
-
 type KanbanStatus = 'queue' | 'ongoing' | 'need_human' | 'completed';
 
 type WorkItem = {
@@ -69,15 +61,6 @@ const deriveStatusFromStage = (stage: Stage): KanbanStatus => {
   return 'ongoing';
 };
 
-function inferBlogDraft(input: { title: string; niche: string; topic: string; primary_keyword: string }) {
-  const seed = [input.title, input.topic, input.niche, input.primary_keyword].find(v => v.trim()) || '';
-  const fallbackTopic = FALLBACK_TOPICS[Math.floor(Math.random() * FALLBACK_TOPICS.length)];
-  const topic = input.topic.trim() || seed || fallbackTopic;
-  const niche = input.niche.trim() || topic.split(' ')[0]?.replace(/[^a-zA-Z0-9-]/g, '') || 'industry';
-  const primaryKeyword = input.primary_keyword.trim() || topic.toLowerCase().split(' ').slice(0, 3).join(' ');
-  const title = input.title.trim() || `${topic.replace(/\.$/, '')}: Practical Guide for 2026`;
-  return { title, topic, niche, primaryKeyword };
-}
 
 export function BlogsTab() {
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -85,6 +68,7 @@ export function BlogsTab() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'boss' | 'operator'>('boss');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState('');
   const [form, setForm] = useState({
     title: '',
     niche: '',
@@ -172,40 +156,13 @@ export function BlogsTab() {
   };
 
   const createItem = async () => {
-    const inferred = inferBlogDraft(form);
-    const title = inferred.title;
-    const runId = form.run_id.trim() || `run_${Date.now()}`;
-    const stage: Stage = 'Content/preview generation';
-    const res = await fetch(`${WORK_BOARD_URL}/items`, {
+    const res = await fetch('/api/blogs/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        status: deriveStatusFromStage(stage),
-        priority: 0,
-        metadata: {
-          contextKey: BLOG_CONTEXT,
-          source: 'blogs-ui',
-          run_id: runId,
-          topic: inferred.topic,
-          niche: inferred.niche,
-          primary_keyword: inferred.primaryKeyword,
-          target_words: Number(form.target_words) || 1800,
-          requested_mode: 'draft',
-          current_stage: stage,
-          status: 'pass',
-          content_handoff_valid: 'Y',
-          approval_state: form.approval_state,
-          publish_target: 'wordpress',
-          wp_post_id: '',
-          wp_url: '',
-          image_status: 'pending',
-          error_summary: '',
-          next_action: '',
-        },
-      }),
+      body: JSON.stringify(form),
     });
     if (res.ok) {
+      const data = await res.json();
       setForm({
         title: '',
         niche: '',
@@ -215,6 +172,7 @@ export function BlogsTab() {
         run_id: '',
         approval_state: 'pending',
       });
+      if (data?.itemId) setSelectedId(data.itemId);
       await loadBoard();
     }
   };
@@ -241,6 +199,14 @@ export function BlogsTab() {
   const selected = items.find(i => i.id === selectedId) || null;
   const selectedHtml = (selected?.metadata?.content_html as string) || '';
   const selectedMarkdown = (selected?.metadata?.content_markdown as string) || (selected?.description || '');
+
+  const libraryItems = useMemo(() => {
+    const q = libraryQuery.trim().toLowerCase();
+    return items
+      .filter(i => !!i.metadata?.content_markdown || !!i.metadata?.content_html || normalizeStage(i.metadata?.current_stage) === 'Status report back')
+      .filter(i => !q || i.title.toLowerCase().includes(q) || String(i.metadata?.topic || '').toLowerCase().includes(q) || String(i.metadata?.run_id || '').toLowerCase().includes(q))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [items, libraryQuery]);
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -316,6 +282,20 @@ export function BlogsTab() {
                 </select>
               </div>
             ) : <p className="text-xs text-text-muted">Select a run.</p>}
+          </div>
+
+          <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
+            <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Blog Library</h3>
+            <input value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)} placeholder="Search old blogs" className="w-full px-2 py-1.5 mb-2 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400" />
+            <div className="space-y-2 max-h-56 overflow-auto">
+              {libraryItems.map(item => (
+                <button key={item.id} onClick={() => setSelectedId(item.id)} className={cn('w-full text-left rounded border p-2', selectedId === item.id ? 'border-accent-cyan/40 bg-accent-cyan/10' : 'border-white/10 bg-bg-tertiary/50')}>
+                  <p className="text-xs text-text-primary truncate">{item.title}</p>
+                  <p className="text-[11px] text-text-muted truncate">{item.metadata?.run_id || item.id}</p>
+                </button>
+              ))}
+              {libraryItems.length === 0 && <p className="text-xs text-text-muted">No generated blogs yet.</p>}
+            </div>
           </div>
         </div>
 
