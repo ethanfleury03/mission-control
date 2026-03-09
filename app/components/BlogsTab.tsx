@@ -69,6 +69,7 @@ export function BlogsTab() {
   const [viewMode, setViewMode] = useState<'boss' | 'operator'>('boss');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [libraryQuery, setLibraryQuery] = useState('');
+  const [startError, setStartError] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
     niche: '',
@@ -184,25 +185,28 @@ export function BlogsTab() {
   };
 
   const createItem = async () => {
+    setStartError(null);
     const res = await fetch('/api/blogs/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
-    if (res.ok) {
-      const data = await res.json();
-      setForm({
-        title: '',
-        niche: '',
-        topic: '',
-        primary_keyword: '',
-        target_words: 1800,
-        run_id: '',
-        approval_state: 'pending',
-      });
-      if (data?.itemId) setSelectedId(data.itemId);
-      await loadBoard();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setStartError(data?.error || 'Failed to start blog run');
+      return;
     }
+    setForm({
+      title: '',
+      niche: '',
+      topic: '',
+      primary_keyword: '',
+      target_words: 1800,
+      run_id: '',
+      approval_state: 'pending',
+    });
+    if (data?.itemId) setSelectedId(data.itemId);
+    await loadBoard();
   };
 
   const approvalItems = items.filter(i => normalizeStage(i.metadata?.current_stage) === 'Human approval wait');
@@ -268,6 +272,7 @@ export function BlogsTab() {
               <input value={form.primary_keyword} onChange={e => setForm(f => ({ ...f, primary_keyword: e.target.value }))} placeholder="Primary keyword (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400" />
               <input type="number" value={form.target_words} onChange={e => setForm(f => ({ ...f, target_words: Number(e.target.value || 0) }))} placeholder="Target words (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400 col-span-2" />
             </div>
+            {startError ? <p className="text-[11px] text-red-300 mt-2">{startError}</p> : null}
             <div className="mt-2 flex justify-end">
               <button onClick={createItem} className="px-3 py-1.5 text-xs rounded border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan">Start Blog Run</button>
             </div>

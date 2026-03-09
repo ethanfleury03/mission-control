@@ -40,6 +40,65 @@ function inferBlogDraft(input: any) {
   return { title, topic, niche, primaryKeyword };
 }
 
+function dispatchOrchestratorAsync(params: {
+  item: any;
+  runId: string;
+  inferred: { title: string; topic: string; niche: string; primaryKeyword: string };
+  targetWords: number;
+}) {
+  const { item, runId, inferred, targetWords } = params;
+  const orchestrationPrompt = [
+    `Start a blog generation run and update work item metadata for context ${BLOG_CONTEXT}.`,
+    `run_id: ${runId}`,
+    `work_item_id: ${item.id}`,
+    `title: ${inferred.title}`,
+    `topic: ${inferred.topic}`,
+    `niche: ${inferred.niche}`,
+    `primary_keyword: ${inferred.primaryKeyword}`,
+    `target_words: ${targetWords}`,
+    `requirements: produce draft markdown, and store it as metadata.content_markdown and/or metadata.content_html. Set metadata.current_stage to Human approval wait when draft preview is ready.`,
+  ].join('\n');
+
+  execFile('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], { timeout: 120000, maxBuffer: 1024 * 1024 }, async (err, stdout) => {
+    if (err) {
+      await fetch(`${API_BASE}/work/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description || null,
+          status: item.status,
+          priority: item.priority ?? 0,
+          metadata: {
+            ...(item.metadata || {}),
+            orchestration_status: 'failed',
+            error_summary: `Orchestrator dispatch failed: ${err.message}`,
+            next_action: 'Retry start run',
+          },
+        }),
+      }).catch(() => null);
+      return;
+    }
+
+    await fetch(`${API_BASE}/work/items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: item.title,
+        description: item.description || null,
+        status: item.status,
+        priority: item.priority ?? 0,
+        metadata: {
+          ...(item.metadata || {}),
+          orchestration_status: 'processing',
+          next_action: 'Orchestrator running',
+          orchestrator_dispatch_raw: stdout || '',
+        },
+      }),
+    }).catch(() => null);
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -79,7 +138,7 @@ export async function POST(request: NextRequest) {
           wp_url: '',
           image_status: 'pending',
           error_summary: '',
-          next_action: 'Generating draft content',
+          next_action: 'Queued for generation',
           orchestration_status: 'queued',
           orchestrator_agent_id: BLOG_ORCHESTRATOR_AGENT_ID,
           writer_agent_id: BLOG_WRITER_AGENT_ID,
@@ -93,46 +152,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: item?.error || 'Failed to create run' }, { status: createRes.status });
     }
 
-    const orchestrationPrompt = [
-      `Start a blog generation run and update work item metadata for context ${BLOG_CONTEXT}.`,
-      `run_id: ${runId}`,
-      `work_item_id: ${item.id}`,
-      `title: ${inferred.title}`,
-      `topic: ${inferred.topic}`,
-      `niche: ${inferred.niche}`,
-      `primary_keyword: ${inferred.primaryKeyword}`,
-      `target_words: ${targetWords}`,
-      `requirements: produce draft markdown, and store it as metadata.content_markdown and/or metadata.content_html. Set metadata.current_stage to Human approval wait when draft preview is ready.`,
-    ].join('\n');
+    dispatchOrchestratorAsync({ item, runId, inferred, targetWords });
 
-    let dispatch: any = { success: false, error: 'Not attempted' };
-    try {
-      const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], {
-        timeout: 120000,
-        maxBuffer: 1024 * 1024,
-      });
-      dispatch = { success: true, raw: stdout };
-    } catch (err: any) {
-      dispatch = { success: false, error: err?.message || 'Dispatch failed' };
-      await fetch(`${API_BASE}/work/items/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: item.title,
-          description: item.description || null,
-          status: item.status,
-          priority: item.priority ?? 0,
-          metadata: {
-            ...(item.metadata || {}),
-            orchestration_status: 'failed',
-            error_summary: `Orchestrator dispatch failed: ${dispatch.error}`,
-            next_action: 'Retry start run',
-          },
-        }),
-      });
-    }
-
-    return NextResponse.json({ ok: true, itemId: item.id, runId, inferred, dispatch });
+    return NextResponse.json({ ok: true, itemId: item.id, runId, inferred, dispatch: { queued: true } });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Failed to start blog run' }, { status: 500 });
   }
