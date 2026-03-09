@@ -53,6 +53,8 @@ export function KanbanBoard() {
   const [selectedTask, setSelectedTask] = useState<WorkItem | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageTask, setMessageTask] = useState({ messageId: '', text: '', author: 'Ethan Fleury', priority: 0 });
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadBoard = useCallback(async () => {
@@ -245,6 +247,12 @@ export function KanbanBoard() {
             All
           </button>
           <button
+            onClick={() => setShowMessageModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-accent-yellow/10 text-accent-yellow rounded-md border border-accent-yellow/20 hover:bg-accent-yellow/20 transition-colors text-sm"
+          >
+            From Message
+          </button>
+          <button
             onClick={() => openAddModal('queue')}
             className="flex items-center gap-2 px-3 py-1.5 bg-accent-cyan/10 text-accent-cyan rounded-md border border-accent-cyan/20 hover:bg-accent-cyan/20 transition-colors text-sm"
           >
@@ -312,6 +320,71 @@ export function KanbanBoard() {
           showDeleteConfirm={showDeleteConfirm}
           setShowDeleteConfirm={setShowDeleteConfirm}
         />
+      )}
+
+      {showMessageModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-bg-secondary rounded-lg border border-white/10 p-6 w-[34rem]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-text-primary">Create Task From Message</h3>
+              <button onClick={() => setShowMessageModal(false)} className="text-text-muted hover:text-text-primary">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={messageTask.messageId}
+                onChange={e => setMessageTask({ ...messageTask, messageId: e.target.value })}
+                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary"
+                placeholder="Message ID"
+              />
+              <input
+                type="text"
+                value={messageTask.author}
+                onChange={e => setMessageTask({ ...messageTask, author: e.target.value })}
+                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary"
+                placeholder="Author"
+              />
+              <textarea
+                value={messageTask.text}
+                onChange={e => setMessageTask({ ...messageTask, text: e.target.value })}
+                rows={4}
+                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary resize-none"
+                placeholder="Paste the message content"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShowMessageModal(false)} className="px-4 py-2 text-sm text-text-muted hover:text-text-primary">Cancel</button>
+              <button
+                onClick={async () => {
+                  if (!messageTask.messageId.trim() || !messageTask.text.trim()) return;
+                  const channelId = contextKey.startsWith('channel:') ? contextKey.slice('channel:'.length) : undefined;
+                  const res = await fetch(`${WORK_BOARD_URL}/items/from-message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      messageId: messageTask.messageId.trim(),
+                      text: messageTask.text.trim(),
+                      author: messageTask.author.trim() || undefined,
+                      channelId,
+                      contextKey: contextKey.trim() || undefined,
+                      priority: messageTask.priority,
+                    }),
+                  });
+                  if (res.ok) {
+                    await loadBoard();
+                    setShowMessageModal(false);
+                    setMessageTask({ messageId: '', text: '', author: 'Ethan Fleury', priority: 0 });
+                  }
+                }}
+                className="px-4 py-2 bg-accent-yellow/10 text-accent-yellow rounded border border-accent-yellow/20 hover:bg-accent-yellow/20 text-sm"
+              >
+                Create from Message
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showModal && (

@@ -32,6 +32,15 @@ const MoveItemSchema = z.object({
   status: KanbanStatus,
 });
 
+const CreateFromMessageSchema = z.object({
+  messageId: z.string().min(1),
+  text: z.string().min(1).max(5000),
+  author: z.string().optional(),
+  channelId: z.string().optional(),
+  contextKey: z.string().optional(),
+  priority: z.number().int().optional(),
+});
+
 function sendValidationError(res: import('express').Response, details: z.ZodIssue[]) {
   res.status(400).json({ error: 'validation_error', details });
 }
@@ -158,6 +167,78 @@ router.get('/items', async (req, res) => {
     }));
 
     res.json({ items });
+  } catch (err) {
+    sendInternalError(res, err);
+  }
+});
+
+// POST /work/items/from-message
+router.post('/items/from-message', async (req, res) => {
+  try {
+    const parsed = CreateFromMessageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error.errors);
+      return;
+    }
+
+    const { messageId, text, author, channelId, contextKey, priority } = parsed.data;
+    const pool = getDb();
+
+    const existing = await pool.query(
+      `SELECT id, title, description, status, priority, agent_id, created_at, updated_at, metadata
+       FROM work_kanban_items
+       WHERE metadata->>'sourceMessageId' = $1
+       LIMIT 1`,
+      [messageId]
+    );
+
+    if (existing.rows.length > 0) {
+      const row = existing.rows[0];
+      return res.status(200).json({
+        id: row.id,
+        title: row.title,
+        description: row.description ?? null,
+        status: row.status,
+        priority: row.priority ?? 0,
+        agentId: row.agent_id ?? null,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+        metadata: row.metadata ?? {},
+        existing: true,
+      });
+    }
+
+    const title = text.trim().replace(/\s+/g, ' ').slice(0, 140);
+    const metadata = {
+      source: 'discord-message',
+      sourceMessageId: messageId,
+      sourceAuthor: author ?? null,
+      sourceChannelId: channelId ?? null,
+      contextKey: contextKey ?? (channelId ? `channel:${channelId}` : 'global'),
+    };
+
+    const result = await pool.query(
+      `INSERT INTO work_kanban_items (title, description, status, priority, agent_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, title, description, status, priority, agent_id, created_at, updated_at, metadata`,
+      [title, text, 'queue', priority ?? 0, null, JSON.stringify(metadata)]
+    );
+
+    const row = result.rows[0];
+    await appendEvent(pool, row.id, 'created', { title, status: 'queue', messageId });
+
+    return res.status(201).json({
+      id: row.id,
+      title: row.title,
+      description: row.description ?? null,
+      status: row.status,
+      priority: row.priority ?? 0,
+      agentId: row.agent_id ?? null,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+      metadata: row.metadata ?? {},
+      existing: false,
+    });
   } catch (err) {
     sendInternalError(res, err);
   }
