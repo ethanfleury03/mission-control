@@ -93,11 +93,18 @@ export function BlogsTab() {
     setLoading(false);
   }, []);
 
+  const reconcile = useCallback(async () => {
+    await fetch('/api/blogs/reconcile', { method: 'POST' });
+  }, []);
+
   useEffect(() => {
     loadBoard();
-    const id = setInterval(loadBoard, 7000);
+    const id = setInterval(async () => {
+      await reconcile();
+      await loadBoard();
+    }, 7000);
     return () => clearInterval(id);
-  }, [loadBoard]);
+  }, [loadBoard, reconcile]);
 
   const kpis = useMemo(() => {
     const awaiting = items.filter(i => normalizeStage(i.metadata?.current_stage) === 'Human approval wait').length;
@@ -238,7 +245,7 @@ export function BlogsTab() {
             <button onClick={() => setViewMode('boss')} className={cn('px-2 py-1.5 text-xs inline-flex items-center gap-1', viewMode === 'boss' ? 'bg-accent-cyan/15 text-accent-cyan' : 'text-text-secondary')}><Eye className="w-3.5 h-3.5"/>Boss</button>
             <button onClick={() => setViewMode('operator')} className={cn('px-2 py-1.5 text-xs inline-flex items-center gap-1 border-l border-white/10', viewMode === 'operator' ? 'bg-accent-cyan/15 text-accent-cyan' : 'text-text-secondary')}><SlidersHorizontal className="w-3.5 h-3.5"/>Operator</button>
           </div>
-          <button onClick={loadBoard} className="px-2 py-1.5 text-xs border border-white/10 rounded text-text-secondary hover:text-text-primary inline-flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5"/>Refresh</button>
+          <button onClick={async () => { await reconcile(); await loadBoard(); }} className="px-2 py-1.5 text-xs border border-white/10 rounded text-text-secondary hover:text-text-primary inline-flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5"/>Refresh</button>
         </div>
       </div>
 
