@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
-import { BLOG_ORCHESTRATOR_AGENT_ID } from '../_lib/agents';
+import { BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', prompt, '--json'], {
+      const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_WRITER_AGENT_ID, '--message', prompt, '--json'], {
         timeout: 600000,
         maxBuffer: 4 * 1024 * 1024,
       });

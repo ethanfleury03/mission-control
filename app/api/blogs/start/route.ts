@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
-import { BLOG_ORCHESTRATOR_AGENT_ID, BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
+import { BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
@@ -41,7 +41,7 @@ function inferBlogDraft(input: any) {
   return { title, topic, niche, primaryKeyword };
 }
 
-function dispatchOrchestratorAsync(params: {
+function dispatchWriterAsync(params: {
   item: any;
   runId: string;
   inferred: { title: string; topic: string; niche: string; primaryKeyword: string };
@@ -61,12 +61,12 @@ function dispatchOrchestratorAsync(params: {
         ...(item.metadata || {}),
         orchestration_status: 'processing',
         last_agent_update_at: new Date().toISOString(),
-        next_action: 'Orchestrator running',
+        next_action: 'Writer running',
       },
     }),
   }).catch(() => null);
-  const orchestrationPrompt = [
-    `Start a blog generation run and update work item metadata for context ${BLOG_CONTEXT}.`,
+  const writerPrompt = [
+    `Generate a complete blog draft for context ${BLOG_CONTEXT}.`,
     `run_id: ${runId}`,
     `work_item_id: ${item.id}`,
     `title: ${inferred.title}`,
@@ -74,10 +74,10 @@ function dispatchOrchestratorAsync(params: {
     `niche: ${inferred.niche}`,
     `primary_keyword: ${inferred.primaryKeyword}`,
     `target_words: ${targetWords}`,
-    `requirements: produce draft markdown, and store it as metadata.content_markdown and/or metadata.content_html. Set metadata.current_stage to Human approval wait when draft preview is ready. Emit a final JSON handoff with schema=handoff.blog.v1.`,
+    `requirements: return full draft in content_markdown and emit final JSON handoff schema=handoff.blog.v1 with run_id/work_item_id/content_markdown.`,
   ].join('\n');
 
-  execFile('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], { timeout: 600000, maxBuffer: 4 * 1024 * 1024 }, async (err, stdout, stderr) => {
+  execFile('openclaw', ['agent', '--agent', BLOG_WRITER_AGENT_ID, '--message', writerPrompt, '--json'], { timeout: 600000, maxBuffer: 4 * 1024 * 1024 }, async (err, stdout, stderr) => {
     const out = String(stdout || '');
     const parsedHandoffs = extractBlogHandoffs(out);
     let appliedHandoff = false;
@@ -123,7 +123,7 @@ function dispatchOrchestratorAsync(params: {
           metadata: {
             ...(item.metadata || {}),
             orchestration_status: 'failed',
-            error_summary: `Orchestrator dispatch failed: ${err.message}${stderr ? ` | ${String(stderr).slice(0, 500)}` : ''}`,
+            error_summary: `Writer dispatch failed: ${err.message}${stderr ? ` | ${String(stderr).slice(0, 500)}` : ''}`,
             next_action: 'Retry start run',
           },
         }),
@@ -143,8 +143,8 @@ function dispatchOrchestratorAsync(params: {
           ...(item.metadata || {}),
           orchestration_status: looksLikeHandoff ? 'handoff_received' : 'processing',
           last_agent_update_at: new Date().toISOString(),
-          next_action: looksLikeHandoff ? 'Handoff detected, waiting reconcile' : 'Orchestrator running',
-          orchestrator_dispatch_raw: stdout || '',
+          next_action: looksLikeHandoff ? 'Handoff detected, waiting reconcile' : 'Writer running',
+          writer_dispatch_raw: stdout || '',
         },
       }),
     }).catch(() => null);
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
     const runId = (body?.run_id || '').trim() || `run_${Date.now()}`;
     const targetWords = Number(body?.target_words) || 1800;
 
-    const requiredAgents = [BLOG_ORCHESTRATOR_AGENT_ID, BLOG_WRITER_AGENT_ID, BLOG_PUBLISHER_AGENT_ID];
+    const requiredAgents = [BLOG_WRITER_AGENT_ID, BLOG_PUBLISHER_AGENT_ID];
     const available = await getAvailableAgentIds();
     const missing = requiredAgents.filter(id => !available.includes(id));
     if (missing.length) {
@@ -195,7 +195,6 @@ export async function POST(request: NextRequest) {
           orchestration_status: 'queued',
           orchestration_started_at: new Date().toISOString(),
           last_agent_update_at: '',
-          orchestrator_agent_id: BLOG_ORCHESTRATOR_AGENT_ID,
           writer_agent_id: BLOG_WRITER_AGENT_ID,
           publisher_agent_id: BLOG_PUBLISHER_AGENT_ID,
         },
@@ -207,7 +206,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: item?.error || 'Failed to create run' }, { status: createRes.status });
     }
 
-    dispatchOrchestratorAsync({ item, runId, inferred, targetWords });
+    dispatchWriterAsync({ item, runId, inferred, targetWords });
 
     return NextResponse.json({ ok: true, itemId: item.id, runId, inferred, dispatch: { queued: true } });
   } catch (err: any) {
