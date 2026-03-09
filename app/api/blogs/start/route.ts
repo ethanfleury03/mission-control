@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
           content_handoff_valid: 'Y',
           approval_state: 'pending',
           publish_target: 'wordpress',
+          publish_mode: 'manual_hold',
           wp_post_id: '',
           wp_url: '',
           image_status: 'pending',

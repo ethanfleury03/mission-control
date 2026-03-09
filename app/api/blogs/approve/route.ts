@@ -22,24 +22,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Quality gate failed: ${(item.metadata?.quality_reasons || []).join('; ') || 'revise draft required'}` }, { status: 400 });
     }
 
+    const manualHold = String(item?.metadata?.publish_mode || '') === 'manual_hold';
+
     await fetch(`${API_BASE}/work/items/${itemId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: item.title,
         description: item.description || null,
-        status: 'ongoing',
+        status: manualHold ? 'need_human' : 'ongoing',
         priority: item.priority ?? 0,
         metadata: {
           ...(item.metadata || {}),
           approval_state: 'approved',
           current_stage: 'WordPress publish handoff',
-          next_action: 'Dispatching to publisher',
-          publish_status: 'queued',
+          next_action: manualHold ? 'Approved and finalized. Ready for manual website publish.' : 'Dispatching to publisher',
+          publish_status: manualHold ? 'ready_manual' : 'queued',
           error_summary: '',
         },
       }),
     });
+
+    if (manualHold) {
+      return NextResponse.json({ ok: true, itemId, publishSkipped: true, reason: 'manual_hold mode enabled' });
+    }
 
     const prompt = [
       'Publish approved blog run and write back publish results to the same work item metadata.',

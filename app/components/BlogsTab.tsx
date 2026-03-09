@@ -338,7 +338,7 @@ export function BlogsTab() {
                   <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">{selected.metadata?.quality_gate === 'fail' ? 'Retry w/ Fixes' : 'Retry'}</button>
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
                   <button disabled={savingId === selected.id} onClick={() => saveBlog(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-purple-500/30 text-purple-300">Save Blog</button>
-                  <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300 disabled:opacity-40">Approve + Publish</button>
+                  <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300 disabled:opacity-40">Approve + Finalize</button>
                   <button disabled={savingId === selected.id} onClick={() => deleteRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-red-500/30 text-red-300">Delete</button>
                 </div>
                 <select
@@ -423,7 +423,7 @@ export function BlogsTab() {
                 <div className="text-xs text-[#555]">Preview: {selected.metadata?.preview_url || 'n/a'} {selected.metadata?.wp_url ? `• WP: ${selected.metadata.wp_url}` : ''}</div>
                 <div className="flex gap-2">
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="px-3 py-1.5 text-xs rounded border border-amber-500/30 text-amber-700">Revise</button>
-                  <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-700 disabled:opacity-40">Approve</button>
+                  <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-700 disabled:opacity-40">Finalize</button>
                 </div>
               </div>
             )}
