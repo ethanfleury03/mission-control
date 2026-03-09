@@ -259,6 +259,8 @@ export function BlogsTab() {
   const selected = items.find(i => i.id === selectedId) || null;
   const selectedHtml = (selected?.metadata?.content_html as string) || '';
   const selectedMarkdown = (selected?.metadata?.content_markdown as string) || (selected?.description || '');
+  const selectedQualityPass = !selected ? false : (selected.metadata?.quality_gate ? selected.metadata.quality_gate === 'pass' : true);
+  const selectedQualityReasons = (selected?.metadata?.quality_reasons as string[] | undefined) || [];
 
   const libraryItems = useMemo(() => {
     const q = libraryQuery.trim().toLowerCase();
@@ -329,11 +331,14 @@ export function BlogsTab() {
             {selected ? (
               <div className="space-y-2">
                 <p className="text-xs text-text-muted">{selected.metadata?.next_action || 'No pending action'}</p>
+                {selected.metadata?.quality_gate === 'fail' ? (
+                  <p className="text-[11px] text-amber-300">Quality gate failed: {selectedQualityReasons.join(' • ') || 'revise required'}</p>
+                ) : null}
                 <div className="flex gap-2 flex-wrap">
                   <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">Retry</button>
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
                   <button disabled={savingId === selected.id} onClick={() => saveBlog(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-purple-500/30 text-purple-300">Save Blog</button>
-                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve + Publish</button>
+                  <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300 disabled:opacity-40">Approve + Publish</button>
                   <button disabled={savingId === selected.id} onClick={() => deleteRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-red-500/30 text-red-300">Delete</button>
                 </div>
                 <select
@@ -418,7 +423,7 @@ export function BlogsTab() {
                 <div className="text-xs text-[#555]">Preview: {selected.metadata?.preview_url || 'n/a'} {selected.metadata?.wp_url ? `• WP: ${selected.metadata.wp_url}` : ''}</div>
                 <div className="flex gap-2">
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="px-3 py-1.5 text-xs rounded border border-amber-500/30 text-amber-700">Revise</button>
-                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-700">Approve</button>
+                  <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-700 disabled:opacity-40">Approve</button>
                 </div>
               </div>
             )}

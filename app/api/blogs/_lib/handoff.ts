@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { evaluateDraftQuality } from './quality';
 
 const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
@@ -138,10 +139,23 @@ export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Pr
     metadataPatch.error_summary = '';
     nextStatus = 'completed';
   } else if (hasDraft) {
+    const q = evaluateDraftQuality({
+      content_markdown: handoff.content_markdown || item.metadata?.content_markdown,
+      content_html: handoff.content_html || item.metadata?.content_html,
+      title: handoff.title || item.title,
+      primary_keyword: item.metadata?.primary_keyword,
+      target_words: item.metadata?.target_words,
+    });
+
+    metadataPatch.quality_gate = q.pass ? 'pass' : 'fail';
+    metadataPatch.quality_score = q.score;
+    metadataPatch.quality_checks = q.checks;
+    metadataPatch.quality_reasons = q.reasons;
+
     metadataPatch.current_stage = 'Human approval wait';
     metadataPatch.orchestration_status = 'ready_for_review';
-    metadataPatch.next_action = handoff.next_action || 'Awaiting human decision';
-    if (!failed) metadataPatch.error_summary = '';
+    metadataPatch.next_action = q.pass ? (handoff.next_action || 'Awaiting human decision') : `Needs revision: ${q.reasons[0] || 'Quality gate failed'}`;
+    if (!failed && q.pass) metadataPatch.error_summary = '';
     nextStatus = 'need_human';
   } else if (failed) {
     metadataPatch.current_stage = handoff.stage || item.metadata?.current_stage || 'Content/preview generation';

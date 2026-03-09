@@ -18,6 +18,10 @@ export async function POST(request: NextRequest) {
 
     const runId = item?.metadata?.run_id || itemId;
 
+    if (item?.metadata?.quality_gate && item.metadata.quality_gate !== 'pass') {
+      return NextResponse.json({ error: `Quality gate failed: ${(item.metadata?.quality_reasons || []).join('; ') || 'revise draft required'}` }, { status: 400 });
+    }
+
     await fetch(`${API_BASE}/work/items/${itemId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
