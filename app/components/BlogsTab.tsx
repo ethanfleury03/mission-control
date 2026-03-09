@@ -7,6 +7,14 @@ import { cn } from '../lib/utils';
 const WORK_BOARD_URL = '/api/work';
 const BLOG_CONTEXT = 'blog:content';
 
+const FALLBACK_TOPICS = [
+  'How to reduce print downtime in production environments',
+  'Top workflow bottlenecks in large format print shops',
+  'Choosing the right RIP strategy for faster throughput',
+  'Common prepress mistakes and how to avoid them',
+  'How manufacturers can improve label quality consistency',
+];
+
 type KanbanStatus = 'queue' | 'ongoing' | 'need_human' | 'completed';
 
 type WorkItem = {
@@ -60,6 +68,16 @@ const deriveStatusFromStage = (stage: Stage): KanbanStatus => {
   if (stage === 'Intake' || stage === 'Run ID creation') return 'queue';
   return 'ongoing';
 };
+
+function inferBlogDraft(input: { title: string; niche: string; topic: string; primary_keyword: string }) {
+  const seed = [input.title, input.topic, input.niche, input.primary_keyword].find(v => v.trim()) || '';
+  const fallbackTopic = FALLBACK_TOPICS[Math.floor(Math.random() * FALLBACK_TOPICS.length)];
+  const topic = input.topic.trim() || seed || fallbackTopic;
+  const niche = input.niche.trim() || topic.split(' ')[0]?.replace(/[^a-zA-Z0-9-]/g, '') || 'industry';
+  const primaryKeyword = input.primary_keyword.trim() || topic.toLowerCase().split(' ').slice(0, 3).join(' ');
+  const title = input.title.trim() || `${topic.replace(/\.$/, '')}: Practical Guide for 2026`;
+  return { title, topic, niche, primaryKeyword };
+}
 
 export function BlogsTab() {
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -154,7 +172,8 @@ export function BlogsTab() {
   };
 
   const createItem = async () => {
-    const title = form.title.trim() || form.topic.trim() || 'Untitled Blog Run';
+    const inferred = inferBlogDraft(form);
+    const title = inferred.title;
     const runId = form.run_id.trim() || `run_${Date.now()}`;
     const stage: Stage = 'Content/preview generation';
     const res = await fetch(`${WORK_BOARD_URL}/items`, {
@@ -168,9 +187,9 @@ export function BlogsTab() {
           contextKey: BLOG_CONTEXT,
           source: 'blogs-ui',
           run_id: runId,
-          topic: form.topic.trim() || title,
-          niche: form.niche.trim(),
-          primary_keyword: form.primary_keyword.trim(),
+          topic: inferred.topic,
+          niche: inferred.niche,
+          primary_keyword: inferred.primaryKeyword,
           target_words: Number(form.target_words) || 1800,
           requested_mode: 'draft',
           current_stage: stage,
@@ -247,12 +266,13 @@ export function BlogsTab() {
 
           <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
             <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Run Builder</h3>
+            <p className="text-[11px] text-text-muted mb-2">All fields optional. Leave blanks and AI will auto-fill from your input or fallback topic queue.</p>
             <div className="grid grid-cols-2 gap-2">
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input value={form.niche} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))} placeholder="Niche" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="Topic" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input value={form.primary_keyword} onChange={e => setForm(f => ({ ...f, primary_keyword: e.target.value }))} placeholder="Primary keyword" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input type="number" value={form.target_words} onChange={e => setForm(f => ({ ...f, target_words: Number(e.target.value || 0) }))} placeholder="Target words" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs col-span-2" />
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400" />
+              <input value={form.niche} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))} placeholder="Niche (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400" />
+              <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="Topic (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400" />
+              <input value={form.primary_keyword} onChange={e => setForm(f => ({ ...f, primary_keyword: e.target.value }))} placeholder="Primary keyword (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400" />
+              <input type="number" value={form.target_words} onChange={e => setForm(f => ({ ...f, target_words: Number(e.target.value || 0) }))} placeholder="Target words (optional)" className="px-2 py-1.5 bg-black border border-white/15 rounded text-xs text-white placeholder:text-gray-400 col-span-2" />
             </div>
             <div className="mt-2 flex justify-end">
               <button onClick={createItem} className="px-3 py-1.5 text-xs rounded border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan">Start Blog Run</button>
