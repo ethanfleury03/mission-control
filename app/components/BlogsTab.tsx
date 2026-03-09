@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Clock3, Eye, FileText, Plus, RefreshCw, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Eye, FileText, RefreshCw, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const WORK_BOARD_URL = '/api/work';
@@ -65,13 +65,20 @@ export function BlogsTab() {
   const [items, setItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [viewMode, setViewMode] = useState<'boss' | 'operator'>('boss');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
-    requested_mode: 'dry_run',
+    niche: '',
     topic: '',
+    primary_keyword: '',
+    intent: 'commercial',
+    funnel_stage: 'bofu',
+    audience: '',
+    tone: 'expert',
+    target_words: 1800,
+    target_publish_date: '',
+    requested_mode: 'dry_run',
     run_id: '',
     current_stage: 'Intake' as Stage,
     approval_state: 'pending',
@@ -169,6 +176,14 @@ export function BlogsTab() {
           source: 'blogs-ui',
           run_id: runId,
           topic: form.topic.trim() || title,
+          niche: form.niche.trim(),
+          primary_keyword: form.primary_keyword.trim(),
+          intent: form.intent,
+          funnel_stage: form.funnel_stage,
+          audience: form.audience.trim(),
+          tone: form.tone,
+          target_words: Number(form.target_words) || 1800,
+          target_publish_date: form.target_publish_date || null,
           requested_mode: form.requested_mode,
           current_stage: stage,
           status: 'pass',
@@ -184,8 +199,22 @@ export function BlogsTab() {
       }),
     });
     if (res.ok) {
-      setShowCreate(false);
-      setForm({ title: '', requested_mode: 'dry_run', topic: '', run_id: '', current_stage: 'Intake', approval_state: 'pending' });
+      setForm({
+        title: '',
+        niche: '',
+        topic: '',
+        primary_keyword: '',
+        intent: 'commercial',
+        funnel_stage: 'bofu',
+        audience: '',
+        tone: 'expert',
+        target_words: 1800,
+        target_publish_date: '',
+        requested_mode: 'dry_run',
+        run_id: '',
+        current_stage: 'Intake',
+        approval_state: 'pending',
+      });
       await loadBoard();
     }
   };
@@ -223,7 +252,6 @@ export function BlogsTab() {
             <button onClick={() => setViewMode('operator')} className={cn('px-2 py-1.5 text-xs inline-flex items-center gap-1 border-l border-white/10', viewMode === 'operator' ? 'bg-accent-cyan/15 text-accent-cyan' : 'text-text-secondary')}><SlidersHorizontal className="w-3.5 h-3.5"/>Operator</button>
           </div>
           <button onClick={loadBoard} className="px-2 py-1.5 text-xs border border-white/10 rounded text-text-secondary hover:text-text-primary inline-flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5"/>Refresh</button>
-          <button onClick={() => setShowCreate(true)} className="px-2 py-1.5 text-xs border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan rounded inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>New Blog Run</button>
         </div>
       </div>
 
@@ -234,6 +262,41 @@ export function BlogsTab() {
             <MetricCard icon={AlertTriangle} label="Blocked" value={String(kpis.blocked)} tone="yellow" />
             <MetricCard icon={Clock3} label="Awaiting" value={String(kpis.awaiting)} tone="red" />
             <MetricCard icon={CheckCircle2} label="Published" value={String(kpis.published)} tone="green" />
+          </div>
+
+          <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
+            <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Run Builder</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <input value={form.niche} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))} placeholder="Niche" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="Topic" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <input value={form.primary_keyword} onChange={e => setForm(f => ({ ...f, primary_keyword: e.target.value }))} placeholder="Primary keyword" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <select value={form.intent} onChange={e => setForm(f => ({ ...f, intent: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
+                <option value="commercial">commercial</option>
+                <option value="informational">informational</option>
+                <option value="transactional">transactional</option>
+              </select>
+              <select value={form.funnel_stage} onChange={e => setForm(f => ({ ...f, funnel_stage: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
+                <option value="tofu">tofu</option>
+                <option value="mofu">mofu</option>
+                <option value="bofu">bofu</option>
+              </select>
+              <input value={form.audience} onChange={e => setForm(f => ({ ...f, audience: e.target.value }))} placeholder="Audience" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <input value={form.tone} onChange={e => setForm(f => ({ ...f, tone: e.target.value }))} placeholder="Tone" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <input type="number" value={form.target_words} onChange={e => setForm(f => ({ ...f, target_words: Number(e.target.value || 0) }))} placeholder="Target words" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <input type="date" value={form.target_publish_date} onChange={e => setForm(f => ({ ...f, target_publish_date: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
+              <select value={form.requested_mode} onChange={e => setForm(f => ({ ...f, requested_mode: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
+                <option value="dry_run">dry_run</option>
+                <option value="draft">draft</option>
+                <option value="publish">publish</option>
+              </select>
+              <select value={form.current_stage} onChange={e => setForm(f => ({ ...f, current_stage: normalizeStage(e.target.value) }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
+                {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <button onClick={createItem} className="px-3 py-1.5 text-xs rounded border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan">Start Blog Run</button>
+            </div>
           </div>
 
           <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
@@ -304,35 +367,6 @@ export function BlogsTab() {
         </div>
       </div>
 
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary rounded-lg border border-white/10 p-4 w-[34rem]">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Create Blog Run</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-sm" />
-              <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="Topic" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-sm" />
-              <input value={form.run_id} onChange={e => setForm(f => ({ ...f, run_id: e.target.value }))} placeholder="run_id (optional)" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-sm" />
-              <select value={form.requested_mode} onChange={e => setForm(f => ({ ...f, requested_mode: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-sm">
-                <option value="dry_run">dry_run</option>
-                <option value="draft">draft</option>
-                <option value="publish">publish</option>
-              </select>
-              <select value={form.current_stage} onChange={e => setForm(f => ({ ...f, current_stage: normalizeStage(e.target.value) }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-sm">
-                {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select value={form.approval_state} onChange={e => setForm(f => ({ ...f, approval_state: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-sm">
-                <option value="pending">pending</option>
-                <option value="approved">approved</option>
-                <option value="revise">revise</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-2 mt-3">
-              <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-xs text-text-muted">Cancel</button>
-              <button onClick={createItem} className="px-3 py-1.5 text-xs rounded border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan">Create</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
