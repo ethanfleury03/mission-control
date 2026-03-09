@@ -72,15 +72,8 @@ export function BlogsTab() {
     niche: '',
     topic: '',
     primary_keyword: '',
-    intent: 'commercial',
-    funnel_stage: 'bofu',
-    audience: '',
-    tone: 'expert',
     target_words: 1800,
-    target_publish_date: '',
-    requested_mode: 'dry_run',
     run_id: '',
-    current_stage: 'Intake' as Stage,
     approval_state: 'pending',
   });
 
@@ -163,7 +156,7 @@ export function BlogsTab() {
   const createItem = async () => {
     const title = form.title.trim() || form.topic.trim() || 'Untitled Blog Run';
     const runId = form.run_id.trim() || `run_${Date.now()}`;
-    const stage = form.current_stage;
+    const stage: Stage = 'Content/preview generation';
     const res = await fetch(`${WORK_BOARD_URL}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -178,13 +171,8 @@ export function BlogsTab() {
           topic: form.topic.trim() || title,
           niche: form.niche.trim(),
           primary_keyword: form.primary_keyword.trim(),
-          intent: form.intent,
-          funnel_stage: form.funnel_stage,
-          audience: form.audience.trim(),
-          tone: form.tone,
           target_words: Number(form.target_words) || 1800,
-          target_publish_date: form.target_publish_date || null,
-          requested_mode: form.requested_mode,
+          requested_mode: 'draft',
           current_stage: stage,
           status: 'pass',
           content_handoff_valid: 'Y',
@@ -194,7 +182,7 @@ export function BlogsTab() {
           wp_url: '',
           image_status: 'pending',
           error_summary: '',
-          next_action: stage === 'Human approval wait' ? 'Awaiting human decision' : '',
+          next_action: '',
         },
       }),
     });
@@ -204,15 +192,8 @@ export function BlogsTab() {
         niche: '',
         topic: '',
         primary_keyword: '',
-        intent: 'commercial',
-        funnel_stage: 'bofu',
-        audience: '',
-        tone: 'expert',
         target_words: 1800,
-        target_publish_date: '',
-        requested_mode: 'dry_run',
         run_id: '',
-        current_stage: 'Intake',
         approval_state: 'pending',
       });
       await loadBoard();
@@ -271,28 +252,7 @@ export function BlogsTab() {
               <input value={form.niche} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))} placeholder="Niche" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
               <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="Topic" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
               <input value={form.primary_keyword} onChange={e => setForm(f => ({ ...f, primary_keyword: e.target.value }))} placeholder="Primary keyword" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <select value={form.intent} onChange={e => setForm(f => ({ ...f, intent: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
-                <option value="commercial">commercial</option>
-                <option value="informational">informational</option>
-                <option value="transactional">transactional</option>
-              </select>
-              <select value={form.funnel_stage} onChange={e => setForm(f => ({ ...f, funnel_stage: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
-                <option value="tofu">tofu</option>
-                <option value="mofu">mofu</option>
-                <option value="bofu">bofu</option>
-              </select>
-              <input value={form.audience} onChange={e => setForm(f => ({ ...f, audience: e.target.value }))} placeholder="Audience" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input value={form.tone} onChange={e => setForm(f => ({ ...f, tone: e.target.value }))} placeholder="Tone" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input type="number" value={form.target_words} onChange={e => setForm(f => ({ ...f, target_words: Number(e.target.value || 0) }))} placeholder="Target words" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <input type="date" value={form.target_publish_date} onChange={e => setForm(f => ({ ...f, target_publish_date: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs" />
-              <select value={form.requested_mode} onChange={e => setForm(f => ({ ...f, requested_mode: e.target.value }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
-                <option value="dry_run">dry_run</option>
-                <option value="draft">draft</option>
-                <option value="publish">publish</option>
-              </select>
-              <select value={form.current_stage} onChange={e => setForm(f => ({ ...f, current_stage: normalizeStage(e.target.value) }))} className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs">
-                {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <input type="number" value={form.target_words} onChange={e => setForm(f => ({ ...f, target_words: Number(e.target.value || 0) }))} placeholder="Target words" className="px-2 py-1.5 bg-bg-tertiary border border-white/10 rounded text-xs col-span-2" />
             </div>
             <div className="mt-2 flex justify-end">
               <button onClick={createItem} className="px-3 py-1.5 text-xs rounded border border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan">Start Blog Run</button>
