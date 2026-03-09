@@ -60,7 +60,10 @@ function dispatchOrchestratorAsync(params: {
   ].join('\n');
 
   execFile('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', orchestrationPrompt, '--json'], { timeout: 120000, maxBuffer: 1024 * 1024 }, async (err, stdout) => {
-    if (err) {
+    const out = String(stdout || '');
+    const looksLikeHandoff = out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
+
+    if (err && !looksLikeHandoff) {
       await fetch(`${API_BASE}/work/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -91,7 +94,7 @@ function dispatchOrchestratorAsync(params: {
         metadata: {
           ...(item.metadata || {}),
           orchestration_status: 'processing',
-          next_action: 'Orchestrator running',
+          next_action: looksLikeHandoff ? 'Handoff detected, waiting reconcile' : 'Orchestrator running',
           orchestrator_dispatch_raw: stdout || '',
         },
       }),

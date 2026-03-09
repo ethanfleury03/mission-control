@@ -47,12 +47,36 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', prompt, '--json'], {
-      timeout: 120000,
-      maxBuffer: 1024 * 1024,
-    });
-
-    return NextResponse.json({ ok: true, itemId, dispatch: stdout });
+    try {
+      const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_ORCHESTRATOR_AGENT_ID, '--message', prompt, '--json'], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024,
+      });
+      return NextResponse.json({ ok: true, itemId, dispatch: stdout });
+    } catch (err: any) {
+      const out = String(err?.stdout || '');
+      const looksLikeHandoff = out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
+      if (looksLikeHandoff) {
+        return NextResponse.json({ ok: true, itemId, dispatch: out, warning: 'non-zero exit but handoff detected' });
+      }
+      await fetch(`${API_BASE}/work/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description || null,
+          status: 'need_human',
+          priority: item.priority ?? 0,
+          metadata: {
+            ...(item.metadata || {}),
+            orchestration_status: 'failed',
+            error_summary: `Retry dispatch failed: ${err?.message || 'unknown error'}`,
+            next_action: 'Retry generation',
+          },
+        }),
+      });
+      return NextResponse.json({ error: err?.message || 'Retry failed' }, { status: 500 });
+    }
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Retry failed' }, { status: 500 });
   }

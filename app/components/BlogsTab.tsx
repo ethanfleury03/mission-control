@@ -197,6 +197,21 @@ export function BlogsTab() {
     });
   };
 
+  const deleteRun = async (item: WorkItem) => {
+    const ok = typeof window !== 'undefined' ? window.confirm(`Delete run \"${item.title}\"? This cannot be undone.`) : true;
+    if (!ok) return;
+    setSavingId(item.id);
+    try {
+      const res = await fetch(`/api/work/items/${item.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (selectedId === item.id) setSelectedId(null);
+        await loadBoard();
+      }
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const createItem = async () => {
     setStartError(null);
     const res = await fetch('/api/blogs/start', {
@@ -319,6 +334,7 @@ export function BlogsTab() {
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
                   <button disabled={savingId === selected.id} onClick={() => saveBlog(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-purple-500/30 text-purple-300">Save Blog</button>
                   <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve + Publish</button>
+                  <button disabled={savingId === selected.id} onClick={() => deleteRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-red-500/30 text-red-300">Delete</button>
                 </div>
                 <select
                   value={normalizeStage(selected.metadata?.current_stage)}
