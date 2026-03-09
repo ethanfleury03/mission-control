@@ -67,6 +67,7 @@ export function BlogsTab() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [viewMode, setViewMode] = useState<'boss' | 'operator'>('boss');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
     requested_mode: 'dry_run',
@@ -198,6 +199,20 @@ export function BlogsTab() {
     return { blocked, waiting, publishReady };
   }, [items, approvalItems]);
 
+  useEffect(() => {
+    if (!items.length) {
+      setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !items.find(i => i.id === selectedId)) {
+      setSelectedId(approvalItems[0]?.id || items[0]?.id || null);
+    }
+  }, [items, approvalItems, selectedId]);
+
+  const selected = items.find(i => i.id === selectedId) || null;
+  const selectedHtml = (selected?.metadata?.content_html as string) || '';
+  const selectedMarkdown = (selected?.metadata?.content_markdown as string) || (selected?.description || '');
+
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -212,86 +227,82 @@ export function BlogsTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <MetricCard icon={FileText} label="Planned" value={String(kpis.planned)} tone="cyan" />
-        <MetricCard icon={AlertTriangle} label="Blocked" value={String(kpis.blocked)} tone="yellow" />
-        <MetricCard icon={Clock3} label="Awaiting Approval" value={String(kpis.awaiting)} tone="red" />
-        <MetricCard icon={CheckCircle2} label="Published" value={String(kpis.published)} tone="green" />
-      </div>
-
-      {viewMode === 'boss' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <DecisionPanel title="Needs Decision" items={bossPriority.waiting} empty="No approvals waiting." />
-          <DecisionPanel title="Publish Ready" items={bossPriority.publishReady} empty="No approved publish handoffs yet." />
-          <DecisionPanel title="Blocked" items={bossPriority.blocked} empty="No blocked items." />
-        </div>
-      )}
-
-      <div className="bg-bg-secondary border border-white/10 rounded-lg p-4">
-        <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Approval Queue</h3>
-        {approvalItems.length === 0 ? (
-          <p className="text-xs text-text-muted">No cards waiting for human approval.</p>
-        ) : (
-          <div className="space-y-2">
-            {approvalItems.map(item => (
-              <div key={item.id} className="p-2 rounded border border-white/10 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm text-text-primary">{item.title}</p>
-                  <p className="text-xs text-text-muted">{item.metadata?.run_id || item.id} • {item.metadata?.requested_mode || 'dry_run'} • {item.metadata?.next_action || 'Awaiting decision'}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button disabled={savingId === item.id} onClick={() => revise(item)} className="px-2 py-1 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
-                  <button disabled={savingId === item.id} onClick={() => approve(item)} className="px-2 py-1 text-xs rounded border border-green-500/30 text-green-300">Approve</button>
-                </div>
-              </div>
-            ))}
+      <div className="grid grid-cols-1 xl:grid-cols-10 gap-4 min-h-[70vh]">
+        <div className="xl:col-span-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <MetricCard icon={FileText} label="Planned" value={String(kpis.planned)} tone="cyan" />
+            <MetricCard icon={AlertTriangle} label="Blocked" value={String(kpis.blocked)} tone="yellow" />
+            <MetricCard icon={Clock3} label="Awaiting" value={String(kpis.awaiting)} tone="red" />
+            <MetricCard icon={CheckCircle2} label="Published" value={String(kpis.published)} tone="green" />
           </div>
-        )}
-      </div>
 
-      {loading ? (
-        <div className="text-sm text-text-muted">Loading blog pipeline…</div>
-      ) : viewMode === 'operator' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {byStage.map(col => (
-            <div key={col.stage} className={cn('rounded-lg border bg-bg-secondary p-3', stageColors[col.stage])}>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs uppercase tracking-wide text-text-secondary">{col.stage}</h4>
-                <span className="text-xs text-text-muted">{col.items.length}</span>
-              </div>
-              <div className="space-y-2 max-h-72 overflow-auto">
-                {col.items.map(item => (
-                  <div key={item.id} className="rounded border border-white/10 p-2 bg-bg-tertiary/60">
-                    <p className="text-sm text-text-primary">{item.title}</p>
-                    <p className="text-xs text-text-muted mt-1">run: {item.metadata?.run_id || 'n/a'}</p>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {item.metadata?.error_summary ? <Badge tone="red">failed</Badge> : <Badge tone="green">pass</Badge>}
-                      {item.metadata?.retry_count ? <Badge tone="yellow">retry {item.metadata.retry_count}</Badge> : null}
-                      {item.metadata?.worker_unavailable ? <Badge tone="yellow">worker unavailable</Badge> : null}
-                      <Badge tone="cyan">{item.metadata?.approval_state || 'pending'}</Badge>
-                    </div>
-                    <div className="mt-2 flex gap-1">
-                      <select
-                        value={normalizeStage(item.metadata?.current_stage)}
-                        onChange={e => moveStage(item, normalizeStage(e.target.value))}
-                        className="w-full text-xs bg-bg-primary border border-white/10 rounded px-2 py-1"
-                        disabled={savingId === item.id}
-                      >
-                        {STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
-                      </select>
-                    </div>
+          <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
+            <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Run Control</h3>
+            <p className="text-xs text-text-muted mb-2">Pick a run, review content on the right, decide fast.</p>
+            <div className="space-y-2 max-h-80 overflow-auto">
+              {items.map(item => (
+                <button key={item.id} onClick={() => setSelectedId(item.id)} className={cn('w-full text-left rounded border p-2', selectedId === item.id ? 'border-accent-cyan/40 bg-accent-cyan/10' : 'border-white/10 bg-bg-tertiary/50')}>
+                  <p className="text-sm text-text-primary truncate">{item.title}</p>
+                  <p className="text-[11px] text-text-muted">{item.metadata?.run_id || item.id}</p>
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    <Badge tone={item.metadata?.error_summary ? 'red' : 'green'}>{item.metadata?.error_summary ? 'blocked' : 'ok'}</Badge>
+                    <Badge tone="cyan">{item.metadata?.approval_state || 'pending'}</Badge>
                   </div>
-                ))}
-                {col.items.length === 0 && <p className="text-xs text-text-muted">No items</p>}
-              </div>
+                </button>
+              ))}
+              {items.length === 0 && <p className="text-xs text-text-muted">No runs yet.</p>}
             </div>
-          ))}
+          </div>
+
+          <div className="bg-bg-secondary border border-white/10 rounded-lg p-3">
+            <h3 className="text-xs uppercase tracking-wide text-text-secondary mb-2">Decision Actions</h3>
+            {selected ? (
+              <div className="space-y-2">
+                <p className="text-xs text-text-muted">{selected.metadata?.next_action || 'No pending action'}</p>
+                <div className="flex gap-2">
+                  <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
+                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve</button>
+                </div>
+                <select
+                  value={normalizeStage(selected.metadata?.current_stage)}
+                  onChange={e => moveStage(selected, normalizeStage(e.target.value))}
+                  className="w-full text-xs bg-bg-primary border border-white/10 rounded px-2 py-1"
+                  disabled={savingId === selected.id}
+                >
+                  {STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                </select>
+              </div>
+            ) : <p className="text-xs text-text-muted">Select a run.</p>}
+          </div>
         </div>
-      ) : (
-        <div className="bg-bg-secondary border border-white/10 rounded-lg p-4 text-xs text-text-secondary">
-          Boss view focuses on decisions and exceptions. Switch to <span className="text-accent-cyan">Operator</span> to move cards stage-by-stage.
+
+        <div className="xl:col-span-7">
+          <div className="bg-bg-secondary border border-white/10 rounded-lg h-full flex flex-col min-h-[70vh]">
+            <div className="p-4 border-b border-white/10">
+              <h3 className="text-sm font-semibold text-text-primary">{selected?.title || 'Blog Preview'}</h3>
+              <p className="text-xs text-text-muted mt-1">{selected ? `${selected.metadata?.run_id || selected.id} • ${selected.metadata?.requested_mode || 'dry_run'} • ${normalizeStage(selected.metadata?.current_stage)}` : 'Select a run from the left to review content.'}</p>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {!selected ? (
+                <p className="text-sm text-text-muted">No run selected.</p>
+              ) : selectedHtml ? (
+                <article className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: selectedHtml }} />
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm text-text-primary leading-6">{selectedMarkdown || 'No generated content found yet. Attach `content_markdown` or `content_html` in metadata from the agent handoff.'}</pre>
+              )}
+            </div>
+            {selected && (
+              <div className="p-3 border-t border-white/10 flex items-center justify-between gap-2">
+                <div className="text-xs text-text-muted">Preview: {selected.metadata?.preview_url || 'n/a'} {selected.metadata?.wp_url ? `• WP: ${selected.metadata.wp_url}` : ''}</div>
+                <div className="flex gap-2">
+                  <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="px-3 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
+                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
