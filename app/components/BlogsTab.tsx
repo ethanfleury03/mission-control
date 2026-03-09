@@ -184,6 +184,19 @@ export function BlogsTab() {
     }
   };
 
+  const saveBlog = async (item: WorkItem) => {
+    await patchItem(item, {
+      status: 'completed',
+      metadata: {
+        approval_state: 'saved',
+        saved_blog: true,
+        saved_at: new Date().toISOString(),
+        publish_status: 'not_published',
+        next_action: 'Saved for later publish',
+      },
+    });
+  };
+
   const createItem = async () => {
     setStartError(null);
     const res = await fetch('/api/blogs/start', {
@@ -301,10 +314,11 @@ export function BlogsTab() {
             {selected ? (
               <div className="space-y-2">
                 <p className="text-xs text-text-muted">{selected.metadata?.next_action || 'No pending action'}</p>
-                <div className="flex gap-2">
-                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">Retry</button>
-                  <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
-                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve + Publish</button>
+                <div className="flex gap-2 flex-wrap">
+                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">Retry</button>
+                  <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
+                  <button disabled={savingId === selected.id} onClick={() => saveBlog(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-purple-500/30 text-purple-300">Save Blog</button>
+                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve + Publish</button>
                 </div>
                 <select
                   value={normalizeStage(selected.metadata?.current_stage)}
