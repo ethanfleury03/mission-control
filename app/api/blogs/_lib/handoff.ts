@@ -82,6 +82,37 @@ export function extractBlogHandoffs(rawText: string): BlogHandoff[] {
   });
 }
 
+export function extractPreviewUrl(rawText: string): string | null {
+  const text = String(rawText || '');
+  const m = text.match(/https?:\/\/[^\s"'`<>]+/i);
+  return m ? m[0] : null;
+}
+
+export async function fetchPreviewAsMarkdown(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const body = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<h1[^>]*>/gi, '\n# ')
+      .replace(/<h2[^>]*>/gi, '\n## ')
+      .replace(/<h3[^>]*>/gi, '\n### ')
+      .replace(/<p[^>]*>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
+    return body.length > 200 ? body.slice(0, 30000) : null;
+  } catch {
+    return null;
+  }
+}
+
 function digestHandoff(h: BlogHandoff): string {
   const stable = JSON.stringify({
     run_id: h.run_id || '',

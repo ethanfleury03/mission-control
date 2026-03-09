@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_ORCHESTRATOR_AGENT_ID, BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
-import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
+import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
 
@@ -89,6 +89,26 @@ function dispatchOrchestratorAsync(params: {
         // ignore handoff apply errors here; reconcile can still recover
       }
     }
+
+    if (!appliedHandoff && parsedHandoffs.length === 0) {
+      const previewUrl = extractPreviewUrl(out);
+      if (previewUrl) {
+        const markdown = await fetchPreviewAsMarkdown(previewUrl);
+        if (markdown) {
+          await applyBlogHandoff(item.id, {
+            schema: 'handoff.blog.v1',
+            run_id: runId,
+            work_item_id: item.id,
+            stage: 'Human approval wait',
+            status: 'ready_for_review',
+            content_markdown: markdown,
+            metadata: { preview_url: previewUrl },
+          });
+          appliedHandoff = true;
+        }
+      }
+    }
+
     const looksLikeHandoff = appliedHandoff || parsedHandoffs.length > 0 || out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
 
     if (err && !looksLikeHandoff) {

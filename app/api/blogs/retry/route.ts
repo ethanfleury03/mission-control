@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_ORCHESTRATOR_AGENT_ID } from '../_lib/agents';
-import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
+import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
 
 const execFileAsync = promisify(execFile);
 const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
@@ -65,8 +65,29 @@ export async function POST(request: NextRequest) {
         timeout: 600000,
         maxBuffer: 4 * 1024 * 1024,
       });
-      const handoffs = extractBlogHandoffs(String(stdout || ''));
+      const out = String(stdout || '');
+      const handoffs = extractBlogHandoffs(out);
       for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
+
+      if (!handoffs.length) {
+        const previewUrl = extractPreviewUrl(out);
+        if (previewUrl) {
+          const markdown = await fetchPreviewAsMarkdown(previewUrl);
+          if (markdown) {
+            await applyBlogHandoff(itemId, {
+              schema: 'handoff.blog.v1',
+              run_id: runId,
+              work_item_id: itemId,
+              stage: 'Human approval wait',
+              status: 'ready_for_review',
+              content_markdown: markdown,
+              metadata: { preview_url: previewUrl },
+            });
+            return NextResponse.json({ ok: true, itemId, dispatch: stdout, handoffsApplied: 1, fallbackFromPreview: true });
+          }
+        }
+      }
+
       return NextResponse.json({ ok: true, itemId, dispatch: stdout, handoffsApplied: handoffs.length });
     } catch (err: any) {
       const out = String(err?.stdout || '');
@@ -74,6 +95,23 @@ export async function POST(request: NextRequest) {
       if (handoffs.length) {
         for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
         return NextResponse.json({ ok: true, itemId, dispatch: out, warning: 'non-zero exit but handoff detected', handoffsApplied: handoffs.length });
+      }
+
+      const previewUrl = extractPreviewUrl(out);
+      if (previewUrl) {
+        const markdown = await fetchPreviewAsMarkdown(previewUrl);
+        if (markdown) {
+          await applyBlogHandoff(itemId, {
+            schema: 'handoff.blog.v1',
+            run_id: runId,
+            work_item_id: itemId,
+            stage: 'Human approval wait',
+            status: 'ready_for_review',
+            content_markdown: markdown,
+            metadata: { preview_url: previewUrl },
+          });
+          return NextResponse.json({ ok: true, itemId, dispatch: out, warning: 'non-zero exit but preview fallback used', handoffsApplied: 1, fallbackFromPreview: true });
+        }
       }
       await fetch(`${API_BASE}/work/items/${itemId}`, {
         method: 'PATCH',
