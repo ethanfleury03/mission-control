@@ -364,27 +364,61 @@ export function BlogsTab() {
         </div>
 
         <div className="xl:col-span-7">
-          <div className="bg-bg-secondary border border-white/10 rounded-lg h-full flex flex-col min-h-[70vh]">
-            <div className="p-4 border-b border-white/10">
-              <h3 className="text-sm font-semibold text-text-primary">{selected?.title || 'Blog Preview'}</h3>
-              <p className="text-xs text-text-muted mt-1">{selected ? `${selected.metadata?.run_id || selected.id} • ${selected.metadata?.requested_mode || 'draft'} • ${normalizeStage(selected.metadata?.current_stage)}` : 'Select a run from the left to review content.'}</p>
-              {selected?.metadata?.orchestrator_agent_id ? <p className="text-[11px] text-text-muted mt-1">agents: {selected.metadata.orchestrator_agent_id} / {selected.metadata.writer_agent_id || 'blog-agent'} / {selected.metadata.publisher_agent_id || 'blog-publisher'}</p> : null}
+          <div className="bg-[#dcdcdc] border border-white/10 rounded-lg h-full flex flex-col min-h-[70vh] overflow-hidden">
+            <div className="bg-[#0e0e0e] text-white px-4 py-2 border-b border-black/40">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wide opacity-90">
+                <span>arrsys.com</span>
+                <span>{selected ? 'Blog Preview (Light Mode)' : 'Preview Ready'}</span>
+              </div>
             </div>
-            <div className="flex-1 overflow-auto p-4">
+
+            <div className="flex-1 overflow-auto p-6">
               {!selected ? (
-                <p className="text-sm text-text-muted">No run selected.</p>
-              ) : selectedHtml ? (
-                <article className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: selectedHtml }} />
+                <div className="h-full min-h-[56vh] max-w-4xl mx-auto bg-white border border-[#d6d6d6] flex items-center justify-center">
+                  <div className="text-center text-[#9a9a9a] text-sm">Select a blog run to load page preview</div>
+                </div>
               ) : (
-                <pre className="whitespace-pre-wrap text-sm text-text-primary leading-6">{selectedMarkdown || 'No generated content found yet. Attach `content_markdown` or `content_html` in metadata from the agent handoff.'}</pre>
+                <div className="max-w-4xl mx-auto bg-white border border-[#d6d6d6] shadow-[0_2px_10px_rgba(0,0,0,0.08)]">
+                  <div className="h-8 bg-[#141414] text-[10px] text-white flex items-center px-4 tracking-wide uppercase">Home · Company · Products · Industries · Color Label Printers</div>
+
+                  {selected.metadata?.featured_image_url ? (
+                    <img src={String(selected.metadata.featured_image_url)} alt="Featured" className="w-full max-h-[420px] object-cover" />
+                  ) : (
+                    <div className="w-full h-[280px] bg-[#f1f1f1] border-b border-[#e2e2e2] flex items-center justify-center text-[#a1a1a1] text-sm">Featured image area</div>
+                  )}
+
+                  <div className="grid grid-cols-12 gap-0">
+                    <aside className="col-span-3 border-r border-[#ececec] bg-[#fafafa] p-3">
+                      <div className="text-[11px] font-semibold text-[#444] mb-2">Table of Contents</div>
+                      <div className="space-y-1 text-[11px] text-[#7a7a7a]">
+                        <p>1. Introduction</p>
+                        <p>2. Key Points</p>
+                        <p>3. Practical Steps</p>
+                        <p>4. Conclusion</p>
+                      </div>
+                    </aside>
+
+                    <main className="col-span-9 p-5">
+                      <h1 className="text-[38px] leading-tight font-semibold text-[#9d1f1f] mb-3">{selected.title}</h1>
+                      <p className="text-[12px] text-[#7a7a7a] mb-4">{selected.metadata?.run_id || selected.id} • {normalizeStage(selected.metadata?.current_stage)}</p>
+
+                      {selectedHtml ? (
+                        <article className="prose max-w-none prose-headings:text-[#333] prose-p:text-[#2e2e2e] prose-li:text-[#2e2e2e]" dangerouslySetInnerHTML={{ __html: selectedHtml }} />
+                      ) : (
+                        <pre className="whitespace-pre-wrap text-[15px] text-[#2d2d2d] leading-7 font-sans">{selectedMarkdown || 'No generated content found yet.'}</pre>
+                      )}
+                    </main>
+                  </div>
+                </div>
               )}
             </div>
+
             {selected && (
-              <div className="p-3 border-t border-white/10 flex items-center justify-between gap-2">
-                <div className="text-xs text-text-muted">Preview: {selected.metadata?.preview_url || 'n/a'} {selected.metadata?.wp_url ? `• WP: ${selected.metadata.wp_url}` : ''}</div>
+              <div className="p-3 border-t border-black/10 bg-white/80 flex items-center justify-between gap-2">
+                <div className="text-xs text-[#555]">Preview: {selected.metadata?.preview_url || 'n/a'} {selected.metadata?.wp_url ? `• WP: ${selected.metadata.wp_url}` : ''}</div>
                 <div className="flex gap-2">
-                  <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="px-3 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
-                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-300">Approve</button>
+                  <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="px-3 py-1.5 text-xs rounded border border-amber-500/30 text-amber-700">Revise</button>
+                  <button disabled={savingId === selected.id} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-700">Approve</button>
                 </div>
               </div>
             )}
