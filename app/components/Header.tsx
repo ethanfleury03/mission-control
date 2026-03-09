@@ -8,7 +8,7 @@ interface HeaderProps {
   onTabChange: (tab: string) => void;
 }
 
-const tabs = ['OVERVIEW', 'MAP', 'KANBAN', 'HEALTH', 'AGENTS', 'TEAM', 'SEC TEAM'];
+const tabs = ['OVERVIEW', 'MAP', 'KANBAN', 'AGENTS'];
 
 export function Header({ activeTab, onTabChange }: HeaderProps) {
   return (
