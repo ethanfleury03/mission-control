@@ -9,6 +9,7 @@ import { BottomBar } from './components/BottomBar';
 import { KanbanBoard } from './components/KanbanBoard';
 import { AgentOffice } from './components/AgentOffice';
 import { BlogsTab } from './components/BlogsTab';
+import { DirectoryScraperTab } from './components/DirectoryScraperTab';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
 import type { HubAppId } from './lib/hubApps';
 
@@ -105,6 +106,8 @@ export default function ArrowHub() {
           <BlogsTab />
         ) : activeApp === 'AGENTS' ? (
           <AgentOffice />
+        ) : activeApp === 'SCRAPER' ? (
+          <DirectoryScraperTab />
         ) : (
           <MainContent
             metrics={metrics}

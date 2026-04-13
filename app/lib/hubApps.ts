@@ -4,9 +4,10 @@ import {
   Kanban,
   Newspaper,
   Bot,
+  Globe,
 } from 'lucide-react';
 
-export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS';
+export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS' | 'SCRAPER';
 
 export interface HubApp {
   id: HubAppId;
@@ -39,5 +40,11 @@ export const HUB_APPS: HubApp[] = [
     label: 'Agents',
     description: 'Agent office',
     icon: Bot,
+  },
+  {
+    id: 'SCRAPER',
+    label: 'Directory Scraper',
+    description: 'Extract contacts from directories',
+    icon: Globe,
   },
 ];
