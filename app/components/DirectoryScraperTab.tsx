@@ -27,7 +27,13 @@ import {
   ClipboardCheck,
 } from 'lucide-react';
 
-import type { ScrapeJob, CompanyResult, ConfidenceScore, LogEntry } from '@/lib/directory-scraper/types';
+import type {
+  ScrapeJob,
+  CompanyResult,
+  ConfidenceScore,
+  LogEntry,
+  ScrapeFetchMode,
+} from '@/lib/directory-scraper/types';
 
 const API = '/api/directory-scraper';
 const POLL_PAGE_SIZE = 150;
@@ -82,6 +88,9 @@ export function DirectoryScraperTab() {
   const [aiHint, setAiHint] = useState<string | null>(null);
   const [aiModel, setAiModel] = useState<string | null>(null);
   const [mockMode, setMockMode] = useState(false);
+  const [scrapeFetchMode, setScrapeFetchMode] = useState<ScrapeFetchMode>('playwright');
+  const [firecrawlConfigured, setFirecrawlConfigured] = useState(false);
+  const [firecrawlHint, setFirecrawlHint] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<'csv' | 'sheets'>('csv');
   const [sheetId, setSheetId] = useState('');
   const [sheetTab, setSheetTab] = useState('');
@@ -117,6 +126,13 @@ export function DirectoryScraperTab() {
         setAiHint(d.hint ?? null);
         setAiModel(d.model ?? null);
         if (d.configured) setEnableAiFallback(true);
+      })
+      .catch(() => {});
+    fetch(`${API}/firecrawl-status`)
+      .then((r) => r.json())
+      .then((d) => {
+        setFirecrawlConfigured(d.configured);
+        setFirecrawlHint(d.hint ?? null);
       })
       .catch(() => {});
   }, []);
@@ -170,6 +186,7 @@ export function DirectoryScraperTab() {
           googleSheetId: sheetId,
           googleSheetTab: sheetTab,
           mockMode,
+          scrapeFetchMode: mockMode ? 'playwright' : scrapeFetchMode,
         }),
       });
       if (!res.ok) {
@@ -407,16 +424,68 @@ export function DirectoryScraperTab() {
               {!aiConfigured && aiHint && (
                 <p className="text-2xs text-neutral-500 leading-relaxed ml-6">{aiHint}</p>
               )}
-              <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={mockMode}
-                  onChange={(e) => setMockMode(e.target.checked)}
-                  disabled={isRunning}
-                  className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
-                />
-                Mock mode (demo data, no live scraping)
-              </label>
+            </div>
+
+            {/* Fetch mode: Playwright vs Firecrawl vs Mock */}
+            <div className="lg:col-span-3 border border-neutral-100 rounded-md p-3 bg-neutral-50/50">
+              <span className="block text-xs font-medium text-neutral-600 mb-2">How to load the page</span>
+              <div className="flex flex-col gap-2 text-sm text-neutral-800">
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="fetchMode"
+                    checked={!mockMode && scrapeFetchMode === 'playwright'}
+                    onChange={() => {
+                      setMockMode(false);
+                      setScrapeFetchMode('playwright');
+                    }}
+                    disabled={isRunning}
+                    className="mt-0.5 accent-brand"
+                  />
+                  <span>
+                    <span className="font-medium">Playwright</span>
+                    <span className="text-neutral-600 text-2xs block">
+                      Local Chromium — scroll, load-more, iframes. Requires <code className="text-2xs">npx playwright install chromium</code>.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="fetchMode"
+                    checked={!mockMode && scrapeFetchMode === 'firecrawl'}
+                    onChange={() => {
+                      setMockMode(false);
+                      setScrapeFetchMode('firecrawl');
+                    }}
+                    disabled={isRunning || !firecrawlConfigured}
+                    className="mt-0.5 accent-brand"
+                  />
+                  <span className={!firecrawlConfigured ? 'text-neutral-400' : ''}>
+                    <span className="font-medium">Firecrawl</span>
+                    <span className="text-neutral-600 text-2xs block">
+                      Firecrawl API — clean markdown / main content, no local browser for Phase 1. Follow-up roster URLs also use Firecrawl.
+                    </span>
+                  </span>
+                </label>
+                {!firecrawlConfigured && firecrawlHint && (
+                  <p className="text-2xs text-neutral-500 ml-6">{firecrawlHint}</p>
+                )}
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="fetchMode"
+                    checked={mockMode}
+                    onChange={() => setMockMode(true)}
+                    disabled={isRunning}
+                    className="mt-0.5 accent-brand"
+                  />
+                  <span>
+                    <span className="font-medium">Mock mode</span>
+                    <span className="text-neutral-600 text-2xs block">Demo rows only — no URL or API required.</span>
+                  </span>
+                </label>
+              </div>
             </div>
 
             {/* Export target */}
@@ -474,7 +543,7 @@ export function DirectoryScraperTab() {
               <button
                 type="button"
                 onClick={startJob}
-                disabled={isStarting || (!url.trim() && !mockMode)}
+                disabled={isStarting || (!mockMode && !url.trim())}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
@@ -570,6 +639,11 @@ export function DirectoryScraperTab() {
                 <div className="px-3 py-2 space-y-2 text-neutral-700 border-t border-neutral-100">
                   <p>
                     <span className="font-medium">Final URL:</span> {job.meta.nameExtractionDebug.finalUrl}
+                    {job.meta.nameExtractionDebug.fetchEngine && (
+                      <span className="ml-2 text-neutral-500">
+                        · Fetch: <span className="font-medium">{job.meta.nameExtractionDebug.fetchEngine}</span>
+                      </span>
+                    )}
                   </p>
                   {job.meta.nameExtractionDebug.pageTitle && (
                     <p>

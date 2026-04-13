@@ -3,6 +3,9 @@ export type CompanyStatus = 'pending' | 'scraping' | 'enriching' | 'done' | 'fai
 export type ConfidenceScore = 'high' | 'medium' | 'low';
 export type ExportTarget = 'csv' | 'sheets';
 
+/** How the directory page HTML/text is obtained before name extraction. */
+export type ScrapeFetchMode = 'playwright' | 'firecrawl';
+
 /** Extraction method for company name (deterministic + optional AI classification) */
 export type NameExtractionMethod =
   | 'jsonld'
@@ -77,6 +80,8 @@ export interface NameExtractionDebugSummary {
     extraPagesFetched: number;
     extractChunks: number;
   };
+  /** Page fetch: local Playwright vs Firecrawl API */
+  fetchEngine?: ScrapeFetchMode;
 }
 
 export interface ScrapeJobInput {
@@ -89,6 +94,8 @@ export interface ScrapeJobInput {
   googleSheetId?: string;
   googleSheetTab?: string;
   mockMode?: boolean;
+  /** playwright = local browser (default); firecrawl = Firecrawl API (requires FIRECRAWL_API_KEY). */
+  scrapeFetchMode?: ScrapeFetchMode;
 }
 
 export interface ContactInfo {

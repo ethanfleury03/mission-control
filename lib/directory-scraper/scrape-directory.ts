@@ -6,9 +6,10 @@ import { sleep } from './utils';
 import { launchChromiumForScraper } from './playwright-launch';
 import { validateScrapeUrl } from './validate-scrape-url';
 import { v4 as uuid } from 'uuid';
-import { extractCompanyNamesFromPage } from './extract-company-names';
+import { extractCompanyNamesFromPage, extractCompanyNamesFromFirecrawl } from './extract-company-names';
 import { candidateToCompanyResult } from './name-result-mapper';
 import type { CancelSignal } from './extract-directory-entries';
+import { firecrawlScrape, isFirecrawlConfigured } from './firecrawl-client';
 
 const CONCURRENCY = 2;
 const DELAY_BETWEEN_COMPANIES_MS = 1200;
@@ -88,34 +89,118 @@ export async function runScrapeJob(jobId: string): Promise<void> {
     return;
   }
 
+  const fetchMode = job.input.scrapeFetchMode ?? 'playwright';
+  const useFirecrawl = fetchMode === 'firecrawl';
+
+  if (useFirecrawl && !isFirecrawlConfigured()) {
+    await store.addLog(jobId, 'error', 'Firecrawl mode selected but FIRECRAWL_API_KEY is not set.');
+    await store.patchJobMeta(jobId, {
+      lastError: 'FIRECRAWL_API_KEY missing',
+      nameExtractionDebug: {
+        sourceUrl: job.input.url,
+        finalUrl: job.input.url,
+        zeroResultExplanation: 'Set FIRECRAWL_API_KEY in .env or choose Playwright fetch mode.',
+        topContainers: [],
+        strategyCounts: {},
+        aiFallbackUsed: false,
+        fetchEngine: 'firecrawl',
+      },
+    });
+    await store.updateJobStatus(jobId, 'failed');
+    return;
+  }
+
   let browser: Browser | null = null;
 
   try {
-    const launch = await launchChromiumForScraper();
-    browser = launch.browser;
-    const context = await browser.newContext({
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-
     const cancelled: CancelSignal = () => store.isJobCancelled(jobId);
 
     const pendingRows = job.results.filter((r) => r.status === 'pending');
     const isResume = pendingRows.length > 0 && job.results.length > 0;
 
     if (isResume) {
+      if (useFirecrawl) {
+        await store.addLog(jobId, 'warn', 'Resume with Firecrawl mode is not supported; start a new job.');
+        await store.updateJobStatus(jobId, 'failed');
+        return;
+      }
+      const launch = await launchChromiumForScraper();
+      browser = launch.browser;
+      const context = await browser.newContext({
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 720 },
+      });
+      const page = await context.newPage();
       await store.addLog(jobId, 'info', `Resuming job: ${pendingRows.length} pending rows`);
-    } else {
-      await store.addLog(jobId, 'info', 'Phase 1: Hybrid company-name extraction...');
-      const { candidates, debug } = await extractCompanyNamesFromPage(page, {
+      await runEnrichmentPhase(jobId, page, cancelled);
+      if (!(await Promise.resolve(cancelled()))) {
+        await store.updateJobStatus(jobId, 'completed');
+        await store.addLog(jobId, 'info', 'Scrape job completed');
+        await store.patchJobMeta(jobId, { lastError: undefined });
+      }
+      return;
+    }
+
+    let candidates: Awaited<ReturnType<typeof extractCompanyNamesFromPage>>['candidates'];
+    let debug: Awaited<ReturnType<typeof extractCompanyNamesFromPage>>['debug'];
+
+    if (useFirecrawl) {
+      await store.addLog(jobId, 'info', 'Phase 1: Fetching page via Firecrawl (markdown + main content)…');
+      const fc = await firecrawlScrape(job.input.url);
+      if (!fc.ok) {
+        await store.addLog(jobId, 'error', fc.error);
+        await store.patchJobMeta(jobId, {
+          lastError: fc.error,
+          nameExtractionDebug: {
+            sourceUrl: job.input.url,
+            finalUrl: job.input.url,
+            zeroResultExplanation: fc.error,
+            topContainers: [],
+            strategyCounts: {},
+            aiFallbackUsed: false,
+            fetchEngine: 'firecrawl',
+          },
+        });
+        await store.updateJobStatus(jobId, 'failed');
+        return;
+      }
+
+      await store.addLog(jobId, 'info', `Firecrawl OK: ${fc.finalUrl.slice(0, 80)}…`);
+      const out = await extractCompanyNamesFromFirecrawl(fc, job.input.url, {
         sourceUrl: job.input.url,
         maxCompanies: job.input.maxCompanies,
         enableAiFallback: job.input.enableAiNameFallback ?? false,
         cancelled,
         onLog: (msg) => store.addLog(jobId, 'info', msg),
       });
+      candidates = out.candidates;
+      debug = { ...out.debug, fetchEngine: 'firecrawl' };
+
+      if (await Promise.resolve(cancelled())) {
+        await store.addLog(jobId, 'warn', 'Job cancelled after name extraction');
+        return;
+      }
+    } else {
+      const launch = await launchChromiumForScraper();
+      browser = launch.browser;
+      const context = await browser.newContext({
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 720 },
+      });
+      const page = await context.newPage();
+
+      await store.addLog(jobId, 'info', 'Phase 1: Hybrid company-name extraction (Playwright)…');
+      const out = await extractCompanyNamesFromPage(page, {
+        sourceUrl: job.input.url,
+        maxCompanies: job.input.maxCompanies,
+        enableAiFallback: job.input.enableAiNameFallback ?? false,
+        cancelled,
+        onLog: (msg) => store.addLog(jobId, 'info', msg),
+      });
+      candidates = out.candidates;
+      debug = { ...out.debug, fetchEngine: 'playwright' };
 
       if (await Promise.resolve(cancelled())) {
         await store.addLog(jobId, 'warn', 'Job cancelled during name extraction');
@@ -148,76 +233,56 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       if (candidates.length === 0) {
         await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
       }
+
+      await runEnrichmentPhase(jobId, page, cancelled);
+
+      if (!(await Promise.resolve(cancelled()))) {
+        await store.updateJobStatus(jobId, 'completed');
+        await store.addLog(jobId, 'info', 'Scrape job completed');
+        await store.patchJobMeta(jobId, { lastError: undefined });
+      }
+      return;
     }
+
+    // Firecrawl path: meta + results + optional enrichment (needs browser)
+    await store.patchJobMeta(jobId, { nameExtractionDebug: debug });
+
+    if (debug.zeroResultExplanation) {
+      await store.addLog(jobId, 'warn', debug.zeroResultExplanation);
+    }
+
+    const strategyLog = Object.entries(debug.strategyCounts)
+      .map(([k, v]) => `${k}:${v}`)
+      .join(', ');
+    await store.addLog(
+      jobId,
+      'info',
+      `Extracted ${candidates.length} company name(s). Strategies: ${strategyLog || 'none'}. AI: ${debug.aiFallbackUsed ? 'yes' : 'no'}`,
+    );
 
     const visitWebsites = job.input.visitCompanyWebsites ?? false;
-    const refreshed = await store.getJob(jobId);
-    const rowsToProcess = visitWebsites ? (refreshed?.results ?? []).filter((r) => r.status === 'pending') : [];
+    const initialResults: CompanyResult[] = candidates.map((c, i) =>
+      candidateToCompanyResult(c, i, { visitWebsites }),
+    );
 
-    if (rowsToProcess.length > 0) {
-      await store.addLog(jobId, 'info', `Phase 2: Enriching ${rowsToProcess.length} companies...`);
+    await store.updateSummary(jobId, { companiesFound: initialResults.length });
+    await store.setResults(jobId, initialResults);
+
+    if (candidates.length === 0) {
+      await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
     }
 
-    for (let i = 0; i < rowsToProcess.length; i += CONCURRENCY) {
-      if (await Promise.resolve(cancelled())) {
-        await store.addLog(jobId, 'warn', 'Job cancelled during enrichment');
-        break;
-      }
-
-      const batch = rowsToProcess.slice(i, i + CONCURRENCY);
-      const enrichPromises = batch.map(async (row) => {
-        const entry: DirectoryEntry = {
-          name: row.companyName,
-          url: row.directoryListingUrl,
-          detailUrl: row.nameExtractionMeta?.detailUrl || row.directoryListingUrl,
-        };
-        await store.updateResult(jobId, row.id, { status: 'scraping' });
-
-        try {
-          const enrichPage = await context.newPage();
-          try {
-            const result = await enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id);
-            await store.updateResult(jobId, row.id, {
-              ...result,
-              id: row.id,
-              nameExtractionMeta: row.nameExtractionMeta,
-            });
-          } finally {
-            await enrichPage.close();
-          }
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Unknown error';
-          await store.patchJobMeta(jobId, { lastError: `${row.companyName}: ${message}` });
-          await store.updateResult(jobId, row.id, {
-            status: 'failed',
-            error: message,
-            notes: `Enrichment failed: ${message}`,
-            needsReview: true,
-            nameExtractionMeta: row.nameExtractionMeta,
-          });
-        }
+    if (visitWebsites && initialResults.some((r) => r.status === 'pending')) {
+      const launch = await launchChromiumForScraper();
+      browser = launch.browser;
+      const context = await browser.newContext({
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 720 },
       });
-
-      await Promise.all(enrichPromises);
-      await store.recalcSummary(jobId);
-      const lastInBatch = batch[batch.length - 1];
-      if (lastInBatch) {
-        await store.patchJobMeta(jobId, {
-          lastProcessedCompanyName: lastInBatch.companyName,
-        });
-      }
-      await store.addLog(
-        jobId,
-        'info',
-        `Processed ${Math.min(i + CONCURRENCY, rowsToProcess.length)}/${rowsToProcess.length}`,
-      );
-
-      if (i + CONCURRENCY < rowsToProcess.length) {
-        await sleep(DELAY_BETWEEN_COMPANIES_MS);
-      }
+      const page = await context.newPage();
+      await runEnrichmentPhase(jobId, page, cancelled);
     }
-
-    await store.recalcSummary(jobId);
 
     if (!(await Promise.resolve(cancelled()))) {
       await store.updateJobStatus(jobId, 'completed');
@@ -234,4 +299,77 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       await browser.close().catch(() => {});
     }
   }
+}
+
+async function runEnrichmentPhase(jobId: string, page: import('playwright').Page, cancelled: CancelSignal) {
+  const job = await store.getJob(jobId);
+  if (!job) return;
+  const visitWebsites = job.input.visitCompanyWebsites ?? false;
+  const refreshed = await store.getJob(jobId);
+  const rowsToProcess = visitWebsites ? (refreshed?.results ?? []).filter((r) => r.status === 'pending') : [];
+
+  if (rowsToProcess.length > 0) {
+    await store.addLog(jobId, 'info', `Phase 2: Enriching ${rowsToProcess.length} companies...`);
+  }
+
+  for (let i = 0; i < rowsToProcess.length; i += CONCURRENCY) {
+    if (await Promise.resolve(cancelled())) {
+      await store.addLog(jobId, 'warn', 'Job cancelled during enrichment');
+      break;
+    }
+
+    const batch = rowsToProcess.slice(i, i + CONCURRENCY);
+    const enrichPromises = batch.map(async (row) => {
+      const entry: DirectoryEntry = {
+        name: row.companyName,
+        url: row.directoryListingUrl,
+        detailUrl: row.nameExtractionMeta?.detailUrl || row.directoryListingUrl,
+      };
+      await store.updateResult(jobId, row.id, { status: 'scraping' });
+
+      try {
+        const enrichPage = await page.context().newPage();
+        try {
+          const result = await enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id);
+          await store.updateResult(jobId, row.id, {
+            ...result,
+            id: row.id,
+            nameExtractionMeta: row.nameExtractionMeta,
+          });
+        } finally {
+          await enrichPage.close();
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        await store.patchJobMeta(jobId, { lastError: `${row.companyName}: ${message}` });
+        await store.updateResult(jobId, row.id, {
+          status: 'failed',
+          error: message,
+          notes: `Enrichment failed: ${message}`,
+          needsReview: true,
+          nameExtractionMeta: row.nameExtractionMeta,
+        });
+      }
+    });
+
+    await Promise.all(enrichPromises);
+    await store.recalcSummary(jobId);
+    const lastInBatch = batch[batch.length - 1];
+    if (lastInBatch) {
+      await store.patchJobMeta(jobId, {
+        lastProcessedCompanyName: lastInBatch.companyName,
+      });
+    }
+    await store.addLog(
+      jobId,
+      'info',
+      `Processed ${Math.min(i + CONCURRENCY, rowsToProcess.length)}/${rowsToProcess.length}`,
+    );
+
+    if (i + CONCURRENCY < rowsToProcess.length) {
+      await sleep(DELAY_BETWEEN_COMPANIES_MS);
+    }
+  }
+
+  await store.recalcSummary(jobId);
 }

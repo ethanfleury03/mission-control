@@ -1,12 +1,8 @@
 /**
  * Hybrid company-name extraction pipeline.
  *
- * Playwright path:
- *   1. JSON-LD / microdata — free, instant; early exit if ≥3 names
- *   2. AI (two-pass when OPENROUTER + enableAiFallback):
- *        Pass 1: locate roster URLs + verbatim text spans (grounded)
- *        Pass 2: extract company names per chunk (grounded)
- *   3. Deterministic — no AI key or AI disabled
+ * Playwright path: collectRenderedPageArtifacts → runExtractionFromArtifactBundle
+ * Firecrawl path: firecrawlScrape → runExtractionFromArtifactBundle (no local browser for fetch)
  */
 
 import * as cheerio from 'cheerio';
@@ -30,7 +26,9 @@ import { isLikelyOrganizationName, scoreCompanyCandidate } from './score-company
 import { MAX_EXTRACTION_CANDIDATES } from './name-extraction-constants';
 import type { CancelSignal } from './extract-directory-entries';
 import { extractCompanyNamesFromTextBlobs, isAiExtractionAvailable } from './extract-with-ai';
-import { locateRosterWithAi, collectSameOriginLinks } from './ai-locate-roster';
+import { locateRosterWithAi, collectSameOriginLinks, type PageLink } from './ai-locate-roster';
+import type { FirecrawlScrapeSuccess } from './firecrawl-client';
+import { firecrawlScrape } from './firecrawl-client';
 
 function mergePageText(artifacts: { text: string; frames: { text: string }[] }): string {
   return [artifacts.text, ...artifacts.frames.map((f) => f.text)].join('\n');
@@ -129,12 +127,27 @@ function runDeterministicPipeline(
   return { candidates: deduped, strategyCounts };
 }
 
+export interface PageArtifactBundle {
+  /** Original job URL (for debug). */
+  sourceUrl: string;
+  finalUrl: string;
+  title: string;
+  html: string;
+  /** Text used for grounding + AI locate (Playwright: innerText merge; Firecrawl: markdown + body plain). */
+  fullText: string;
+  iframeCount: number;
+  loadMoreClicks: number;
+  /** Optional: links from Firecrawl `links` format for pass 1. */
+  prefetchedLinks?: PageLink[];
+}
+
+export type FollowUpFetchResult = { text: string; finalUrl?: string } | null;
+
 export interface ExtractCompanyNamesOptions {
   sourceUrl: string;
   maxCompanies?: number;
   enableAiFallback?: boolean;
   cancelled?: CancelSignal;
-  /** Optional: log human-readable steps (job logs). */
   onLog?: (message: string) => void | Promise<void>;
 }
 
@@ -167,9 +180,28 @@ function makeEmptyResult(
   };
 }
 
-export async function extractCompanyNamesFromPage(
-  page: Page,
-  options: ExtractCompanyNamesOptions,
+function mapContainer(c: CandidateContainer) {
+  return {
+    selectorPath: c.selectorPath,
+    tagName: c.tagName,
+    classIdSummary: c.classIdSummary,
+    textLength: c.textLength,
+    linkCount: c.linkCount,
+    repeatedChildSummary: c.repeatedChildSummary,
+    keywordHits: c.keywordHits,
+    score: c.score,
+    scoreReasons: c.scoreReasons,
+  };
+}
+
+/**
+ * Core pipeline after page content is available (Playwright or Firecrawl).
+ */
+export async function runExtractionFromArtifactBundle(
+  bundle: PageArtifactBundle,
+  options: ExtractCompanyNamesOptions & {
+    fetchFollowUpUrl: (url: string) => Promise<FollowUpFetchResult>;
+  },
 ): Promise<ExtractCompanyNamesResult> {
   const { sourceUrl, maxCompanies, enableAiFallback, onLog } = options;
   const cancelled = options.cancelled;
@@ -178,25 +210,13 @@ export async function extractCompanyNamesFromPage(
     if (onLog) await Promise.resolve(onLog(msg));
   };
 
-  const artifacts = await collectRenderedPageArtifacts(page, sourceUrl, { cancelled });
-  if (cancelled && (await Promise.resolve(cancelled()))) {
-    return makeEmptyResult(
-      sourceUrl,
-      artifacts.finalUrl,
-      artifacts.title,
-      'Cancelled during page load',
-      artifacts.frames.length,
-      artifacts.loadMoreClicks,
-    );
-  }
-
-  const fullText = mergePageText(artifacts);
-  const topContainers = discoverCandidateContainers(artifacts.html, artifacts.finalUrl).slice(0, 15);
-  const fragments = getTopContainerHtmlFragments(artifacts.html, 6);
+  const { finalUrl, title, html, fullText } = bundle;
+  const topContainers = discoverCandidateContainers(html, finalUrl).slice(0, 15);
+  const fragments = getTopContainerHtmlFragments(html, 6);
 
   const structuredCandidates: ExtractedCompanyCandidate[] = [
-    ...extractFromJsonLd(artifacts.html, artifacts.finalUrl),
-    ...extractFromMicrodata(artifacts.html, artifacts.finalUrl),
+    ...extractFromJsonLd(html, finalUrl),
+    ...extractFromMicrodata(html, finalUrl),
   ].filter((c) => isGroundedInPageText(c.name, fullText));
 
   if (structuredCandidates.length >= 3) {
@@ -206,13 +226,13 @@ export async function extractCompanyNamesFromPage(
       candidates: deduped,
       debug: {
         sourceUrl,
-        finalUrl: artifacts.finalUrl,
-        pageTitle: artifacts.title,
+        finalUrl,
+        pageTitle: title,
         topContainers: topContainers.slice(0, 8).map(mapContainer),
         strategyCounts: { jsonld: structuredCandidates.filter((c) => c.method === 'jsonld').length },
         aiFallbackUsed: false,
-        iframeCount: artifacts.frames.length,
-        loadMoreClicks: artifacts.loadMoreClicks,
+        iframeCount: bundle.iframeCount,
+        loadMoreClicks: bundle.loadMoreClicks,
       },
     };
   }
@@ -223,19 +243,22 @@ export async function extractCompanyNamesFromPage(
     if (cancelled && (await Promise.resolve(cancelled()))) {
       return makeEmptyResult(
         sourceUrl,
-        artifacts.finalUrl,
-        artifacts.title,
+        finalUrl,
+        title,
         'Cancelled before AI extraction',
-        artifacts.frames.length,
-        artifacts.loadMoreClicks,
+        bundle.iframeCount,
+        bundle.loadMoreClicks,
       );
     }
 
     await log('AI pass 1: locating roster URLs and text regions…');
-    const links = collectSameOriginLinks(artifacts.html, artifacts.finalUrl);
+    const links =
+      bundle.prefetchedLinks && bundle.prefetchedLinks.length > 0
+        ? bundle.prefetchedLinks
+        : collectSameOriginLinks(html, finalUrl);
     const locate = await locateRosterWithAi({
-      baseUrl: artifacts.finalUrl,
-      pageTitle: artifacts.title,
+      baseUrl: finalUrl,
+      pageTitle: title,
       visibleText: fullText,
       links,
     });
@@ -250,7 +273,7 @@ export async function extractCompanyNamesFromPage(
 
     const blobs: string[] = [...locate.textSpans];
     let extraPagesFetched = 0;
-    const seedKey = normalizeUrlKey(artifacts.finalUrl);
+    const seedKey = normalizeUrlKey(finalUrl);
 
     for (const url of locate.rosterUrls) {
       if (extraPagesFetched >= 3) break;
@@ -258,9 +281,9 @@ export async function extractCompanyNamesFromPage(
       if (normalizeUrlKey(url) === seedKey) continue;
 
       await log(`Fetching roster page: ${url.slice(0, 80)}…`);
-      const snap = await collectInnerTextForUrl(page, url, { cancelled });
-      if (snap && snap.text.trim().length > 50) {
-        blobs.push(snap.text);
+      const fetched = await options.fetchFollowUpUrl(url);
+      if (fetched && fetched.text.trim().length > 50) {
+        blobs.push(fetched.text);
         extraPagesFetched++;
       }
     }
@@ -274,8 +297,8 @@ export async function extractCompanyNamesFromPage(
 
     await log(`AI pass 2: extracting names from ${filteredBlobs.length} text region(s)…`);
     const aiResult = await extractCompanyNamesFromTextBlobs(filteredBlobs, {
-      sourceUrl: artifacts.finalUrl,
-      pageTitle: artifacts.title,
+      sourceUrl: finalUrl,
+      pageTitle: title,
     });
 
     await log(
@@ -317,15 +340,15 @@ export async function extractCompanyNamesFromPage(
       candidates: final,
       debug: {
         sourceUrl,
-        finalUrl: artifacts.finalUrl,
-        pageTitle: artifacts.title,
+        finalUrl,
+        pageTitle: title,
         zeroResultExplanation,
         topContainers: topContainers.slice(0, 8).map(mapContainer),
         strategyCounts,
         aiFallbackUsed: true,
         aiFallbackReason: `${locateReason}${pass2Reason} (${aiResult.modelUsed})`,
-        iframeCount: artifacts.frames.length,
-        loadMoreClicks: artifacts.loadMoreClicks,
+        iframeCount: bundle.iframeCount,
+        loadMoreClicks: bundle.loadMoreClicks,
         aiLocateSummary: {
           rosterUrlsFound: locate.rosterUrls.length,
           textSpansFound: locate.textSpans.length,
@@ -337,10 +360,10 @@ export async function extractCompanyNamesFromPage(
   }
 
   const { candidates: detCandidates, strategyCounts } = runDeterministicPipeline(
-    artifacts.html,
-    artifacts.frames,
+    html,
+    [],
     fragments,
-    artifacts.finalUrl,
+    finalUrl,
     fullText,
     maxCompanies,
   );
@@ -365,31 +388,86 @@ export async function extractCompanyNamesFromPage(
     candidates: final,
     debug: {
       sourceUrl,
-      finalUrl: artifacts.finalUrl,
-      pageTitle: artifacts.title,
+      finalUrl,
+      pageTitle: title,
       zeroResultExplanation,
       topContainers: topContainers.slice(0, 8).map(mapContainer),
       strategyCounts,
       aiFallbackUsed: false,
       aiFallbackReason: 'AI disabled or OPENROUTER_API_KEY not set',
-      iframeCount: artifacts.frames.length,
-      loadMoreClicks: artifacts.loadMoreClicks,
+      iframeCount: bundle.iframeCount,
+      loadMoreClicks: bundle.loadMoreClicks,
     },
   };
 }
 
-function mapContainer(c: CandidateContainer) {
-  return {
-    selectorPath: c.selectorPath,
-    tagName: c.tagName,
-    classIdSummary: c.classIdSummary,
-    textLength: c.textLength,
-    linkCount: c.linkCount,
-    repeatedChildSummary: c.repeatedChildSummary,
-    keywordHits: c.keywordHits,
-    score: c.score,
-    scoreReasons: c.scoreReasons,
+export async function extractCompanyNamesFromPage(
+  page: Page,
+  options: ExtractCompanyNamesOptions,
+): Promise<ExtractCompanyNamesResult> {
+  const { sourceUrl, cancelled } = options;
+
+  const artifacts = await collectRenderedPageArtifacts(page, sourceUrl, { cancelled });
+  if (cancelled && (await Promise.resolve(cancelled()))) {
+    return makeEmptyResult(
+      sourceUrl,
+      artifacts.finalUrl,
+      artifacts.title,
+      'Cancelled during page load',
+      artifacts.frames.length,
+      artifacts.loadMoreClicks,
+    );
+  }
+
+  const bundle: PageArtifactBundle = {
+    sourceUrl,
+    finalUrl: artifacts.finalUrl,
+    title: artifacts.title,
+    html: artifacts.html,
+    fullText: mergePageText(artifacts),
+    iframeCount: artifacts.frames.length,
+    loadMoreClicks: artifacts.loadMoreClicks,
   };
+
+  return runExtractionFromArtifactBundle(bundle, {
+    ...options,
+    fetchFollowUpUrl: async (url) => {
+      const snap = await collectInnerTextForUrl(page, url, { cancelled });
+      if (!snap || snap.text.trim().length < 50) return null;
+      return { text: snap.text, finalUrl: snap.finalUrl };
+    },
+  });
+}
+
+/** Firecrawl scrape result → same extraction as Playwright (follow-ups via Firecrawl). */
+export async function extractCompanyNamesFromFirecrawl(
+  fc: FirecrawlScrapeSuccess,
+  sourceUrl: string,
+  options: ExtractCompanyNamesOptions,
+): Promise<ExtractCompanyNamesResult> {
+  const $ = cheerio.load(fc.html || '<html></html>');
+  const plain = ($('body').text() || '').replace(/\s+/g, ' ').trim();
+  const fullText = [fc.markdown, plain].filter(Boolean).join('\n\n').trim() || fc.textForAi;
+
+  const bundle: PageArtifactBundle = {
+    sourceUrl,
+    finalUrl: fc.finalUrl,
+    title: fc.title,
+    html: fc.html,
+    fullText,
+    iframeCount: 0,
+    loadMoreClicks: 0,
+    prefetchedLinks: fc.links,
+  };
+
+  return runExtractionFromArtifactBundle(bundle, {
+    ...options,
+    fetchFollowUpUrl: async (url) => {
+      const r = await firecrawlScrape(url);
+      if (!r.ok || !r.textForAi.trim() || r.textForAi.trim().length < 50) return null;
+      return { text: r.textForAi, finalUrl: r.finalUrl };
+    },
+  });
 }
 
 export function extractCompanyNamesFromHtml(
