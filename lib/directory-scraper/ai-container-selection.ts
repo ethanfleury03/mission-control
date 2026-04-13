@@ -24,7 +24,7 @@ export async function chooseBestRosterContainersWithAi(containers: ContainerAiIn
   const key = process.env.OPENROUTER_API_KEY;
   if (!key || containers.length === 0) return null;
 
-  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL ?? 'openai/gpt-4o-mini';
+  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || 'minimax/minimax-m2.7';
   const body = {
     model,
     temperature: 0,

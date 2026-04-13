@@ -18,7 +18,7 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_TEXT_CHARS = 80_000;
 
 /** Model used if DIRECTORY_SCRAPER_AI_MODEL is not set. */
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+const DEFAULT_MODEL = 'minimax/minimax-m2.7';
 
 export interface AiExtractionOptions {
   /** Page visible text (innerText). */
@@ -72,7 +72,7 @@ export async function extractCompanyNamesWithAi(
     };
   }
 
-  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL ?? DEFAULT_MODEL;
+  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || DEFAULT_MODEL;
   const truncatedText = options.visibleText.slice(0, MAX_TEXT_CHARS);
 
   const body = {
