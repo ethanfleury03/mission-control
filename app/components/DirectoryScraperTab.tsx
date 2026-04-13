@@ -587,6 +587,15 @@ export function DirectoryScraperTab() {
                     · <span className="font-medium">Load-more clicks:</span>{' '}
                     {job.meta.nameExtractionDebug.loadMoreClicks ?? 0}
                   </p>
+                  {job.meta.nameExtractionDebug.aiLocateSummary && (
+                    <p>
+                      <span className="font-medium">Two-pass AI:</span> pass 1 found{' '}
+                      {job.meta.nameExtractionDebug.aiLocateSummary.rosterUrlsFound} roster URL(s),{' '}
+                      {job.meta.nameExtractionDebug.aiLocateSummary.textSpansFound} text span(s); fetched{' '}
+                      {job.meta.nameExtractionDebug.aiLocateSummary.extraPagesFetched} extra page(s); pass 2 ran{' '}
+                      {job.meta.nameExtractionDebug.aiLocateSummary.extractChunks} chunk(s).
+                    </p>
+                  )}
                   {job.meta.nameExtractionDebug.zeroResultExplanation && (
                     <p className="text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
                       <span className="font-medium">Zero rows:</span> {job.meta.nameExtractionDebug.zeroResultExplanation}

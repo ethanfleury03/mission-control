@@ -1,20 +1,23 @@
 /**
  * Hybrid company-name extraction pipeline.
  *
- * Priority order (Playwright path):
- *   1. JSON-LD / microdata  — free, instant, very high precision
- *   2. AI on visible text   — if OPENROUTER_API_KEY set + enableAiFallback=true
- *   3. Deterministic        — tables, repeated blocks, link lists, detail links
- *
- * The AI path sends clean innerText to OpenRouter (grounding-validated).
- * The deterministic path is the no-cost fallback and still runs for tests.
+ * Playwright path:
+ *   1. JSON-LD / microdata — free, instant; early exit if ≥3 names
+ *   2. AI (two-pass when OPENROUTER + enableAiFallback):
+ *        Pass 1: locate roster URLs + verbatim text spans (grounded)
+ *        Pass 2: extract company names per chunk (grounded)
+ *   3. Deterministic — no AI key or AI disabled
  */
 
 import * as cheerio from 'cheerio';
 import type { Page } from 'playwright';
 import type { ExtractedCompanyCandidate, NameExtractionDebugSummary, NameExtractionMethod } from './types';
-import { collectRenderedPageArtifacts } from './collect-rendered-page-artifacts';
-import { discoverCandidateContainers, getTopContainerHtmlFragments } from './discover-candidate-containers';
+import { collectRenderedPageArtifacts, collectInnerTextForUrl } from './collect-rendered-page-artifacts';
+import {
+  discoverCandidateContainers,
+  getTopContainerHtmlFragments,
+  type CandidateContainer,
+} from './discover-candidate-containers';
 import { extractFromJsonLd, extractFromMicrodata } from './extract-from-structured-data';
 import { extractFromTables } from './extract-from-tables';
 import { extractFromRepeatedBlocks } from './extract-from-repeated-blocks';
@@ -26,10 +29,33 @@ import { isGroundedInPageText } from './ground-company-name';
 import { isLikelyOrganizationName, scoreCompanyCandidate } from './score-company-candidates';
 import { MAX_EXTRACTION_CANDIDATES } from './name-extraction-constants';
 import type { CancelSignal } from './extract-directory-entries';
-import { extractCompanyNamesWithAi, isAiExtractionAvailable } from './extract-with-ai';
+import { extractCompanyNamesFromTextBlobs, isAiExtractionAvailable } from './extract-with-ai';
+import { locateRosterWithAi, collectSameOriginLinks } from './ai-locate-roster';
 
 function mergePageText(artifacts: { text: string; frames: { text: string }[] }): string {
   return [artifacts.text, ...artifacts.frames.map((f) => f.text)].join('\n');
+}
+
+/** Drop blobs that are fully contained in a larger blob (fewer duplicate chunks). */
+function removeSubsumedBlobs(blobs: string[]): string[] {
+  const trimmed = blobs.map((b) => b.trim()).filter((b) => b.length >= 30);
+  if (trimmed.length <= 1) return trimmed;
+  const sorted = [...trimmed].sort((a, b) => b.length - a.length);
+  const kept: string[] = [];
+  for (const b of sorted) {
+    if (kept.some((r) => r.includes(b))) continue;
+    kept.push(b);
+  }
+  return kept;
+}
+
+function normalizeUrlKey(u: string): string {
+  try {
+    const x = new URL(u);
+    return `${x.origin}${x.pathname.replace(/\/$/, '') || '/'}`;
+  } catch {
+    return u.split('#')[0];
+  }
 }
 
 function runFullDocumentStrategies(html: string, sourceUrl: string): ExtractedCompanyCandidate[] {
@@ -108,6 +134,8 @@ export interface ExtractCompanyNamesOptions {
   maxCompanies?: number;
   enableAiFallback?: boolean;
   cancelled?: CancelSignal;
+  /** Optional: log human-readable steps (job logs). */
+  onLog?: (message: string) => void | Promise<void>;
 }
 
 export interface ExtractCompanyNamesResult {
@@ -143,8 +171,12 @@ export async function extractCompanyNamesFromPage(
   page: Page,
   options: ExtractCompanyNamesOptions,
 ): Promise<ExtractCompanyNamesResult> {
-  const { sourceUrl, maxCompanies, enableAiFallback } = options;
+  const { sourceUrl, maxCompanies, enableAiFallback, onLog } = options;
   const cancelled = options.cancelled;
+
+  const log = async (msg: string) => {
+    if (onLog) await Promise.resolve(onLog(msg));
+  };
 
   const artifacts = await collectRenderedPageArtifacts(page, sourceUrl, { cancelled });
   if (cancelled && (await Promise.resolve(cancelled()))) {
@@ -162,13 +194,11 @@ export async function extractCompanyNamesFromPage(
   const topContainers = discoverCandidateContainers(artifacts.html, artifacts.finalUrl).slice(0, 15);
   const fragments = getTopContainerHtmlFragments(artifacts.html, 6);
 
-  // ── Step 1: structured data (JSON-LD / microdata) — always free, always first ──
   const structuredCandidates: ExtractedCompanyCandidate[] = [
     ...extractFromJsonLd(artifacts.html, artifacts.finalUrl),
     ...extractFromMicrodata(artifacts.html, artifacts.finalUrl),
   ].filter((c) => isGroundedInPageText(c.name, fullText));
 
-  // If structured data gives us a clean list, use it and stop.
   if (structuredCandidates.length >= 3) {
     let deduped = dedupeCompanyCandidates(structuredCandidates);
     if (maxCompanies) deduped = deduped.slice(0, maxCompanies);
@@ -178,17 +208,7 @@ export async function extractCompanyNamesFromPage(
         sourceUrl,
         finalUrl: artifacts.finalUrl,
         pageTitle: artifacts.title,
-        topContainers: topContainers.slice(0, 8).map((c) => ({
-          selectorPath: c.selectorPath,
-          tagName: c.tagName,
-          classIdSummary: c.classIdSummary,
-          textLength: c.textLength,
-          linkCount: c.linkCount,
-          repeatedChildSummary: c.repeatedChildSummary,
-          keywordHits: c.keywordHits,
-          score: c.score,
-          scoreReasons: c.scoreReasons,
-        })),
+        topContainers: topContainers.slice(0, 8).map(mapContainer),
         strategyCounts: { jsonld: structuredCandidates.filter((c) => c.method === 'jsonld').length },
         aiFallbackUsed: false,
         iframeCount: artifacts.frames.length,
@@ -197,25 +217,73 @@ export async function extractCompanyNamesFromPage(
     };
   }
 
-  // ── Step 2: AI extraction — primary path when configured ──
   const useAi = enableAiFallback && isAiExtractionAvailable();
 
   if (useAi) {
     if (cancelled && (await Promise.resolve(cancelled()))) {
       return makeEmptyResult(
-        sourceUrl, artifacts.finalUrl, artifacts.title,
+        sourceUrl,
+        artifacts.finalUrl,
+        artifacts.title,
         'Cancelled before AI extraction',
-        artifacts.frames.length, artifacts.loadMoreClicks,
+        artifacts.frames.length,
+        artifacts.loadMoreClicks,
       );
     }
 
-    const aiResult = await extractCompanyNamesWithAi({
+    await log('AI pass 1: locating roster URLs and text regions…');
+    const links = collectSameOriginLinks(artifacts.html, artifacts.finalUrl);
+    const locate = await locateRosterWithAi({
+      baseUrl: artifacts.finalUrl,
+      pageTitle: artifacts.title,
       visibleText: fullText,
+      links,
+    });
+
+    if (locate.error) {
+      await log(`AI pass 1 warning: ${locate.error}`);
+    } else {
+      await log(
+        `AI pass 1 done: ${locate.rosterUrls.length} URL(s), ${locate.textSpans.length} text span(s) (${locate.modelUsed})`,
+      );
+    }
+
+    const blobs: string[] = [...locate.textSpans];
+    let extraPagesFetched = 0;
+    const seedKey = normalizeUrlKey(artifacts.finalUrl);
+
+    for (const url of locate.rosterUrls) {
+      if (extraPagesFetched >= 3) break;
+      if (cancelled && (await Promise.resolve(cancelled()))) break;
+      if (normalizeUrlKey(url) === seedKey) continue;
+
+      await log(`Fetching roster page: ${url.slice(0, 80)}…`);
+      const snap = await collectInnerTextForUrl(page, url, { cancelled });
+      if (snap && snap.text.trim().length > 50) {
+        blobs.push(snap.text);
+        extraPagesFetched++;
+      }
+    }
+
+    if (blobs.length === 0) {
+      blobs.push(fullText);
+      await log('AI pass 1: no spans/URLs — using full page text for extraction.');
+    }
+
+    const filteredBlobs = removeSubsumedBlobs(blobs);
+
+    await log(`AI pass 2: extracting names from ${filteredBlobs.length} text region(s)…`);
+    const aiResult = await extractCompanyNamesFromTextBlobs(filteredBlobs, {
       sourceUrl: artifacts.finalUrl,
       pageTitle: artifacts.title,
     });
 
-    // Merge any structured candidates that survived with AI results
+    await log(
+      aiResult.error
+        ? `AI pass 2 error: ${aiResult.error}`
+        : `AI pass 2 done: ${aiResult.candidates.length} companies (${aiResult.chunksProcessed ?? 0} chunk(s))`,
+    );
+
     const allCandidates = dedupeCompanyCandidates([...structuredCandidates, ...aiResult.candidates]);
     let final = maxCompanies ? allCandidates.slice(0, maxCompanies) : allCandidates;
 
@@ -228,14 +296,22 @@ export async function extractCompanyNamesFromPage(
     if (final.length === 0) {
       if (aiResult.error) {
         zeroResultExplanation = `AI extraction failed: ${aiResult.error}`;
-      } else if (aiResult.rawNames.length > 0 && aiResult.droppedCount === aiResult.rawNames.length) {
-        zeroResultExplanation = `AI returned ${aiResult.rawNames.length} names but all failed grounding validation (not found in page text).`;
+      } else if (aiResult.rawNames.length > 0 && aiResult.droppedCount >= aiResult.rawNames.length) {
+        zeroResultExplanation =
+          'AI returned names but all failed grounding (not found verbatim in extracted text).';
       } else if (fullText.trim().length < 100) {
-        zeroResultExplanation = 'Page rendered very little visible text (may be JS-only or blocked).';
+        zeroResultExplanation = 'Page rendered very little visible text.';
       } else {
-        zeroResultExplanation = 'AI found no company names on this page. Try a more specific member/directory URL.';
+        zeroResultExplanation = 'No company names extracted. Try a more specific member/directory URL.';
       }
     }
+
+    const locateReason = locate.error
+      ? `locate error: ${locate.error}; `
+      : `pass1 ${locate.rosterUrls.length} urls + ${locate.textSpans.length} spans; `;
+    const pass2Reason = aiResult.error
+      ? `pass2 error: ${aiResult.error}`
+      : `pass2 ${aiResult.rawNames.length} raw → ${aiResult.candidates.length} grounded; ${aiResult.chunksProcessed ?? 0} chunks`;
 
     return {
       candidates: final,
@@ -244,29 +320,22 @@ export async function extractCompanyNamesFromPage(
         finalUrl: artifacts.finalUrl,
         pageTitle: artifacts.title,
         zeroResultExplanation,
-        topContainers: topContainers.slice(0, 8).map((c) => ({
-          selectorPath: c.selectorPath,
-          tagName: c.tagName,
-          classIdSummary: c.classIdSummary,
-          textLength: c.textLength,
-          linkCount: c.linkCount,
-          repeatedChildSummary: c.repeatedChildSummary,
-          keywordHits: c.keywordHits,
-          score: c.score,
-          scoreReasons: c.scoreReasons,
-        })),
+        topContainers: topContainers.slice(0, 8).map(mapContainer),
         strategyCounts,
         aiFallbackUsed: true,
-        aiFallbackReason: aiResult.error
-          ? `AI error: ${aiResult.error}`
-          : `AI (${aiResult.modelUsed}): ${aiResult.rawNames.length} raw → ${aiResult.candidates.length} grounded (${aiResult.droppedCount} dropped)`,
+        aiFallbackReason: `${locateReason}${pass2Reason} (${aiResult.modelUsed})`,
         iframeCount: artifacts.frames.length,
         loadMoreClicks: artifacts.loadMoreClicks,
+        aiLocateSummary: {
+          rosterUrlsFound: locate.rosterUrls.length,
+          textSpansFound: locate.textSpans.length,
+          extraPagesFetched,
+          extractChunks: aiResult.chunksProcessed ?? 0,
+        },
       },
     };
   }
 
-  // ── Step 3: Deterministic fallback (no AI key / AI disabled) ──
   const { candidates: detCandidates, strategyCounts } = runDeterministicPipeline(
     artifacts.html,
     artifacts.frames,
@@ -276,20 +345,19 @@ export async function extractCompanyNamesFromPage(
     maxCompanies,
   );
 
-  // Merge structured candidates that might have been below the threshold
   const merged = dedupeCompanyCandidates([...structuredCandidates, ...detCandidates]);
   const final = maxCompanies ? merged.slice(0, maxCompanies) : merged;
 
   let zeroResultExplanation: string | undefined;
   if (final.length === 0) {
     if (fullText.trim().length < 80) {
-      zeroResultExplanation = 'Page had very little visible text (may be script-only or blocked).';
+      zeroResultExplanation = 'Page had very little visible text.';
     } else if (!topContainers.length || topContainers[0].score < 15) {
       zeroResultExplanation =
-        'No high-scoring roster container found. Enable AI extraction for better results on complex layouts.';
+        'No high-scoring roster container. Enable AI extraction (OPENROUTER_API_KEY) for prose member lists.';
     } else {
       zeroResultExplanation =
-        'Deterministic extraction found no grounded company names. Enable AI extraction (requires OPENROUTER_API_KEY) for prose/blob member lists.';
+        'Deterministic extraction found no grounded names. Enable AI extraction for complex pages.';
     }
   }
 
@@ -300,17 +368,7 @@ export async function extractCompanyNamesFromPage(
       finalUrl: artifacts.finalUrl,
       pageTitle: artifacts.title,
       zeroResultExplanation,
-      topContainers: topContainers.slice(0, 8).map((c) => ({
-        selectorPath: c.selectorPath,
-        tagName: c.tagName,
-        classIdSummary: c.classIdSummary,
-        textLength: c.textLength,
-        linkCount: c.linkCount,
-        repeatedChildSummary: c.repeatedChildSummary,
-        keywordHits: c.keywordHits,
-        score: c.score,
-        scoreReasons: c.scoreReasons,
-      })),
+      topContainers: topContainers.slice(0, 8).map(mapContainer),
       strategyCounts,
       aiFallbackUsed: false,
       aiFallbackReason: 'AI disabled or OPENROUTER_API_KEY not set',
@@ -320,10 +378,20 @@ export async function extractCompanyNamesFromPage(
   };
 }
 
-/**
- * Fixture / unit tests: same deterministic pipeline without Playwright.
- * AI is not called in this path (no live requests in tests).
- */
+function mapContainer(c: CandidateContainer) {
+  return {
+    selectorPath: c.selectorPath,
+    tagName: c.tagName,
+    classIdSummary: c.classIdSummary,
+    textLength: c.textLength,
+    linkCount: c.linkCount,
+    repeatedChildSummary: c.repeatedChildSummary,
+    keywordHits: c.keywordHits,
+    score: c.score,
+    scoreReasons: c.scoreReasons,
+  };
+}
+
 export function extractCompanyNamesFromHtml(
   html: string,
   sourceUrl: string,
@@ -341,7 +409,12 @@ export function extractCompanyNamesFromHtml(
   ].filter((c) => isGroundedInPageText(c.name, fullText));
 
   const { candidates: detCandidates, strategyCounts } = runDeterministicPipeline(
-    html, [], fragments, sourceUrl, fullText, maxCompanies,
+    html,
+    [],
+    fragments,
+    sourceUrl,
+    fullText,
+    maxCompanies,
   );
 
   const merged = dedupeCompanyCandidates([...structuredCandidates, ...detCandidates]);

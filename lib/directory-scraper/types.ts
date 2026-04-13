@@ -70,13 +70,20 @@ export interface NameExtractionDebugSummary {
   aiFallbackReason?: string;
   iframeCount?: number;
   loadMoreClicks?: number;
+  /** Two-pass AI: locate step summary */
+  aiLocateSummary?: {
+    rosterUrlsFound: number;
+    textSpansFound: number;
+    extraPagesFetched: number;
+    extractChunks: number;
+  };
 }
 
 export interface ScrapeJobInput {
   url: string;
   maxCompanies?: number;
   visitCompanyWebsites?: boolean;
-  /** When true, run optional AI fallback (requires OPENAI_API_KEY). Default false. */
+  /** When true, run two-pass AI extraction (requires OPENROUTER_API_KEY). Default false. */
   enableAiNameFallback?: boolean;
   exportTarget?: ExportTarget;
   googleSheetId?: string;

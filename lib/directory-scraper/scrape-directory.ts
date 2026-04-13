@@ -114,6 +114,7 @@ export async function runScrapeJob(jobId: string): Promise<void> {
         maxCompanies: job.input.maxCompanies,
         enableAiFallback: job.input.enableAiNameFallback ?? false,
         cancelled,
+        onLog: (msg) => store.addLog(jobId, 'info', msg),
       });
 
       if (await Promise.resolve(cancelled())) {
