@@ -14,7 +14,7 @@ const CHUNK_MAX_CHARS = 22_000;
 /** Timeout per OpenRouter request (ms). */
 const REQUEST_TIMEOUT_MS = 120_000;
 
-const DEFAULT_MODEL = 'minimax/minimax-m2.7';
+const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 
 export interface AiExtractionOptions {
   visibleText: string;
@@ -79,6 +79,16 @@ TEXT:
 ${text}`;
 }
 
+/** Only OpenAI-family models support the response_format parameter on OpenRouter. */
+function supportsJsonResponseFormat(model: string): boolean {
+  return (
+    model.startsWith('openai/') ||
+    model.startsWith('gpt-') ||
+    model === 'o1' ||
+    model === 'o3-mini'
+  );
+}
+
 async function openRouterJson(
   model: string,
   userContent: string,
@@ -86,12 +96,14 @@ async function openRouterJson(
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return { ok: false, error: 'OPENROUTER_API_KEY not set' };
 
-  const body = {
+  const body: Record<string, unknown> = {
     model,
     temperature: 0,
-    response_format: { type: 'json_object' as const },
     messages: [{ role: 'user' as const, content: userContent }],
   };
+  if (supportsJsonResponseFormat(model)) {
+    body.response_format = { type: 'json_object' };
+  }
 
   try {
     const controller = new AbortController();

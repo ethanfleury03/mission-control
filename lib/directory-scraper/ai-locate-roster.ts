@@ -9,7 +9,7 @@ import { normalizeUrl } from './utils';
 import { validateScrapeUrl } from './validate-scrape-url';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'minimax/minimax-m2.7';
+const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 
 /** Visible text sent to locator model (member lists often sit mid-page). */
 const MAX_LOCATE_TEXT = 48_000;
@@ -79,12 +79,17 @@ Rules:
 
 JSON only:`;
 
-  const body = {
+  const supportsJsonFormat =
+    model.startsWith('openai/') || model.startsWith('gpt-') || model === 'o1' || model === 'o3-mini';
+
+  const body: Record<string, unknown> = {
     model,
     temperature: 0,
-    response_format: { type: 'json_object' as const },
     messages: [{ role: 'user' as const, content: prompt }],
   };
+  if (supportsJsonFormat) {
+    body.response_format = { type: 'json_object' };
+  }
 
   let rawJson: string | undefined;
   try {

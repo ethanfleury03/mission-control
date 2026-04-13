@@ -23,7 +23,10 @@ function mapPriority(n?: number): 'low' | 'medium' | 'high' {
   return 'medium';
 }
 
+const DISABLED = process.env.DISABLE_OPENCLAW === '1' || process.env.DISABLE_OPENCLAW === 'true';
+
 export async function GET() {
+  if (DISABLED) return NextResponse.json([]);
   try {
     const board = await fetchBackend<BoardResponse>('/work/board');
     const items = (board.columns ?? []).flatMap((c) => c.items ?? []);

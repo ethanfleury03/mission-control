@@ -41,14 +41,17 @@ export type OpenClawStatus = {
 };
 
 export async function getOpenClawStatus(): Promise<OpenClawStatus | null> {
+  if (process.env.DISABLE_OPENCLAW === '1' || process.env.DISABLE_OPENCLAW === 'true') {
+    return null;
+  }
   try {
     const { stdout } = await execFileAsync('openclaw', ['status', '--json'], {
       timeout: 10000,
       maxBuffer: 1024 * 1024,
     });
     return JSON.parse(stdout || '{}') as OpenClawStatus;
-  } catch (err) {
-    console.error('openclaw status failed', err);
+  } catch {
+    // Suppress error logs — openclaw is optional on this machine
     return null;
   }
 }
