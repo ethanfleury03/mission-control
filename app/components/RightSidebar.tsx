@@ -11,7 +11,7 @@ interface RightSidebarProps {
 
 export function RightSidebar({ alerts, crons }: RightSidebarProps) {
   return (
-    <aside className="w-72 bg-bg-secondary border-l border-white/5 flex flex-col shrink-0">
+    <aside className="w-72 bg-bg-secondary border-l border-hub-border flex flex-col shrink-0">
       {/* Alerts Panel */}
       <div className="flex-1 overflow-auto">
         <div className="p-4 border-b border-white/5">

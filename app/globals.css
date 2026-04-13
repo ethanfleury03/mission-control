@@ -3,19 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #111118;
-  --bg-tertiary: #1a1a24;
-  --bg-hover: #252532;
-  
+  --bg-primary: #070b12;
+  --bg-secondary: #0d121c;
+  --bg-tertiary: #141b2a;
+  --bg-hover: #1c2638;
+
+  --hub-border: rgba(34, 211, 238, 0.14);
+  --hub-radial: rgba(34, 211, 238, 0.06);
+
   --accent-cyan: #22d3ee;
   --accent-cyan-glow: rgba(34, 211, 238, 0.3);
   --accent-green: #22c55e;
   --accent-yellow: #eab308;
   --accent-red: #ef4444;
   --accent-purple: #a855f7;
-  
-  --text-primary: #f8fafc;
+
+  --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
 }
@@ -30,9 +33,30 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  background: var(--bg-primary);
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% -20%, var(--hub-radial), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(34, 211, 238, 0.04), transparent 45%),
+    linear-gradient(180deg, var(--bg-primary) 0%, #050810 100%);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Arrow Systems Inc hub shell */
+.hub-shell {
+  background-image:
+    linear-gradient(180deg, rgba(13, 18, 28, 0.97) 0%, rgba(7, 11, 18, 0.99) 100%),
+    radial-gradient(ellipse 100% 60% at 50% 0%, var(--hub-radial), transparent 50%);
+}
+
+.hub-header-bar {
+  box-shadow: 0 1px 0 var(--hub-border), 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.hub-sidebar-accent {
+  box-shadow: inset -1px 0 0 var(--hub-border);
+  background: linear-gradient(180deg, rgba(13, 18, 28, 0.98) 0%, rgba(10, 14, 22, 0.99) 100%);
 }
 
 /* Custom scrollbar */

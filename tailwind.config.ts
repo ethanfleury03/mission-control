@@ -8,11 +8,15 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        hub: {
+          border: 'rgba(34, 211, 238, 0.12)',
+          glow: 'rgba(34, 211, 238, 0.08)',
+        },
         bg: {
-          primary: '#0a0a0f',
-          secondary: '#111118',
-          tertiary: '#1a1a24',
-          hover: '#252532',
+          primary: '#070b12',
+          secondary: '#0d121c',
+          tertiary: '#141b2a',
+          hover: '#1c2638',
         },
         accent: {
           cyan: '#22d3ee',

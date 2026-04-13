@@ -4,7 +4,7 @@ import { Plus, Terminal } from 'lucide-react';
 
 export function BottomBar() {
   return (
-    <footer className="h-12 bg-bg-secondary border-t border-white/5 flex items-center px-4 gap-4 shrink-0">
+    <footer className="h-12 bg-bg-secondary border-t border-hub-border flex items-center px-4 gap-4 shrink-0 hub-header-bar">
       {/* New Task Button */}
       <button className="flex items-center gap-2 px-3 py-1.5 bg-accent-cyan/10 text-accent-cyan rounded-md border border-accent-cyan/20 hover:bg-accent-cyan/20 transition-colors">
         <Plus className="w-4 h-4" />
@@ -24,6 +24,10 @@ export function BottomBar() {
 
       {/* Stats */}
       <div className="flex items-center gap-4 text-xs text-text-muted">
+        <span className="text-2xs uppercase tracking-wider text-accent-cyan/80 hidden sm:inline">
+          Arrow Systems Inc
+        </span>
+        <span className="text-text-secondary hidden sm:inline">·</span>
         <span>6 active</span>
         <span className="text-text-secondary">·</span>
         <span>38 tasks</span>

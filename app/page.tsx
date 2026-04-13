@@ -8,9 +8,9 @@ import { RightSidebar } from './components/RightSidebar';
 import { BottomBar } from './components/BottomBar';
 import { KanbanBoard } from './components/KanbanBoard';
 import { AgentOffice } from './components/AgentOffice';
-import { MapTab } from './components/MapTab';
 import { BlogsTab } from './components/BlogsTab';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
+import type { HubAppId } from './lib/hubApps';
 
 const EMPTY_METRICS: SystemMetrics = {
   activeSessions: 0,
@@ -28,7 +28,7 @@ const EMPTY_METRICS: SystemMetrics = {
 };
 
 export default function MissionControl() {
-  const [activeTab, setActiveTab] = useState('OVERVIEW');
+  const [activeApp, setActiveApp] = useState<HubAppId>('OVERVIEW');
   const [mounted, setMounted] = useState(false);
 
   const [metrics, setMetrics] = useState<SystemMetrics>(EMPTY_METRICS);
@@ -88,19 +88,22 @@ export default function MissionControl() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
-      <Header activeTab={activeTab} onTabChange={setActiveTab} />
+    <div className="h-screen flex flex-col bg-bg-primary overflow-hidden hub-shell">
+      <Header activeApp={activeApp} />
 
-      <div className="flex-1 flex overflow-hidden">
-        {activeTab !== 'MAP' && activeTab !== 'AGENTS' && activeTab !== 'BLOGS' && <LeftSidebar agents={agents} sessions={sessions} />}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        <LeftSidebar
+          activeApp={activeApp}
+          onAppChange={setActiveApp}
+          agents={agents}
+          sessions={sessions}
+        />
 
-        {activeTab === 'MAP' ? (
-          <MapTab />
-        ) : activeTab === 'KANBAN' ? (
+        {activeApp === 'KANBAN' ? (
           <KanbanBoard />
-        ) : activeTab === 'BLOGS' ? (
+        ) : activeApp === 'BLOGS' ? (
           <BlogsTab />
-        ) : activeTab === 'AGENTS' ? (
+        ) : activeApp === 'AGENTS' ? (
           <AgentOffice />
         ) : (
           <MainContent
@@ -111,9 +114,7 @@ export default function MissionControl() {
           />
         )}
 
-        {activeTab !== 'KANBAN' && activeTab !== 'MAP' && activeTab !== 'AGENTS' && activeTab !== 'BLOGS' && (
-          <RightSidebar alerts={alerts} crons={crons} />
-        )}
+        {activeApp === 'OVERVIEW' && <RightSidebar alerts={alerts} crons={crons} />}
       </div>
 
       <BottomBar />
