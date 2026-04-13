@@ -3,11 +3,20 @@
  * Implemented with Prisma (SQLite via DATABASE_URL today; same schema works on Postgres).
  */
 import type { PrismaClient } from '@prisma/client';
-import type { ScrapeJob, ScrapeJobInput, CompanyResult, LogEntry, JobSummary, ContactInfo } from './types';
+import type { ScrapeJob, ScrapeJobInput, CompanyResult, LogEntry, JobSummary, ContactInfo, JobMeta } from './types';
+
+export interface GetJobSnapshotOptions {
+  resultsOffset?: number;
+  resultsLimit?: number;
+  logsLimit?: number;
+}
 
 export interface DirectoryScraperPersistence {
   createJob(input: ScrapeJobInput): Promise<ScrapeJob>;
+  /** Full job with all results and logs (export, tests, retry bootstrap). */
   getJob(id: string): Promise<ScrapeJob | null>;
+  /** Poll-friendly: paged results + recent logs only. */
+  getJobSnapshot(id: string, options?: GetJobSnapshotOptions): Promise<ScrapeJob | null>;
   listJobs(limit?: number): Promise<ScrapeJob[]>;
   updateJobStatus(
     id: string,
@@ -15,8 +24,8 @@ export interface DirectoryScraperPersistence {
     patch?: { startedAt?: Date | null; finishedAt?: Date | null },
   ): Promise<void>;
   deleteJob(id: string): Promise<boolean>;
-  /** Set job back to running and clear finishedAt (retry after completed/failed). */
   resumeJob(id: string): Promise<void>;
+  patchMeta(id: string, patch: Partial<JobMeta>): Promise<void>;
   addLog(id: string, level: LogEntry['level'], message: string): Promise<void>;
   setResults(id: string, results: CompanyResult[]): Promise<void>;
   updateResult(id: string, companyId: string, patch: Partial<CompanyResult>): Promise<void>;
@@ -29,6 +38,10 @@ function emptySummary(): JobSummary {
   return { companiesFound: 0, companiesProcessed: 0, emailsFound: 0, phonesFound: 0, failures: 0 };
 }
 
+function emptyMeta(): JobMeta {
+  return {};
+}
+
 function parseInput(json: string): ScrapeJobInput {
   return JSON.parse(json) as ScrapeJobInput;
 }
@@ -38,6 +51,15 @@ function parseSummary(json: string): JobSummary {
     return JSON.parse(json) as JobSummary;
   } catch {
     return emptySummary();
+  }
+}
+
+function parseMeta(json: string | null | undefined): JobMeta {
+  if (!json) return emptyMeta();
+  try {
+    return JSON.parse(json) as JobMeta;
+  } catch {
+    return emptyMeta();
   }
 }
 
@@ -58,12 +80,15 @@ function resultFromRow(r: {
   error: string | null;
   rawContactJson: string | null;
   needsReview: boolean;
+  sortOrder: number;
 }): CompanyResult {
   let rawContact: ContactInfo | undefined;
   if (r.rawContactJson) {
     try {
       rawContact = JSON.parse(r.rawContactJson) as ContactInfo;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return {
     id: r.id,
@@ -82,35 +107,77 @@ function resultFromRow(r: {
     error: r.error ?? undefined,
     rawContact,
     needsReview: r.needsReview,
+    sortOrder: r.sortOrder,
   };
 }
 
 type ResultRow = Parameters<typeof resultFromRow>[0];
 
-function toJob(row: {
+type JobRowBase = {
   id: string;
   status: string;
   inputJson: string;
   startedAt: Date | null;
   finishedAt: Date | null;
   summaryJson: string;
-  results: ResultRow[];
-  logs: { timestamp: Date; level: string; message: string }[];
-}): ScrapeJob {
-  return {
+  metaJson?: string | null;
+};
+
+function buildScrapeJob(
+  row: JobRowBase,
+  results: CompanyResult[],
+  logs: LogEntry[],
+  pagination?: { total: number; offset: number; limit: number },
+): ScrapeJob {
+  const job: ScrapeJob = {
     id: row.id,
     status: row.status as ScrapeJob['status'],
     input: parseInput(row.inputJson),
     startedAt: row.startedAt?.toISOString() ?? null,
     finishedAt: row.finishedAt?.toISOString() ?? null,
     summary: parseSummary(row.summaryJson),
-    results: row.results.map(resultFromRow),
-    logs: row.logs.map((l) => ({
-      timestamp: l.timestamp.toISOString(),
-      level: l.level as LogEntry['level'],
-      message: l.message,
-    })),
+    meta: parseMeta(row.metaJson),
+    results,
+    logs,
   };
+  if (pagination && (pagination.total > results.length || pagination.offset > 0)) {
+    job.resultsTruncated = true;
+    job.resultsTotal = pagination.total;
+    job.resultsOffset = pagination.offset;
+    job.resultsLimit = pagination.limit;
+  }
+  return job;
+}
+
+const TEXT_FIELDS: (keyof CompanyResult)[] = [
+  'companyName',
+  'directoryListingUrl',
+  'companyWebsite',
+  'contactName',
+  'email',
+  'phone',
+  'address',
+  'contactPageUrl',
+  'socialLinks',
+  'notes',
+];
+
+function mergeDoneRow(existing: ResultRow, patch: Partial<CompanyResult>): Partial<CompanyResult> {
+  const out = { ...patch };
+  const wasDone = existing.status === 'done';
+  const willBeDone = patch.status === undefined || patch.status === 'done';
+  if (!wasDone || !willBeDone) return out;
+
+  for (const key of TEXT_FIELDS) {
+    if (key in out) {
+      const nextVal = out[key];
+      const prevVal = existing[key as keyof ResultRow];
+      if (typeof nextVal === 'string' && nextVal.trim() === '' && typeof prevVal === 'string' && prevVal.trim() !== '') {
+        delete out[key];
+      }
+    }
+  }
+  return out;
 }
 
 export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperPersistence {
@@ -121,18 +188,10 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
           status: 'queued',
           inputJson: JSON.stringify(input),
           summaryJson: JSON.stringify(emptySummary()),
+          metaJson: JSON.stringify(emptyMeta()),
         },
       });
-      return {
-        id: job.id,
-        status: 'queued',
-        input,
-        startedAt: null,
-        finishedAt: null,
-        summary: emptySummary(),
-        results: [],
-        logs: [],
-      };
+      return buildScrapeJob(job, [], []);
     },
 
     async getJob(id) {
@@ -144,19 +203,80 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
         },
       });
       if (!row) return null;
-      return toJob(row);
+      const { results, logs, ...base } = row;
+      return buildScrapeJob(
+        base,
+        results.map(resultFromRow),
+        logs.map((l) => ({
+          timestamp: l.timestamp.toISOString(),
+          level: l.level as LogEntry['level'],
+          message: l.message,
+        })),
+      );
+    },
+
+    async getJobSnapshot(id, options) {
+      const row = await prisma.directoryScrapeJob.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          status: true,
+          inputJson: true,
+          startedAt: true,
+          finishedAt: true,
+          summaryJson: true,
+          metaJson: true,
+        },
+      });
+      if (!row) return null;
+
+      const total = await prisma.directoryScrapeResult.count({ where: { jobId: id } });
+      const offset = Math.max(0, options?.resultsOffset ?? 0);
+      const defaultLimit = 150;
+      const limit = Math.min(500, Math.max(1, options?.resultsLimit ?? defaultLimit));
+
+      const resultRows = await prisma.directoryScrapeResult.findMany({
+        where: { jobId: id },
+        orderBy: { sortOrder: 'asc' },
+        skip: offset,
+        take: limit,
+      });
+
+      const logTake = Math.min(200, Math.max(20, options?.logsLimit ?? 80));
+      const logRowsDesc = await prisma.directoryScrapeLog.findMany({
+        where: { jobId: id },
+        orderBy: { timestamp: 'desc' },
+        take: logTake,
+      });
+      const logRows = [...logRowsDesc].reverse();
+
+      return buildScrapeJob(
+        row,
+        resultRows.map(resultFromRow),
+        logRows.map((l) => ({
+          timestamp: l.timestamp.toISOString(),
+          level: l.level as LogEntry['level'],
+          message: l.message,
+        })),
+        { total, offset, limit },
+      );
     },
 
     async listJobs(limit = 100) {
       const rows = await prisma.directoryScrapeJob.findMany({
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: {
-          results: { orderBy: { sortOrder: 'asc' } },
-          logs: { orderBy: { timestamp: 'asc' } },
+        select: {
+          id: true,
+          status: true,
+          inputJson: true,
+          startedAt: true,
+          finishedAt: true,
+          summaryJson: true,
+          metaJson: true,
         },
       });
-      return rows.map(toJob);
+      return rows.map((r) => buildScrapeJob(r, [], []));
     },
 
     async updateJobStatus(id, status, patch) {
@@ -178,6 +298,18 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
         data.finishedAt = new Date();
       }
       await prisma.directoryScrapeJob.update({ where: { id }, data });
+
+      if (status === 'completed' || status === 'cancelled' || status === 'failed') {
+        const updated = await prisma.directoryScrapeJob.findUnique({ where: { id } });
+        if (updated?.startedAt && updated.finishedAt) {
+          const durationMs = updated.finishedAt.getTime() - updated.startedAt.getTime();
+          const meta = parseMeta(updated.metaJson);
+          await prisma.directoryScrapeJob.update({
+            where: { id },
+            data: { metaJson: JSON.stringify({ ...meta, durationMs }) },
+          });
+        }
+      }
     },
 
     async deleteJob(id) {
@@ -193,6 +325,17 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
       await prisma.directoryScrapeJob.update({
         where: { id },
         data: { status: 'running', finishedAt: null },
+      });
+    },
+
+    async patchMeta(id, patch) {
+      const job = await prisma.directoryScrapeJob.findUnique({ where: { id } });
+      if (!job) return;
+      const cur = parseMeta(job.metaJson);
+      const next = { ...cur, ...patch };
+      await prisma.directoryScrapeJob.update({
+        where: { id },
+        data: { metaJson: JSON.stringify(next) },
       });
     },
 
@@ -240,22 +383,30 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
     },
 
     async updateResult(id, companyId, patch) {
+      const existing = await prisma.directoryScrapeResult.findFirst({
+        where: { jobId: id, id: companyId },
+      });
+      if (!existing) return;
+
+      const mergedPatch = mergeDoneRow(existing, patch);
       const data: Record<string, unknown> = {};
-      if (patch.companyName !== undefined) data.companyName = patch.companyName;
-      if (patch.directoryListingUrl !== undefined) data.directoryListingUrl = patch.directoryListingUrl;
-      if (patch.companyWebsite !== undefined) data.companyWebsite = patch.companyWebsite;
-      if (patch.contactName !== undefined) data.contactName = patch.contactName;
-      if (patch.email !== undefined) data.email = patch.email;
-      if (patch.phone !== undefined) data.phone = patch.phone;
-      if (patch.address !== undefined) data.address = patch.address;
-      if (patch.contactPageUrl !== undefined) data.contactPageUrl = patch.contactPageUrl;
-      if (patch.socialLinks !== undefined) data.socialLinks = patch.socialLinks;
-      if (patch.notes !== undefined) data.notes = patch.notes;
-      if (patch.confidence !== undefined) data.confidence = patch.confidence;
-      if (patch.status !== undefined) data.status = patch.status;
-      if (patch.error !== undefined) data.error = patch.error ?? null;
-      if (patch.rawContact !== undefined) data.rawContactJson = patch.rawContact ? JSON.stringify(patch.rawContact) : null;
-      if (patch.needsReview !== undefined) data.needsReview = patch.needsReview;
+      if (mergedPatch.companyName !== undefined) data.companyName = mergedPatch.companyName;
+      if (mergedPatch.directoryListingUrl !== undefined) data.directoryListingUrl = mergedPatch.directoryListingUrl;
+      if (mergedPatch.companyWebsite !== undefined) data.companyWebsite = mergedPatch.companyWebsite;
+      if (mergedPatch.contactName !== undefined) data.contactName = mergedPatch.contactName;
+      if (mergedPatch.email !== undefined) data.email = mergedPatch.email;
+      if (mergedPatch.phone !== undefined) data.phone = mergedPatch.phone;
+      if (mergedPatch.address !== undefined) data.address = mergedPatch.address;
+      if (mergedPatch.contactPageUrl !== undefined) data.contactPageUrl = mergedPatch.contactPageUrl;
+      if (mergedPatch.socialLinks !== undefined) data.socialLinks = mergedPatch.socialLinks;
+      if (mergedPatch.notes !== undefined) data.notes = mergedPatch.notes;
+      if (mergedPatch.confidence !== undefined) data.confidence = mergedPatch.confidence;
+      if (mergedPatch.status !== undefined) data.status = mergedPatch.status;
+      if (mergedPatch.error !== undefined) data.error = mergedPatch.error ?? null;
+      if (mergedPatch.rawContact !== undefined) {
+        data.rawContactJson = mergedPatch.rawContact ? JSON.stringify(mergedPatch.rawContact) : null;
+      }
+      if (mergedPatch.needsReview !== undefined) data.needsReview = mergedPatch.needsReview;
 
       await prisma.directoryScrapeResult.updateMany({
         where: { jobId: id, id: companyId },
@@ -290,9 +441,9 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
       });
     },
 
-    async isJobCancelled(id) {
+    async isJobCancelled(jobId) {
       const row = await prisma.directoryScrapeJob.findUnique({
-        where: { id },
+        where: { id: jobId },
         select: { status: true },
       });
       return row?.status === 'cancelled';

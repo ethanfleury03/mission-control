@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { createPrismaPersistence } from './persistence';
-import type { ScrapeJob, ScrapeJobInput, CompanyResult, LogEntry, JobSummary } from './types';
+import type { ScrapeJob, ScrapeJobInput, CompanyResult, LogEntry, JobSummary, JobMeta } from './types';
 
 const persistence = createPrismaPersistence(prisma);
 
@@ -10,6 +10,14 @@ export async function createJob(input: ScrapeJobInput) {
 
 export async function getJob(id: string) {
   const j = await persistence.getJob(id);
+  return j ?? undefined;
+}
+
+export async function getJobSnapshot(
+  id: string,
+  options?: { resultsOffset?: number; resultsLimit?: number; logsLimit?: number },
+) {
+  const j = await persistence.getJobSnapshot(id, options);
   return j ?? undefined;
 }
 
@@ -56,4 +64,8 @@ export async function deleteJob(id: string) {
 
 export async function resumeJob(id: string) {
   await persistence.resumeJob(id);
+}
+
+export async function patchJobMeta(id: string, patch: Partial<JobMeta>) {
+  await persistence.patchMeta(id, patch);
 }

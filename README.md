@@ -8,8 +8,19 @@ cd mission-control && docker-compose up -d
 
 # Or run just the dev version
 npm install
+cp .env.example .env   # set DATABASE_URL (see .env.example)
+npx prisma migrate deploy   # or: npm run db:migrate (dev)
 npm run dev
 ```
+
+### Directory Scraper — how to try it
+
+1. **Mock mode (no Playwright):** open **Directory Scraper** in the hub sidebar, enable **Mock mode**, click **Start scrape**. You should see sample rows, filters, and CSV export without a real URL.
+2. **Live scrape:** install Chromium once with `npx playwright install chromium`, then disable mock mode and enter a public `https://` directory URL. Localhost and private IPs are rejected (`URL_BLOCKED`).
+3. **Tests:** `DATABASE_URL="file:./prisma/vitest-directory-scraper.db" npm test`
+4. **API:** `POST /api/directory-scraper/jobs` with JSON body; poll `GET /api/directory-scraper/jobs/:id` (paged by default) or `GET ...?full=1` for the full result set.
+
+**Migrations:** The first directory-scraper migration file creates **only** `directory_scrape_*` tables (org chart tables live in the same Prisma schema but are not recreated by that migration). If your dev DB was created from an older migration that mixed org + scraper DDL, you may see a Prisma checksum warning — use `prisma migrate resolve` or reset the dev database. Job metadata uses `metaJson` on `directory_scrape_jobs` (see migration `20260414120000_directory_job_meta` if present, or `prisma db push`).
 
 ## Components
 

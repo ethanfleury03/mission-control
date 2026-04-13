@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createJob, getAllJobs } from '@/lib/directory-scraper/job-store';
 import { runScrapeJob } from '@/lib/directory-scraper/scrape-directory';
 import type { ScrapeJobInput } from '@/lib/directory-scraper/types';
+import { validateScrapeUrl } from '@/lib/directory-scraper/validate-scrape-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,17 @@ export async function POST(request: NextRequest) {
 
     if (!input.url && !input.mockMode) {
       return NextResponse.json({ error: 'URL is required (or enable mock mode)' }, { status: 400 });
+    }
+
+    if (!input.mockMode && input.url) {
+      const v = validateScrapeUrl(input.url);
+      if (!v.ok) {
+        return NextResponse.json(
+          { error: v.error ?? 'URL not allowed', code: 'URL_BLOCKED' },
+          { status: 400 },
+        );
+      }
+      if (v.normalizedUrl) input.url = v.normalizedUrl;
     }
 
     const job = await createJob(input);

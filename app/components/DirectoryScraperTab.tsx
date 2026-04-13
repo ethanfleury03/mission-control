@@ -23,11 +23,32 @@ import {
   Filter,
   ChevronRight,
   Flag,
+  Copy,
+  ClipboardCheck,
 } from 'lucide-react';
 
 import type { ScrapeJob, CompanyResult, ConfidenceScore, LogEntry } from '@/lib/directory-scraper/types';
 
 const API = '/api/directory-scraper';
+const POLL_PAGE_SIZE = 150;
+
+function mergePollSnapshot(prev: ScrapeJob | null, snap: ScrapeJob): ScrapeJob {
+  if (!snap.resultsTruncated) return snap;
+  const map = new Map<string, CompanyResult>();
+  if (prev?.results?.length) {
+    for (const r of prev.results) map.set(r.id, r);
+  }
+  for (const r of snap.results) map.set(r.id, { ...map.get(r.id), ...r });
+  const merged = Array.from(map.values()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  return {
+    ...snap,
+    results: merged,
+    resultsTruncated: (snap.resultsTotal ?? merged.length) > merged.length,
+    resultsTotal: snap.resultsTotal,
+    resultsOffset: 0,
+    resultsLimit: snap.resultsLimit,
+  };
+}
 
 type StatusFilter = 'all' | 'done' | 'failed' | 'pending';
 type FieldFilter = 'all' | 'needs_review' | 'no_email' | 'no_phone' | 'no_website';
@@ -43,6 +64,7 @@ export function DirectoryScraperTab() {
   const [sheetsConfigured, setSheetsConfigured] = useState(false);
   const [sheetsHint, setSheetsHint] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportInfo, setExportInfo] = useState<string | null>(null);
 
   const [job, setJob] = useState<ScrapeJob | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -55,6 +77,8 @@ export function DirectoryScraperTab() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const jobRef = useRef<ScrapeJob | null>(null);
+  jobRef.current = job;
 
   // Check sheets availability
   useEffect(() => {
@@ -69,18 +93,28 @@ export function DirectoryScraperTab() {
 
   const pollJob = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${API}/jobs/${id}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data: ScrapeJob = await res.json();
+      const res = await fetch(
+        `${API}/jobs/${id}?resultsLimit=${POLL_PAGE_SIZE}&resultsOffset=0`,
+        { cache: 'no-store' },
+      );
+      if (!res.ok) return;
+      let data: ScrapeJob = await res.json();
+
+      if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+        const fullRes = await fetch(`${API}/jobs/${id}?full=1`, { cache: 'no-store' });
+        if (fullRes.ok) data = await fullRes.json();
         setJob(data);
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
         }
+        return;
       }
-    } catch { /* poll failure is ok */ }
+
+      setJob((prev) => mergePollSnapshot(prev, data));
+    } catch {
+      /* poll failure is ok */
+    }
   }, []);
 
   useEffect(() => {
@@ -113,12 +147,13 @@ export function DirectoryScraperTab() {
         return;
       }
       const data: ScrapeJob = await res.json();
-      setJob(data);
+      setJob({ ...data, meta: data.meta ?? {} });
       setStatusFilter('all');
       setFieldFilter('all');
       setSearchQuery('');
       setExpandedRowId(null);
       setExportError(null);
+      setExportInfo(null);
       pollRef.current = setInterval(() => pollJob(data.id), 1500);
     } catch (err: any) {
       alert(err?.message || 'Network error');
@@ -143,6 +178,7 @@ export function DirectoryScraperTab() {
     setJob(null);
     setExpandedRowId(null);
     setExportError(null);
+    setExportInfo(null);
   };
 
   const retryFailed = async () => {
@@ -167,6 +203,7 @@ export function DirectoryScraperTab() {
     if (!job) return;
     setExportLoading(true);
     setExportError(null);
+    setExportInfo(null);
     try {
       const res = await fetch(`${API}/jobs/${job.id}/export`, {
         method: 'POST',
@@ -183,6 +220,8 @@ export function DirectoryScraperTab() {
       a.href = URL.createObjectURL(blob);
       a.download = `scrape-${job.id.slice(0, 8)}.csv`;
       a.click();
+      const fullRes = await fetch(`${API}/jobs/${job.id}?full=1`, { cache: 'no-store' });
+      if (fullRes.ok) setJob(await fullRes.json());
     } finally {
       setExportLoading(false);
     }
@@ -192,6 +231,7 @@ export function DirectoryScraperTab() {
     if (!job) return;
     setExportLoading(true);
     setExportError(null);
+    setExportInfo(null);
     try {
       const sid = sheetId || job.input.googleSheetId;
       if (!sid) {
@@ -209,6 +249,9 @@ export function DirectoryScraperTab() {
         return;
       }
       window.open(data.url, '_blank');
+      if (data.duplicateWarning) setExportInfo(data.duplicateWarning);
+      const fullRes = await fetch(`${API}/jobs/${job.id}?full=1`, { cache: 'no-store' });
+      if (fullRes.ok) setJob(await fullRes.json());
     } finally {
       setExportLoading(false);
     }
@@ -249,6 +292,14 @@ export function DirectoryScraperTab() {
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start justify-between gap-3">
             <span>{exportError}</span>
             <button type="button" className="text-red-600 hover:text-red-900 shrink-0" onClick={() => setExportError(null)} aria-label="Dismiss">
+              ×
+            </button>
+          </div>
+        )}
+        {exportInfo && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-3">
+            <span>{exportInfo}</span>
+            <button type="button" className="text-amber-700 hover:text-amber-950 shrink-0" onClick={() => setExportInfo(null)} aria-label="Dismiss">
               ×
             </button>
           </div>
@@ -424,18 +475,53 @@ export function DirectoryScraperTab() {
         {/* Progress panel */}
         {job && (
           <div className="bg-white rounded-lg border border-hub-border p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-neutral-900 flex items-center gap-2">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-sm font-semibold text-neutral-900 flex items-center gap-2 flex-wrap">
                 {isRunning ? <Loader2 className="w-4 h-4 text-brand animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-accent-green" />}
                 Job: {job.id.slice(0, 8)} — <StatusBadge status={job.status} />
+                {job.status === 'completed' && <span className="text-2xs px-2 py-0.5 rounded border border-green-200 bg-green-50 text-green-800">Completed</span>}
+                {job.status === 'cancelled' && <span className="text-2xs px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900">Cancelled</span>}
+                {(job.meta?.sheetsExportCount ?? 0) > 0 && (
+                  <span className="text-2xs px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1">
+                    <ClipboardCheck className="w-3 h-3" /> Sheets ×{job.meta.sheetsExportCount}
+                  </span>
+                )}
+                {(job.meta?.csvExportCount ?? 0) > 0 && (
+                  <span className="text-2xs px-2 py-0.5 rounded border border-neutral-200 bg-neutral-50 text-neutral-700">
+                    CSV ×{job.meta.csvExportCount}
+                  </span>
+                )}
               </h2>
               {job.startedAt && (
                 <span className="text-2xs text-neutral-500">
                   Started {new Date(job.startedAt).toLocaleTimeString()}
                   {job.finishedAt && ` — Finished ${new Date(job.finishedAt).toLocaleTimeString()}`}
+                  {job.meta?.durationMs != null && job.meta.durationMs >= 0 && (
+                    <> — Duration {(job.meta.durationMs / 1000).toFixed(1)}s</>
+                  )}
                 </span>
               )}
             </div>
+
+            {(job.meta?.lastProcessedCompanyName || job.meta?.lastError || job.meta?.sheetsExportNote) && (
+              <div className="mb-3 text-2xs text-neutral-600 space-y-1 border border-neutral-100 rounded-md p-3 bg-neutral-50/80">
+                {job.meta.lastProcessedCompanyName && isRunning && (
+                  <p>
+                    <span className="font-medium text-neutral-700">Last processed:</span> {job.meta.lastProcessedCompanyName}
+                  </p>
+                )}
+                {job.meta.lastError && (
+                  <p className="text-red-700">
+                    <span className="font-medium">Last error:</span> {job.meta.lastError}
+                  </p>
+                )}
+                {job.meta.sheetsExportNote && (
+                  <p className="text-neutral-700">
+                    <span className="font-medium">Export note:</span> {job.meta.sheetsExportNote}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Summary cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -483,12 +569,19 @@ export function DirectoryScraperTab() {
         )}
 
         {/* Results table */}
+        {job && job.results.length === 0 && isRunning && (
+          <div className="bg-white rounded-lg border border-hub-border p-8 text-center text-sm text-neutral-500">
+            <Loader2 className="w-8 h-8 animate-spin text-brand mx-auto mb-3" />
+            Extracting directory listings… Results will appear here shortly.
+          </div>
+        )}
         {job && job.results.length > 0 && (
           <div className="bg-white rounded-lg border border-hub-border shadow-sm overflow-hidden">
             {/* Table controls */}
             <div className="px-5 py-3 border-b border-neutral-100 flex items-center gap-3 flex-wrap">
               <h2 className="text-sm font-semibold text-neutral-900">
-                Results ({filteredResults.length})
+                Results ({filteredResults.length}
+                {job.resultsTruncated && job.resultsTotal != null ? ` of ${job.resultsTotal} loaded` : ''})
               </h2>
               <div className="relative w-64">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
@@ -575,7 +668,7 @@ export function DirectoryScraperTab() {
                   {filteredResults.length === 0 && (
                     <tr>
                       <td colSpan={10} className="px-4 py-8 text-center text-neutral-500">
-                        No results match the current filter.
+                        No rows match the current filters or search. Clear filters or try different keywords.
                       </td>
                     </tr>
                   )}
@@ -731,6 +824,27 @@ function ResultRow({
       {expanded && (
         <tr className="bg-neutral-50/80">
           <td colSpan={10} className="px-4 py-3 text-2xs text-neutral-700 border-b border-neutral-100">
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const t = [result.notes, result.error].filter(Boolean).join('\n\n');
+                  void navigator.clipboard.writeText(t || '—');
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 text-2xs rounded border border-neutral-200 bg-white hover:bg-neutral-50"
+              >
+                <Copy className="w-3 h-3" /> Copy notes &amp; error
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(JSON.stringify({ ...result, rawContact: result.rawContact }, null, 2));
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 text-2xs rounded border border-neutral-200 bg-white hover:bg-neutral-50"
+              >
+                <Copy className="w-3 h-3" /> Copy row JSON
+              </button>
+            </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <span className="font-semibold text-neutral-600">Notes</span>

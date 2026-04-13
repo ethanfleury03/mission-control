@@ -39,6 +39,8 @@ export interface CompanyResult {
   rawContact?: ContactInfo;
   /** True when confidence is low or contact info is incomplete — queue for human review */
   needsReview?: boolean;
+  /** Row order from directory extraction (for merging paged poll results) */
+  sortOrder?: number;
 }
 
 export interface JobSummary {
@@ -47,6 +49,22 @@ export interface JobSummary {
   emailsFound: number;
   phonesFound: number;
   failures: number;
+}
+
+/** Per-job observability + export bookkeeping (JSON in DB) */
+export interface JobMeta {
+  lastProcessedCompanyName?: string;
+  lastError?: string;
+  /** ISO timestamps */
+  lastSheetsExportAt?: string;
+  lastCsvExportAt?: string;
+  sheetsExportCount?: number;
+  csvExportCount?: number;
+  lastSheetsRowsAppended?: number;
+  /** User-facing note when re-export may duplicate rows */
+  sheetsExportNote?: string;
+  /** Wall-clock run time when job reaches a terminal state */
+  durationMs?: number;
 }
 
 export interface LogEntry {
@@ -62,8 +80,14 @@ export interface ScrapeJob {
   startedAt: string | null;
   finishedAt: string | null;
   summary: JobSummary;
+  meta: JobMeta;
   results: CompanyResult[];
   logs: LogEntry[];
+  /** Present when results omitted from payload (large job polling) */
+  resultsTruncated?: boolean;
+  resultsTotal?: number;
+  resultsOffset?: number;
+  resultsLimit?: number;
 }
 
 export interface DirectoryEntry {

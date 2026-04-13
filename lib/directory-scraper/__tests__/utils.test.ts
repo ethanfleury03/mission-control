@@ -153,7 +153,7 @@ describe('scoreResult', () => {
       companyWebsite: 'https://www.acme.com',
     });
     expect(r.score).toBe('high');
-    expect(r.reason).toContain('company domain');
+    expect(r.reason).toMatch(/company website|same domain/i);
   });
 
   it('medium when email and phone without listing flags', () => {

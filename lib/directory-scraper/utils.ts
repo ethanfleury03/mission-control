@@ -59,6 +59,11 @@ const GENERIC_LOCALPARTS = new Set([
   'customerservice',
   'media',
   'press',
+  'marketing',
+  'hr',
+  'jobs',
+  'careers',
+  'billing',
 ]);
 
 export function extractEmails(text: string, html?: string): string[] {
@@ -86,7 +91,7 @@ export function emailQualityScore(email: string, companyDomain?: string): number
   if (!domain) return 1000;
   let score = 100;
   if (GENERIC_LOCALPARTS.has(local.toLowerCase())) score += 40;
-  if (companyDomain && domain === companyDomain) score -= 80;
+  if (companyDomain && (domain === companyDomain || domain.endsWith('.' + companyDomain))) score -= 80;
   if (NOISE_EMAIL_DOMAINS.has(domain)) score += 500;
   return score;
 }
@@ -140,18 +145,28 @@ export function extractSocialLinksForCompany(urls: string[], companyDomain?: str
   if (!companyDomain || social.length === 0) return social;
 
   const companySlug = companyDomain.replace(/\.(com|co|io|net|org)$/i, '').split('.').pop() ?? companyDomain;
+  const slug = companySlug.toLowerCase();
+  const slugParts = slug.split(/[-_.]/).filter((p) => p.length >= 3);
 
   const scored = social.map((u) => {
     let score = 0;
     try {
       const path = new URL(u).pathname.toLowerCase();
-      if (path.includes(companySlug.toLowerCase())) score += 50;
+      if (path.includes(slug)) score += 50;
+      for (const part of slugParts) {
+        if (part.length >= 4 && path.includes(part)) score += 12;
+      }
       if (path.includes('/company/') || path.includes('/in/')) score += 5;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return { u, score };
   });
   scored.sort((a, b) => b.score - a.score);
-  return scored.map((s) => s.u);
+  const minScore = 8;
+  const filtered = scored.filter((s) => s.score >= minScore);
+  const list = (filtered.length ? filtered : scored.slice(0, 2)).map((s) => s.u);
+  return [...new Set(list)];
 }
 
 export function normalizeDomain(url: string): string {
@@ -203,7 +218,10 @@ export function normalizeUrl(raw: string, baseUrl?: string): string {
 export function emailMatchesCompanyDomain(email: string, companyDomain?: string): boolean {
   if (!companyDomain || !email) return false;
   const d = email.split('@')[1];
-  return !!d && d === companyDomain;
+  if (!d) return false;
+  if (d === companyDomain) return true;
+  if (d.endsWith('.' + companyDomain)) return true;
+  return false;
 }
 
 export function scoreResult(
@@ -226,42 +244,42 @@ export function scoreResult(
   if (hasEmail && hasPhone) {
     if (emailOnCompany) {
       score = 'high';
-      reasonParts.push('Email and phone; email on company domain');
+      reasonParts.push('Strong: email matches company website domain and phone is present');
     } else if (listingEmail && listingPhone) {
       score = 'high';
-      reasonParts.push('Email and phone on directory listing');
+      reasonParts.push('Strong: email and phone both seen on the directory listing');
     } else {
       score = 'medium';
-      reasonParts.push('Email and phone; verify email domain');
+      reasonParts.push('Review: have email and phone but email domain does not match company site — confirm before outreach');
     }
   } else if (hasEmail && emailOnCompany) {
     score = 'high';
-    reasonParts.push('Email on official company domain');
+    reasonParts.push('Strong: email address uses the same domain as the company website');
   } else if (hasEmail && listingEmail) {
     score = 'high';
-    reasonParts.push('Email found on directory/detail page');
+    reasonParts.push('Good: email taken from the directory or listing page');
   } else if (hasEmail) {
     score = 'medium';
-    reasonParts.push('Email found (generic or third-party domain — verify)');
+    reasonParts.push('Review: email found but it is generic or not on the company domain — verify it is the right contact');
   } else if (hasPhone && hasWebsite && !listingPhone) {
     score = 'medium';
-    reasonParts.push('Phone found on company site');
+    reasonParts.push('Partial: phone on the company site; no email yet');
   } else if (hasPhone && listingPhone) {
     score = 'medium';
-    reasonParts.push('Phone on listing');
+    reasonParts.push('Partial: phone on the listing; add email if possible');
   } else if (hasContactPage) {
     score = 'medium';
-    reasonParts.push('Contact page URL found; limited direct contact');
+    reasonParts.push('Partial: found a contact-style page URL; may need manual follow-up');
   } else if (hasSocial) {
     score = 'low';
-    reasonParts.push('Social profiles only');
+    reasonParts.push('Weak: only social profile links — no direct email or phone');
   } else {
     score = 'low';
-    reasonParts.push('No email, phone, or contact page detected');
+    reasonParts.push('Weak: no email, phone, or contact page detected');
   }
 
   if (!hasWebsite && (hasEmail || hasPhone)) {
-    reasonParts.push('No company website resolved');
+    reasonParts.push('Note: company website URL was not resolved');
   }
 
   const partial = !hasEmail || !hasPhone;

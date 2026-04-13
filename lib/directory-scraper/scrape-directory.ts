@@ -5,6 +5,7 @@ import { extractDirectoryEntries, type CancelSignal } from './extract-directory-
 import { enrichCompany } from './enrich-company';
 import { dedupeDirectoryEntries, sleep } from './utils';
 import { launchChromiumForScraper } from './playwright-launch';
+import { validateScrapeUrl } from './validate-scrape-url';
 import { v4 as uuid } from 'uuid';
 
 const CONCURRENCY = 2;
@@ -54,6 +55,15 @@ export async function runScrapeJob(jobId: string): Promise<void> {
     await store.recalcSummary(jobId);
     await store.addLog(jobId, 'info', `Mock data loaded: ${results.length} companies`);
     await store.updateJobStatus(jobId, 'completed');
+    await store.patchJobMeta(jobId, { lastError: undefined });
+    return;
+  }
+
+  const seedCheck = validateScrapeUrl(job.input.url);
+  if (!seedCheck.ok) {
+    await store.addLog(jobId, 'error', `Blocked URL: ${seedCheck.error}`);
+    await store.patchJobMeta(jobId, { lastError: seedCheck.error });
+    await store.updateJobStatus(jobId, 'failed');
     return;
   }
 
@@ -87,7 +97,11 @@ export async function runScrapeJob(jobId: string): Promise<void> {
         return;
       }
 
-      const deduped = dedupeDirectoryEntries(entries);
+      const deduped = dedupeDirectoryEntries(entries).filter((e) => {
+        const a = validateScrapeUrl(e.url);
+        const d = e.detailUrl ? validateScrapeUrl(e.detailUrl) : { ok: true as const };
+        return a.ok && d.ok;
+      });
       limited = job.input.maxCompanies ? deduped.slice(0, job.input.maxCompanies) : deduped;
 
       await store.addLog(jobId, 'info', `Found ${deduped.length} unique entries, processing ${limited.length}`);
@@ -147,6 +161,7 @@ export async function runScrapeJob(jobId: string): Promise<void> {
           }
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Unknown error';
+          await store.patchJobMeta(jobId, { lastError: `${row.companyName}: ${message}` });
           await store.updateResult(jobId, row.id, {
             status: 'failed',
             error: message,
@@ -158,6 +173,12 @@ export async function runScrapeJob(jobId: string): Promise<void> {
 
       await Promise.all(enrichPromises);
       await store.recalcSummary(jobId);
+      const lastInBatch = batch[batch.length - 1];
+      if (lastInBatch) {
+        await store.patchJobMeta(jobId, {
+          lastProcessedCompanyName: lastInBatch.companyName,
+        });
+      }
       await store.addLog(
         jobId,
         'info',
@@ -174,9 +195,11 @@ export async function runScrapeJob(jobId: string): Promise<void> {
     if (!(await Promise.resolve(cancelled()))) {
       await store.updateJobStatus(jobId, 'completed');
       await store.addLog(jobId, 'info', 'Scrape job completed');
+      await store.patchJobMeta(jobId, { lastError: undefined });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    await store.patchJobMeta(jobId, { lastError: message });
     await store.addLog(jobId, 'error', `Job failed: ${message}`);
     await store.updateJobStatus(jobId, 'failed');
   } finally {

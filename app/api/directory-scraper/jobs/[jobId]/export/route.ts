@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getJob } from '@/lib/directory-scraper/job-store';
+import { getJob, patchJobMeta } from '@/lib/directory-scraper/job-store';
 import { exportToCsv } from '@/lib/directory-scraper/export-csv';
 import { exportToGoogleSheets, isSheetsConfigured } from '@/lib/directory-scraper/export-sheets';
 
@@ -19,6 +19,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
 
   if (target === 'csv') {
     const csv = exportToCsv(job.results);
+    const prevCsv = job.meta?.csvExportCount ?? 0;
+    await patchJobMeta(jobId, {
+      lastCsvExportAt: new Date().toISOString(),
+      csvExportCount: prevCsv + 1,
+    });
     return new NextResponse(csv, {
       status: 200,
       headers: {
@@ -45,8 +50,19 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       return NextResponse.json({ error: 'Google Sheet ID required', code: 'MISSING_SHEET_ID' }, { status: 400 });
     }
     try {
+      const prevSheets = job.meta?.sheetsExportCount ?? 0;
       const result = await exportToGoogleSheets(job.results, sheetId, tabName);
-      return NextResponse.json(result);
+      const duplicateNote =
+        prevSheets > 0
+          ? `This was export #${prevSheets + 1} to Sheets for this job. Each export appends all ${job.results.length} rows again — you may have duplicates unless you clear the tab or use a new tab.`
+          : `Sheets export appends rows. Re-exporting the same job will duplicate rows in the tab.`;
+      await patchJobMeta(jobId, {
+        lastSheetsExportAt: new Date().toISOString(),
+        sheetsExportCount: prevSheets + 1,
+        lastSheetsRowsAppended: result.rowsWritten + (result.headersWritten ? 1 : 0),
+        sheetsExportNote: duplicateNote,
+      });
+      return NextResponse.json({ ...result, duplicateWarning: prevSheets > 0 ? duplicateNote : undefined });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Sheets export failed';
       return NextResponse.json(

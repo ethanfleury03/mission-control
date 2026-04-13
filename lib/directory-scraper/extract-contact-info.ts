@@ -9,6 +9,7 @@ import {
   sleep,
 } from './utils';
 import type { CancelSignal } from './extract-directory-entries';
+import { assertPublicHttpUrl } from './validate-scrape-url';
 
 const CONTACT_PATH_HINTS = ['/contact', '/about', '/team', '/sales', '/get-in-touch', '/reach-us', '/support'];
 
@@ -88,6 +89,7 @@ export async function extractContactFromSite(
   let merged: ContactInfo = { emails: [], phones: [], addresses: [], contactPageUrls: [], socialLinks: [] };
 
   try {
+    assertPublicHttpUrl(siteUrl, 'Company site');
     await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
     await sleep(500);
     merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
@@ -109,6 +111,7 @@ export async function extractContactFromSite(
   for (const link of contactLinks.slice(0, 3)) {
     if (await Promise.resolve(signal())) break;
     try {
+      assertPublicHttpUrl(link, 'Contact page');
       await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15_000 });
       await sleep(400);
       merged = mergeContacts(merged, await extractFromPage(page, companyDomain));

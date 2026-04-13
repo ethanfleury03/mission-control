@@ -104,6 +104,7 @@ model DirectoryScrapeJob {
   startedAt  DateTime?
   finishedAt DateTime?
   summaryJson String   // JobSummary JSON
+  metaJson   String    @default("{}") // JobMeta JSON (duration, last company, export counts)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
