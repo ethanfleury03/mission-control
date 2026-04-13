@@ -3,7 +3,16 @@
  * Implemented with Prisma (SQLite via DATABASE_URL today; same schema works on Postgres).
  */
 import type { PrismaClient } from '@prisma/client';
-import type { ScrapeJob, ScrapeJobInput, CompanyResult, LogEntry, JobSummary, ContactInfo, JobMeta } from './types';
+import type {
+  ScrapeJob,
+  ScrapeJobInput,
+  CompanyResult,
+  LogEntry,
+  JobSummary,
+  ContactInfo,
+  JobMeta,
+  NameExtractionMeta,
+} from './types';
 
 export interface GetJobSnapshotOptions {
   resultsOffset?: number;
@@ -79,6 +88,7 @@ function resultFromRow(r: {
   status: string;
   error: string | null;
   rawContactJson: string | null;
+  nameExtractionMetaJson: string | null;
   needsReview: boolean;
   sortOrder: number;
 }): CompanyResult {
@@ -86,6 +96,14 @@ function resultFromRow(r: {
   if (r.rawContactJson) {
     try {
       rawContact = JSON.parse(r.rawContactJson) as ContactInfo;
+    } catch {
+      /* ignore */
+    }
+  }
+  let nameExtractionMeta: NameExtractionMeta | undefined;
+  if (r.nameExtractionMetaJson) {
+    try {
+      nameExtractionMeta = JSON.parse(r.nameExtractionMetaJson) as NameExtractionMeta;
     } catch {
       /* ignore */
     }
@@ -108,6 +126,7 @@ function resultFromRow(r: {
     rawContact,
     needsReview: r.needsReview,
     sortOrder: r.sortOrder,
+    nameExtractionMeta,
   };
 }
 
@@ -161,6 +180,7 @@ const TEXT_FIELDS: (keyof CompanyResult)[] = [
   'socialLinks',
   'notes',
 ];
+/* nameExtractionMeta merged explicitly, not blank-stripped */
 
 function mergeDoneRow(existing: ResultRow, patch: Partial<CompanyResult>): Partial<CompanyResult> {
   const out = { ...patch };
@@ -368,6 +388,7 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
               status: r.status,
               error: r.error ?? null,
               rawContactJson: r.rawContact ? JSON.stringify(r.rawContact) : null,
+              nameExtractionMetaJson: r.nameExtractionMeta ? JSON.stringify(r.nameExtractionMeta) : null,
               needsReview: r.needsReview ?? false,
               sortOrder: idx,
             },
@@ -407,6 +428,11 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
         data.rawContactJson = mergedPatch.rawContact ? JSON.stringify(mergedPatch.rawContact) : null;
       }
       if (mergedPatch.needsReview !== undefined) data.needsReview = mergedPatch.needsReview;
+      if (mergedPatch.nameExtractionMeta !== undefined) {
+        data.nameExtractionMetaJson = mergedPatch.nameExtractionMeta
+          ? JSON.stringify(mergedPatch.nameExtractionMeta)
+          : null;
+      }
 
       await prisma.directoryScrapeResult.updateMany({
         where: { jobId: id, id: companyId },

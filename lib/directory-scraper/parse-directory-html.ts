@@ -1,6 +1,6 @@
 /**
  * Parse directory listing HTML without a browser (tests + deterministic extraction).
- * Mirrors the DOM strategies used in extract-directory-entries.ts.
+ * Legacy HTML fixture helper (older card+heading heuristics). Live scrape uses extract-company-names pipeline.
  */
 import * as cheerio from 'cheerio';
 import type { DirectoryEntry } from './types';

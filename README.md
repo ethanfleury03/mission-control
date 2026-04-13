@@ -16,11 +16,12 @@ npm run dev
 ### Directory Scraper — how to try it
 
 1. **Mock mode (no Playwright):** open **Directory Scraper** in the hub sidebar, enable **Mock mode**, click **Start scrape**. You should see sample rows, filters, and CSV export without a real URL.
-2. **Live scrape:** install Chromium once with `npx playwright install chromium`, then disable mock mode and enter a public `https://` directory URL. Localhost and private IPs are rejected (`URL_BLOCKED`).
-3. **Tests:** `DATABASE_URL="file:./prisma/vitest-directory-scraper.db" npm test`
-4. **API:** `POST /api/directory-scraper/jobs` with JSON body; poll `GET /api/directory-scraper/jobs/:id` (paged by default) or `GET ...?full=1` for the full result set.
+2. **Live scrape:** install Chromium once with `npx playwright install chromium`, then disable mock mode and enter a public `https://` directory URL. Localhost and private IPs are rejected (`URL_BLOCKED`). The scraper runs a **hybrid company-name pipeline** (JSON-LD, tables, repeated blocks, link lists, plain-text in scored regions, detail links), then optionally **visits company sites** if you check that box. Expand a row or open **Name extraction debug** for selectors and strategy counts.
+3. **Optional AI fallback:** set `OPENAI_API_KEY` and enable **AI fallback** in the UI. The model only **selects containers** or **classifies existing candidate strings** — it cannot invent names.
+4. **Tests:** `DATABASE_URL="file:./prisma/vitest-directory-scraper.db" npm test`
+5. **API:** `POST /api/directory-scraper/jobs` with JSON body (`enableAiNameFallback` optional); poll `GET /api/directory-scraper/jobs/:id` (paged by default) or `GET ...?full=1` for the full result set.
 
-**Migrations:** The first directory-scraper migration file creates **only** `directory_scrape_*` tables (org chart tables live in the same Prisma schema but are not recreated by that migration). If your dev DB was created from an older migration that mixed org + scraper DDL, you may see a Prisma checksum warning — use `prisma migrate resolve` or reset the dev database. Job metadata uses `metaJson` on `directory_scrape_jobs` (see migration `20260414120000_directory_job_meta` if present, or `prisma db push`).
+**Migrations:** The first directory-scraper migration file creates **only** `directory_scrape_*` tables (org chart tables live in the same Prisma schema but are not recreated by that migration). If your dev DB was created from an older migration that mixed org + scraper DDL, you may see a Prisma checksum warning — use `prisma migrate resolve` or reset the dev database. Job metadata uses `metaJson` on `directory_scrape_jobs` (see migration `20260414120000_directory_job_meta` if present, or `prisma db push`). Per-row name-extraction debug is stored in `nameExtractionMetaJson` on `directory_scrape_results` (migration `20260413170000_name_extraction_meta`).
 
 ## Components
 

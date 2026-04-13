@@ -2,7 +2,15 @@ import type { CompanyResult } from './types';
 
 const HEADERS = [
   'Company Name',
-  'Directory Listing URL',
+  'Normalized Name',
+  'Source URL',
+  'Listing URL',
+  'Detail URL',
+  'Extraction Method',
+  'Confidence',
+  'Needs Review',
+  'Source Selector',
+  'Notes',
   'Company Website',
   'Contact Name',
   'Email',
@@ -10,10 +18,7 @@ const HEADERS = [
   'Address',
   'Contact Page URL',
   'Social Links',
-  'Notes',
-  'Confidence',
   'Status',
-  'Needs Review',
 ];
 
 /** Excel-friendly CSV: UTF-8 BOM, CRLF, RFC 4180 quoting */
@@ -34,9 +39,20 @@ export function escapeField(value: string): string {
 }
 
 function resultToRow(r: CompanyResult): string[] {
+  const m = r.nameExtractionMeta;
+  const listing = m?.listingUrl ?? r.directoryListingUrl;
+  const detail = m?.detailUrl ?? '';
   return [
     r.companyName,
+    m?.normalizedName ?? '',
     r.directoryListingUrl,
+    listing,
+    detail,
+    m?.extractionMethod ?? '',
+    m?.confidenceLabel ?? r.confidence,
+    r.needsReview ? 'yes' : 'no',
+    m?.sourceSelector ?? '',
+    [m?.reasons?.join('; '), r.notes].filter(Boolean).join(' | ') || r.notes,
     r.companyWebsite,
     r.contactName,
     r.email,
@@ -44,10 +60,7 @@ function resultToRow(r: CompanyResult): string[] {
     r.address,
     r.contactPageUrl,
     r.socialLinks,
-    r.notes,
-    r.confidence,
     r.status,
-    r.needsReview ? 'yes' : 'no',
   ];
 }
 

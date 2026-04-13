@@ -38,7 +38,14 @@ function mergePollSnapshot(prev: ScrapeJob | null, snap: ScrapeJob): ScrapeJob {
   if (prev?.results?.length) {
     for (const r of prev.results) map.set(r.id, r);
   }
-  for (const r of snap.results) map.set(r.id, { ...map.get(r.id), ...r });
+  for (const r of snap.results) {
+    const prev = map.get(r.id);
+    map.set(r.id, {
+      ...prev,
+      ...r,
+      nameExtractionMeta: r.nameExtractionMeta ?? prev?.nameExtractionMeta,
+    });
+  }
   const merged = Array.from(map.values()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   return {
     ...snap,
@@ -51,12 +58,26 @@ function mergePollSnapshot(prev: ScrapeJob | null, snap: ScrapeJob): ScrapeJob {
 }
 
 type StatusFilter = 'all' | 'done' | 'failed' | 'pending';
-type FieldFilter = 'all' | 'needs_review' | 'no_email' | 'no_phone' | 'no_website';
+type FieldFilter =
+  | 'all'
+  | 'needs_review'
+  | 'no_email'
+  | 'no_phone'
+  | 'no_website'
+  | 'high_conf'
+  | 'method_jsonld'
+  | 'method_table'
+  | 'method_repeated'
+  | 'method_link'
+  | 'method_plain'
+  | 'method_detail'
+  | 'method_ai';
 
 export function DirectoryScraperTab() {
   const [url, setUrl] = useState('');
   const [maxCompanies, setMaxCompanies] = useState('');
-  const [visitWebsites, setVisitWebsites] = useState(true);
+  const [visitWebsites, setVisitWebsites] = useState(false);
+  const [enableAiFallback, setEnableAiFallback] = useState(false);
   const [mockMode, setMockMode] = useState(false);
   const [exportTarget, setExportTarget] = useState<'csv' | 'sheets'>('csv');
   const [sheetId, setSheetId] = useState('');
@@ -135,6 +156,7 @@ export function DirectoryScraperTab() {
           url: url.trim(),
           maxCompanies: maxCompanies ? Number(maxCompanies) : undefined,
           visitCompanyWebsites: visitWebsites,
+          enableAiNameFallback: enableAiFallback,
           exportTarget,
           googleSheetId: sheetId,
           googleSheetTab: sheetTab,
@@ -267,6 +289,16 @@ export function DirectoryScraperTab() {
     if (fieldFilter === 'no_email' && r.email) return false;
     if (fieldFilter === 'no_phone' && r.phone) return false;
     if (fieldFilter === 'no_website' && r.companyWebsite) return false;
+    if (fieldFilter === 'high_conf' && r.nameExtractionMeta?.confidenceLabel !== 'high' && r.confidence !== 'high')
+      return false;
+    const m = r.nameExtractionMeta?.extractionMethod;
+    if (fieldFilter === 'method_jsonld' && m !== 'jsonld') return false;
+    if (fieldFilter === 'method_table' && m !== 'table') return false;
+    if (fieldFilter === 'method_repeated' && m !== 'repeated-block') return false;
+    if (fieldFilter === 'method_link' && m !== 'link-list') return false;
+    if (fieldFilter === 'method_plain' && m !== 'plain-text') return false;
+    if (fieldFilter === 'method_detail' && m !== 'detail-link') return false;
+    if (fieldFilter === 'method_ai' && m !== 'ai-classified') return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
@@ -350,6 +382,16 @@ export function DirectoryScraperTab() {
                   className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
                 />
                 Visit company websites for enrichment
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableAiFallback}
+                  onChange={(e) => setEnableAiFallback(e.target.checked)}
+                  disabled={isRunning}
+                  className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
+                />
+                AI fallback (bounded; requires OPENAI_API_KEY)
               </label>
               <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
                 <input
@@ -446,7 +488,7 @@ export function DirectoryScraperTab() {
                 )}
               </>
             )}
-            {job && job.results.length > 0 && !isRunning && (
+            {job && !isRunning && (
               <>
                 <div className="flex-1" />
                 <button
@@ -502,6 +544,57 @@ export function DirectoryScraperTab() {
                 </span>
               )}
             </div>
+
+            {job.meta?.nameExtractionDebug && (
+              <details className="mb-3 text-2xs border border-neutral-200 rounded-md bg-white">
+                <summary className="cursor-pointer px-3 py-2 font-medium text-neutral-800 bg-neutral-50">
+                  Name extraction debug
+                  {job.meta.nameExtractionDebug.aiFallbackUsed && (
+                    <span className="ml-2 text-violet-700">· AI used</span>
+                  )}
+                </summary>
+                <div className="px-3 py-2 space-y-2 text-neutral-700 border-t border-neutral-100">
+                  <p>
+                    <span className="font-medium">Final URL:</span> {job.meta.nameExtractionDebug.finalUrl}
+                  </p>
+                  {job.meta.nameExtractionDebug.pageTitle && (
+                    <p>
+                      <span className="font-medium">Title:</span> {job.meta.nameExtractionDebug.pageTitle}
+                    </p>
+                  )}
+                  <p>
+                    <span className="font-medium">Strategies (raw counts):</span>{' '}
+                    {Object.entries(job.meta.nameExtractionDebug.strategyCounts || {})
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(' · ') || '—'}
+                  </p>
+                  <p>
+                    <span className="font-medium">Iframes scanned:</span> {job.meta.nameExtractionDebug.iframeCount ?? 0}{' '}
+                    · <span className="font-medium">Load-more clicks:</span>{' '}
+                    {job.meta.nameExtractionDebug.loadMoreClicks ?? 0}
+                  </p>
+                  {job.meta.nameExtractionDebug.zeroResultExplanation && (
+                    <p className="text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                      <span className="font-medium">Zero rows:</span> {job.meta.nameExtractionDebug.zeroResultExplanation}
+                    </p>
+                  )}
+                  {job.meta.nameExtractionDebug.topContainers?.length > 0 && (
+                    <div>
+                      <span className="font-medium block mb-1">Top containers</span>
+                      <ul className="list-disc pl-4 space-y-1 max-h-32 overflow-auto">
+                        {job.meta.nameExtractionDebug.topContainers.map((c, i) => (
+                          <li key={i}>
+                            <span className="font-mono text-2xs">{c.selectorPath}</span> (score {c.score}, links{' '}
+                            {c.linkCount})
+                            {c.keywordHits?.length ? ` · ${c.keywordHits.slice(0, 3).join(', ')}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
 
             {(job.meta?.lastProcessedCompanyName || job.meta?.lastError || job.meta?.sheetsExportNote) && (
               <div className="mb-3 text-2xs text-neutral-600 space-y-1 border border-neutral-100 rounded-md p-3 bg-neutral-50/80">
@@ -572,7 +665,21 @@ export function DirectoryScraperTab() {
         {job && job.results.length === 0 && isRunning && (
           <div className="bg-white rounded-lg border border-hub-border p-8 text-center text-sm text-neutral-500">
             <Loader2 className="w-8 h-8 animate-spin text-brand mx-auto mb-3" />
-            Extracting directory listings… Results will appear here shortly.
+            Extracting company names… Results will appear here shortly.
+          </div>
+        )}
+        {job && job.results.length === 0 && !isRunning && job.status === 'completed' && (
+          <div className="bg-white rounded-lg border border-amber-200 p-6 text-sm text-neutral-700">
+            <p className="font-medium text-amber-900 mb-2">No company names extracted</p>
+            <p className="text-neutral-600 mb-2">
+              Open <span className="font-medium">Name extraction debug</span> above for strategy counts and likely causes
+              (containers, JS-only content, filters).
+            </p>
+            {job.meta?.nameExtractionDebug?.zeroResultExplanation && (
+              <p className="text-2xs text-amber-900 bg-amber-50 border border-amber-100 rounded px-2 py-2">
+                {job.meta.nameExtractionDebug.zeroResultExplanation}
+              </p>
+            )}
           </div>
         )}
         {job && job.results.length > 0 && (
@@ -616,7 +723,15 @@ export function DirectoryScraperTab() {
                 {(
                   [
                     ['all', 'All'],
+                    ['high_conf', 'High conf'],
                     ['needs_review', 'Needs review'],
+                    ['method_jsonld', 'JSON-LD'],
+                    ['method_table', 'Table'],
+                    ['method_repeated', 'Blocks'],
+                    ['method_link', 'Links'],
+                    ['method_plain', 'Plain'],
+                    ['method_detail', 'Detail URL'],
+                    ['method_ai', 'AI'],
                     ['no_email', 'No email'],
                     ['no_phone', 'No phone'],
                     ['no_website', 'No website'],
@@ -651,6 +766,7 @@ export function DirectoryScraperTab() {
                     <th className="px-4 py-2.5 font-medium">Phone</th>
                     <th className="px-4 py-2.5 font-medium">Address</th>
                     <th className="px-4 py-2.5 font-medium">Social</th>
+                    <th className="px-4 py-2.5 font-medium">Method</th>
                     <th className="px-4 py-2.5 font-medium">Confidence</th>
                     <th className="px-4 py-2.5 font-medium">Status</th>
                     <th className="px-4 py-2.5 font-medium">Notes</th>
@@ -667,7 +783,7 @@ export function DirectoryScraperTab() {
                   ))}
                   {filteredResults.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-neutral-500">
+                      <td colSpan={11} className="px-4 py-8 text-center text-neutral-500">
                         No rows match the current filters or search. Clear filters or try different keywords.
                       </td>
                     </tr>
@@ -815,6 +931,11 @@ function ResultRow({
           <span className="truncate block text-2xs text-neutral-600" title={result.socialLinks}>{result.socialLinks}</span>
         ) : <span className="text-neutral-400">—</span>}
       </td>
+      <td className="px-4 py-2.5 max-w-[100px]">
+        <span className="text-2xs text-neutral-600 font-mono truncate block" title={result.nameExtractionMeta?.extractionMethod}>
+          {result.nameExtractionMeta?.extractionMethod ?? '—'}
+        </span>
+      </td>
       <td className="px-4 py-2.5"><ConfidenceBadge score={result.confidence} /></td>
       <td className="px-4 py-2.5"><StatusBadge status={result.status} /></td>
       <td className="px-4 py-2.5 max-w-[180px]">
@@ -823,7 +944,7 @@ function ResultRow({
     </tr>
       {expanded && (
         <tr className="bg-neutral-50/80">
-          <td colSpan={10} className="px-4 py-3 text-2xs text-neutral-700 border-b border-neutral-100">
+          <td colSpan={11} className="px-4 py-3 text-2xs text-neutral-700 border-b border-neutral-100">
             <div className="flex flex-wrap gap-2 mb-2">
               <button
                 type="button"
@@ -846,6 +967,26 @@ function ResultRow({
               </button>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
+              {result.nameExtractionMeta && (
+                <div className="sm:col-span-2">
+                  <span className="font-semibold text-neutral-600">Name extraction</span>
+                  <dl className="mt-1 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-2xs">
+                    <dt className="text-neutral-500">Source text</dt>
+                    <dd className="font-mono break-all">{result.nameExtractionMeta.sourceText ?? '—'}</dd>
+                    <dt className="text-neutral-500">Selector</dt>
+                    <dd className="font-mono break-all">{result.nameExtractionMeta.sourceSelector ?? '—'}</dd>
+                    <dt className="text-neutral-500">Container</dt>
+                    <dd className="font-mono break-all">{result.nameExtractionMeta.containerSelector ?? '—'}</dd>
+                    <dt className="text-neutral-500">Score / method</dt>
+                    <dd>
+                      {result.nameExtractionMeta.confidenceScore} · {result.nameExtractionMeta.extractionMethod}
+                      {result.nameExtractionMeta.aiRefined ? ' · AI refined' : ''}
+                    </dd>
+                    <dt className="text-neutral-500">Reasons</dt>
+                    <dd>{result.nameExtractionMeta.reasons?.join('; ') || '—'}</dd>
+                  </dl>
+                </div>
+              )}
               <div>
                 <span className="font-semibold text-neutral-600">Notes</span>
                 <p className="mt-1 whitespace-pre-wrap">{result.notes || '—'}</p>

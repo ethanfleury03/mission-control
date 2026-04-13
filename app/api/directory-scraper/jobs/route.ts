@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       url: body.url ?? '',
       maxCompanies: body.maxCompanies ? Number(body.maxCompanies) : undefined,
       visitCompanyWebsites: !!body.visitCompanyWebsites,
+      enableAiNameFallback: !!body.enableAiNameFallback,
       exportTarget: body.exportTarget ?? 'csv',
       googleSheetId: body.googleSheetId ?? '',
       googleSheetTab: body.googleSheetTab ?? '',

@@ -3,10 +3,81 @@ export type CompanyStatus = 'pending' | 'scraping' | 'enriching' | 'done' | 'fai
 export type ConfidenceScore = 'high' | 'medium' | 'low';
 export type ExportTarget = 'csv' | 'sheets';
 
+/** Extraction method for company name (deterministic + optional AI classification) */
+export type NameExtractionMethod =
+  | 'jsonld'
+  | 'microdata'
+  | 'table'
+  | 'repeated-block'
+  | 'link-list'
+  | 'plain-text'
+  | 'detail-link'
+  | 'ai-classified';
+
+/** Raw candidate before final merge / dedupe */
+export interface ExtractedCompanyCandidate {
+  name: string;
+  normalizedName: string;
+  sourceUrl: string;
+  sourceSelector?: string;
+  sourceText?: string;
+  containerSelector?: string;
+  containerScore?: number;
+  method: NameExtractionMethod;
+  confidence: number;
+  reasons: string[];
+  listingUrl?: string;
+  detailUrl?: string;
+  companyWebsiteHint?: string;
+}
+
+/** Persisted per-row name extraction audit trail */
+export interface NameExtractionMeta {
+  normalizedName: string;
+  extractionMethod: NameExtractionMethod;
+  confidenceScore: number;
+  confidenceLabel: ConfidenceScore;
+  sourceSelector?: string;
+  sourceText?: string;
+  containerSelector?: string;
+  containerScore?: number;
+  reasons: string[];
+  listingUrl?: string;
+  detailUrl?: string;
+  /** True if AI was used only to classify/filter existing candidates */
+  aiRefined?: boolean;
+}
+
+/** Job-level debug from hybrid name pipeline */
+export interface NameExtractionDebugSummary {
+  sourceUrl: string;
+  finalUrl: string;
+  pageTitle?: string;
+  zeroResultExplanation?: string;
+  topContainers: Array<{
+    selectorPath: string;
+    tagName: string;
+    classIdSummary: string;
+    textLength: number;
+    linkCount: number;
+    repeatedChildSummary: string;
+    keywordHits: string[];
+    score: number;
+    scoreReasons: string[];
+  }>;
+  strategyCounts: Partial<Record<NameExtractionMethod, number>>;
+  aiFallbackUsed: boolean;
+  aiFallbackReason?: string;
+  iframeCount?: number;
+  loadMoreClicks?: number;
+}
+
 export interface ScrapeJobInput {
   url: string;
   maxCompanies?: number;
   visitCompanyWebsites?: boolean;
+  /** When true, run optional AI fallback (requires OPENAI_API_KEY). Default false. */
+  enableAiNameFallback?: boolean;
   exportTarget?: ExportTarget;
   googleSheetId?: string;
   googleSheetTab?: string;
@@ -41,6 +112,8 @@ export interface CompanyResult {
   needsReview?: boolean;
   /** Row order from directory extraction (for merging paged poll results) */
   sortOrder?: number;
+  /** Name pipeline debug (selectors, method, scores) */
+  nameExtractionMeta?: NameExtractionMeta;
 }
 
 export interface JobSummary {
@@ -65,6 +138,8 @@ export interface JobMeta {
   sheetsExportNote?: string;
   /** Wall-clock run time when job reaches a terminal state */
   durationMs?: number;
+  /** Latest name-extraction pipeline diagnostics */
+  nameExtractionDebug?: NameExtractionDebugSummary;
 }
 
 export interface LogEntry {

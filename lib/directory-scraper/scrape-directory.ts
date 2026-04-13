@@ -1,12 +1,14 @@
 import type { Browser } from 'playwright';
 import type { CompanyResult, DirectoryEntry } from './types';
 import * as store from './job-store';
-import { extractDirectoryEntries, type CancelSignal } from './extract-directory-entries';
 import { enrichCompany } from './enrich-company';
-import { dedupeDirectoryEntries, sleep } from './utils';
+import { sleep } from './utils';
 import { launchChromiumForScraper } from './playwright-launch';
 import { validateScrapeUrl } from './validate-scrape-url';
 import { v4 as uuid } from 'uuid';
+import { extractCompanyNamesFromPage } from './extract-company-names';
+import { candidateToCompanyResult } from './name-result-mapper';
+import type { CancelSignal } from './extract-directory-entries';
 
 const CONCURRENCY = 2;
 const DELAY_BETWEEN_COMPANIES_MS = 1200;
@@ -23,7 +25,7 @@ function mockResults(): CompanyResult[] {
     { name: 'Oscorp', website: 'https://oscorp.example.com', email: '', phone: '' },
   ];
 
-  return companies.map((c) => ({
+  return companies.map((c, i) => ({
     id: uuid(),
     companyName: c.name,
     directoryListingUrl: `https://directory.example.com/company/${c.name.toLowerCase().replace(/\s+/g, '-')}`,
@@ -38,6 +40,15 @@ function mockResults(): CompanyResult[] {
     confidence: c.email && c.phone ? 'high' : c.email || c.phone ? 'medium' : 'low',
     status: 'done',
     needsReview: !(c.email && c.phone),
+    sortOrder: i,
+    nameExtractionMeta: {
+      normalizedName: c.name.toLowerCase(),
+      extractionMethod: 'jsonld',
+      confidenceScore: 90,
+      confidenceLabel: 'high',
+      reasons: ['mock data'],
+      sourceText: c.name,
+    },
   }));
 }
 
@@ -62,7 +73,17 @@ export async function runScrapeJob(jobId: string): Promise<void> {
   const seedCheck = validateScrapeUrl(job.input.url);
   if (!seedCheck.ok) {
     await store.addLog(jobId, 'error', `Blocked URL: ${seedCheck.error}`);
-    await store.patchJobMeta(jobId, { lastError: seedCheck.error });
+    await store.patchJobMeta(jobId, {
+      lastError: seedCheck.error,
+      nameExtractionDebug: {
+        sourceUrl: job.input.url,
+        finalUrl: job.input.url,
+        zeroResultExplanation: `URL blocked: ${seedCheck.error}`,
+        topContainers: [],
+        strategyCounts: {},
+        aiFallbackUsed: false,
+      },
+    });
     await store.updateJobStatus(jobId, 'failed');
     return;
   }
@@ -84,54 +105,57 @@ export async function runScrapeJob(jobId: string): Promise<void> {
     const pendingRows = job.results.filter((r) => r.status === 'pending');
     const isResume = pendingRows.length > 0 && job.results.length > 0;
 
-    let limited: DirectoryEntry[] = [];
-
     if (isResume) {
       await store.addLog(jobId, 'info', `Resuming job: ${pendingRows.length} pending rows`);
     } else {
-      await store.addLog(jobId, 'info', 'Phase 1: Extracting directory entries...');
-      const entries = await extractDirectoryEntries(page, job.input.url, cancelled, job.input.maxCompanies);
+      await store.addLog(jobId, 'info', 'Phase 1: Hybrid company-name extraction...');
+      const { candidates, debug } = await extractCompanyNamesFromPage(page, {
+        sourceUrl: job.input.url,
+        maxCompanies: job.input.maxCompanies,
+        enableAiFallback: job.input.enableAiNameFallback ?? false,
+        cancelled,
+      });
 
       if (await Promise.resolve(cancelled())) {
-        await store.addLog(jobId, 'warn', 'Job cancelled during directory extraction');
+        await store.addLog(jobId, 'warn', 'Job cancelled during name extraction');
         return;
       }
 
-      const deduped = dedupeDirectoryEntries(entries).filter((e) => {
-        const a = validateScrapeUrl(e.url);
-        const d = e.detailUrl ? validateScrapeUrl(e.detailUrl) : { ok: true as const };
-        return a.ok && d.ok;
-      });
-      limited = job.input.maxCompanies ? deduped.slice(0, job.input.maxCompanies) : deduped;
+      await store.patchJobMeta(jobId, { nameExtractionDebug: debug });
 
-      await store.addLog(jobId, 'info', `Found ${deduped.length} unique entries, processing ${limited.length}`);
-      await store.updateSummary(jobId, { companiesFound: limited.length });
+      if (debug.zeroResultExplanation) {
+        await store.addLog(jobId, 'warn', debug.zeroResultExplanation);
+      }
 
-      const initialResults: CompanyResult[] = limited.map((entry) => ({
-        id: uuid(),
-        companyName: entry.name,
-        directoryListingUrl: entry.url,
-        companyWebsite: '',
-        contactName: '',
-        email: '',
-        phone: '',
-        address: '',
-        contactPageUrl: '',
-        socialLinks: '',
-        notes: '',
-        confidence: 'low',
-        status: 'pending',
-        needsReview: false,
-      }));
+      const strategyLog = Object.entries(debug.strategyCounts)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(', ');
+      await store.addLog(
+        jobId,
+        'info',
+        `Extracted ${candidates.length} company name(s). Strategies: ${strategyLog || 'none'}. AI: ${debug.aiFallbackUsed ? 'yes' : 'no'}`,
+      );
+
+      const visitWebsites = job.input.visitCompanyWebsites ?? false;
+      const initialResults: CompanyResult[] = candidates.map((c, i) =>
+        candidateToCompanyResult(c, i, { visitWebsites }),
+      );
+
+      await store.updateSummary(jobId, { companiesFound: initialResults.length });
       await store.setResults(jobId, initialResults);
+
+      if (candidates.length === 0) {
+        await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
+      }
     }
 
     const visitWebsites = job.input.visitCompanyWebsites ?? false;
-
     const refreshed = await store.getJob(jobId);
-    const rowsToProcess = (refreshed?.results ?? []).filter((r) => r.status === 'pending');
+    const rowsToProcess = visitWebsites ? (refreshed?.results ?? []).filter((r) => r.status === 'pending') : [];
 
-    await store.addLog(jobId, 'info', `Phase 2: Enriching ${rowsToProcess.length} companies...`);
+    if (rowsToProcess.length > 0) {
+      await store.addLog(jobId, 'info', `Phase 2: Enriching ${rowsToProcess.length} companies...`);
+    }
 
     for (let i = 0; i < rowsToProcess.length; i += CONCURRENCY) {
       if (await Promise.resolve(cancelled())) {
@@ -140,11 +164,11 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       }
 
       const batch = rowsToProcess.slice(i, i + CONCURRENCY);
-      const enrichPromises = batch.map(async (row, batchIdx) => {
+      const enrichPromises = batch.map(async (row) => {
         const entry: DirectoryEntry = {
           name: row.companyName,
           url: row.directoryListingUrl,
-          detailUrl: row.directoryListingUrl,
+          detailUrl: row.nameExtractionMeta?.detailUrl || row.directoryListingUrl,
         };
         await store.updateResult(jobId, row.id, { status: 'scraping' });
 
@@ -155,6 +179,7 @@ export async function runScrapeJob(jobId: string): Promise<void> {
             await store.updateResult(jobId, row.id, {
               ...result,
               id: row.id,
+              nameExtractionMeta: row.nameExtractionMeta,
             });
           } finally {
             await enrichPage.close();
@@ -167,6 +192,7 @@ export async function runScrapeJob(jobId: string): Promise<void> {
             error: message,
             notes: `Enrichment failed: ${message}`,
             needsReview: true,
+            nameExtractionMeta: row.nameExtractionMeta,
           });
         }
       });

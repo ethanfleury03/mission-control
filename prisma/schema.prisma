@@ -134,6 +134,7 @@ model DirectoryScrapeResult {
   status              String   // pending | scraping | enriching | done | failed
   error               String?
   rawContactJson      String?  // ContactInfo JSON
+  nameExtractionMetaJson String? // Name-extraction pipeline debug JSON
   needsReview         Boolean  @default(false)
   sortOrder           Int      @default(0)
 
