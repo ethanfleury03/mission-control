@@ -6,7 +6,7 @@ import {
   Bot,
 } from 'lucide-react';
 
-export type HubAppId = 'OVERVIEW' | 'KANBAN' | 'BLOGS' | 'AGENTS';
+export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS';
 
 export interface HubApp {
   id: HubAppId;
@@ -17,9 +17,9 @@ export interface HubApp {
 
 export const HUB_APPS: HubApp[] = [
   {
-    id: 'OVERVIEW',
-    label: 'Overview',
-    description: 'Ops metrics and activity',
+    id: 'OPENCLAW',
+    label: 'OpenClaw',
+    description: 'Live OpenClaw stats & runtime',
     icon: LayoutDashboard,
   },
   {

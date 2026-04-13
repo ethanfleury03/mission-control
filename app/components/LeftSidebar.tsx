@@ -14,7 +14,7 @@ interface LeftSidebarProps {
 }
 
 export function LeftSidebar({ activeApp, onAppChange, agents, sessions }: LeftSidebarProps) {
-  const showOpsPanel = activeApp === 'OVERVIEW';
+  const showOpsPanel = activeApp === 'OPENCLAW';
 
   return (
     <aside className="w-64 border-r border-white/10 flex flex-col shrink-0 hub-sidebar-accent text-zinc-100">
@@ -65,12 +65,12 @@ export function LeftSidebar({ activeApp, onAppChange, agents, sessions }: LeftSi
         </nav>
       </div>
 
-      {showOpsPanel && <OpsOverviewPanel agents={agents} sessions={sessions} />}
+      {showOpsPanel && <OpenClawOpsPanel agents={agents} sessions={sessions} />}
 
       {!showOpsPanel && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 text-center">
           <p className="text-xs text-zinc-500 leading-relaxed">
-            Select <span className="text-zinc-300">Overview</span> for live agent and session snapshots
+            Select <span className="text-zinc-300">OpenClaw</span> for live agent and session stats
             alongside the main dashboard.
           </p>
         </div>
@@ -79,7 +79,7 @@ export function LeftSidebar({ activeApp, onAppChange, agents, sessions }: LeftSi
   );
 }
 
-function OpsOverviewPanel({ agents, sessions }: { agents: Agent[]; sessions: Session[] }) {
+function OpenClawOpsPanel({ agents, sessions }: { agents: Agent[]; sessions: Session[] }) {
   const activeAgents = agents.filter((a) => a.status === 'active');
   const idleAgents = agents.filter((a) => a.status === 'idle');
   const totalTokens = agents.reduce((sum, a) => sum + a.tokensUsed, 0);
@@ -88,7 +88,7 @@ function OpsOverviewPanel({ agents, sessions }: { agents: Agent[]; sessions: Ses
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div className="p-4 border-b border-white/10 shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Live ops</span>
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">OpenClaw live</span>
           <span className="text-xs text-zinc-500">
             {agents.filter((a) => a.status === 'active').length}/{agents.length}
           </span>

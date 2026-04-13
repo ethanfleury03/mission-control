@@ -34,7 +34,7 @@ export function MainContent({ metrics, tasks, sessions }: MainContentProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent-cyan" />
-          <span className="text-sm font-medium text-text-primary">Operational Overview</span>
+          <span className="text-sm font-medium text-text-primary">OpenClaw stats</span>
         </div>
         <div className="flex items-center gap-4 text-2xs text-text-muted">
           <span>Last activity: {lastActivityLabel}</span>

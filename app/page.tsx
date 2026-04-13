@@ -28,7 +28,7 @@ const EMPTY_METRICS: SystemMetrics = {
 };
 
 export default function ArrowHub() {
-  const [activeApp, setActiveApp] = useState<HubAppId>('OVERVIEW');
+  const [activeApp, setActiveApp] = useState<HubAppId>('OPENCLAW');
   const [mounted, setMounted] = useState(false);
 
   const [metrics, setMetrics] = useState<SystemMetrics>(EMPTY_METRICS);
@@ -39,7 +39,7 @@ export default function ArrowHub() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [crons, setCrons] = useState<CronJob[]>([]);
 
-  const refreshOverviewData = useCallback(async () => {
+  const refreshOpenClawData = useCallback(async () => {
     try {
       const [
         metricsRes,
@@ -67,7 +67,7 @@ export default function ArrowHub() {
       if (alertsRes.ok) setAlerts(await alertsRes.json());
       if (cronsRes.ok) setCrons(await cronsRes.json());
     } catch (err) {
-      console.error('Overview refresh failed', err);
+      console.error('OpenClaw stats refresh failed', err);
     }
   }, []);
 
@@ -78,10 +78,10 @@ export default function ArrowHub() {
   useEffect(() => {
     if (!mounted) return;
 
-    refreshOverviewData();
-    const id = setInterval(refreshOverviewData, 15000);
+    refreshOpenClawData();
+    const id = setInterval(refreshOpenClawData, 15000);
     return () => clearInterval(id);
-  }, [mounted, refreshOverviewData]);
+  }, [mounted, refreshOpenClawData]);
 
   if (!mounted) {
     return <div className="h-screen flex flex-col bg-bg-primary" />;
@@ -114,7 +114,7 @@ export default function ArrowHub() {
           />
         )}
 
-        {activeApp === 'OVERVIEW' && <RightSidebar alerts={alerts} crons={crons} />}
+        {activeApp === 'OPENCLAW' && <RightSidebar alerts={alerts} crons={crons} />}
       </div>
 
       <BottomBar />
