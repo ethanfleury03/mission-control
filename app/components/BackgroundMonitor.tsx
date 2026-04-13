@@ -115,7 +115,7 @@ export function BackgroundMonitor({
         }}>
           <div className="w-full h-full bg-[#0a0a0f] rounded-lg p-2 border border-[#334155]/50 relative overflow-hidden">
             {/* Scan line effect */}
-            <div className="absolute inset-0 h-1 bg-gradient-to-r from-transparent via-[#22d3ee]/40 to-transparent" 
+            <div className="absolute inset-0 h-1 bg-gradient-to-r from-transparent via-[#C41E3A]/40 to-transparent" 
                  style={{ animation: 'scan-line 4s linear infinite' }} />
             
             <div className="flex items-end justify-between h-full gap-1.5">
@@ -130,12 +130,12 @@ export function BackgroundMonitor({
                       'linear-gradient(180deg, #f59e0b 0%, #f59e0bbb 100%)',
                       'linear-gradient(180deg, #eab308 0%, #eab308bb 100%)',
                       'linear-gradient(180deg, #22c55e 0%, #22c55ebb 100%)',
-                      'linear-gradient(180deg, #06b6d4 0%, #06b6d4bb 100%)',
+                      'linear-gradient(180deg, #9B1930 0%, #06b6d4bb 100%)',
                       'linear-gradient(180deg, #3b82f6 0%, #3b82f6bb 100%)',
                       'linear-gradient(180deg, #8b5cf6 0%, #8b5cf6bb 100%)',
                       'linear-gradient(180deg, #ec4899 0%, #ec4899bb 100%)',
                     ][idx],
-                    boxShadow: `0 -2px 8px ${['#ef4444', '#f59e0b', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'][idx]}88, 0 0 4px ${['#ef4444', '#f59e0b', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'][idx]}66`
+                    boxShadow: `0 -2px 8px ${['#ef4444', '#f59e0b', '#eab308', '#22c55e', '#9B1930', '#3b82f6', '#8b5cf6', '#ec4899'][idx]}88, 0 0 4px ${['#ef4444', '#f59e0b', '#eab308', '#22c55e', '#9B1930', '#3b82f6', '#8b5cf6', '#ec4899'][idx]}66`
                   }} 
                 />
               ))}
@@ -215,7 +215,7 @@ export function BackgroundMonitor({
             {[
               '#3b82f6', '#60a5fa', '#93c5fd',
               '#8b5cf6', '#a78bfa', '#c4b5fd',
-              '#06b6d4', '#22d3ee', '#67e8f9'
+              '#9B1930', '#C41E3A', '#E85A70'
             ].map((color, idx) => (
               <div 
                 key={idx} 
@@ -249,7 +249,7 @@ export function BackgroundMonitor({
                   style={{
                     width,
                     background: [
-                      'linear-gradient(to right, #22d3ee40, #22d3ee60, #22d3ee20)',
+                      'linear-gradient(to right, rgba(196,30,58,0.25), rgba(196,30,58,0.38), rgba(196,30,58,0.13))',
                       'linear-gradient(to right, #22c55e40, #22c55e60, #22c55e20)',
                       'linear-gradient(to right, #eab30840, #eab30860, #eab30820)'
                     ][idx]

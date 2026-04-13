@@ -8,22 +8,33 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        brand: {
+          DEFAULT: '#C41E3A',
+          hover: '#a01830',
+          muted: 'rgba(196, 30, 58, 0.12)',
+        },
         hub: {
-          border: 'rgba(34, 211, 238, 0.12)',
-          glow: 'rgba(34, 211, 238, 0.08)',
+          border: 'rgba(0, 0, 0, 0.08)',
+          glow: 'rgba(196, 30, 58, 0.12)',
         },
         bg: {
-          primary: '#070b12',
-          secondary: '#0d121c',
-          tertiary: '#141b2a',
-          hover: '#1c2638',
+          primary: '#f4f4f5',
+          secondary: '#ffffff',
+          tertiary: '#ebebec',
+          hover: '#e4e4e6',
+        },
+        text: {
+          primary: '#0a0a0a',
+          secondary: '#404040',
+          muted: '#737373',
         },
         accent: {
-          cyan: '#22d3ee',
-          green: '#22c55e',
-          yellow: '#eab308',
-          red: '#ef4444',
-          purple: '#a855f7',
+          // Primary interactive accent = Arrow Systems red (maps legacy `accent-cyan` usages to brand red)
+          cyan: '#C41E3A',
+          green: '#15803d',
+          yellow: '#a16207',
+          red: '#b91c1c',
+          purple: '#6b21a8',
         },
       },
       fontFamily: {
@@ -36,7 +47,7 @@ module.exports = {
       spacing: {
         'sidebar-left': '260px',
         'sidebar-right': '300px',
-        'header': '56px',
+        header: '56px',
         'bottom-bar': '48px',
       },
       animation: {
@@ -45,8 +56,8 @@ module.exports = {
       },
       keyframes: {
         'pulse-glow': {
-          '0%, 100%': { boxShadow: '0 0 5px rgba(34, 211, 238, 0.3)' },
-          '50%': { boxShadow: '0 0 20px rgba(34, 211, 238, 0.6)' },
+          '0%, 100%': { boxShadow: '0 0 5px rgba(196, 30, 58, 0.25)' },
+          '50%': { boxShadow: '0 0 20px rgba(196, 30, 58, 0.45)' },
         },
         'slide-in': {
           from: { opacity: '0', transform: 'translateX(-10px)' },
@@ -56,4 +67,4 @@ module.exports = {
     },
   },
   plugins: [],
-}
+};

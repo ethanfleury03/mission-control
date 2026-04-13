@@ -13,7 +13,7 @@ import { OrgNodeData } from '../../src/components/team/types';
 export const departmentColors: Record<string, string> = {
   Leadership: '#6366f1',
   Engineering: '#0ea5e9',
-  Marketing: '#22d3ee',
+  Marketing: '#C41E3A',
   Sales: '#8b5cf6',
   Operations: '#f59e0b',
   Design: '#ec4899',

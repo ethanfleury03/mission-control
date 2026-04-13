@@ -3,24 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #070b12;
-  --bg-secondary: #0d121c;
-  --bg-tertiary: #141b2a;
-  --bg-hover: #1c2638;
+  /* Arrow Systems — red, white, black, grey */
+  --brand: #c41e3a;
+  --brand-hover: #a01830;
+  --brand-soft: rgba(196, 30, 58, 0.12);
 
-  --hub-border: rgba(34, 211, 238, 0.14);
-  --hub-radial: rgba(34, 211, 238, 0.06);
+  --bg-primary: #f4f4f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #ebebec;
+  --bg-hover: #e4e4e6;
 
-  --accent-cyan: #22d3ee;
-  --accent-cyan-glow: rgba(34, 211, 238, 0.3);
-  --accent-green: #22c55e;
-  --accent-yellow: #eab308;
-  --accent-red: #ef4444;
-  --accent-purple: #a855f7;
+  --hub-border: rgba(0, 0, 0, 0.08);
+  --hub-radial: rgba(196, 30, 58, 0.06);
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --accent-cyan: #c41e3a;
+  --accent-cyan-glow: rgba(196, 30, 58, 0.35);
+  --accent-green: #15803d;
+  --accent-yellow: #a16207;
+  --accent-red: #b91c1c;
+  --accent-purple: #6b21a8;
+
+  --text-primary: #0a0a0a;
+  --text-secondary: #404040;
+  --text-muted: #737373;
 }
 
 * {
@@ -35,65 +40,62 @@ body {
   overflow-x: hidden;
   background-color: var(--bg-primary);
   background-image:
-    radial-gradient(ellipse 120% 80% at 50% -20%, var(--hub-radial), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(34, 211, 238, 0.04), transparent 45%),
-    linear-gradient(180deg, var(--bg-primary) 0%, #050810 100%);
+    radial-gradient(ellipse 120% 80% at 50% -30%, var(--hub-radial), transparent 55%),
+    linear-gradient(180deg, #fafafa 0%, var(--bg-primary) 100%);
   background-attachment: fixed;
   color: var(--text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-/* Arrow Systems Inc hub shell */
+/* Arrow Hub shell */
 .hub-shell {
-  background-image:
-    linear-gradient(180deg, rgba(13, 18, 28, 0.97) 0%, rgba(7, 11, 18, 0.99) 100%),
-    radial-gradient(ellipse 100% 60% at 50% 0%, var(--hub-radial), transparent 50%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, var(--bg-primary) 100%);
 }
 
 .hub-header-bar {
-  box-shadow: 0 1px 0 var(--hub-border), 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 0 var(--hub-border), 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .hub-sidebar-accent {
   box-shadow: inset -1px 0 0 var(--hub-border);
-  background: linear-gradient(180deg, rgba(13, 18, 28, 0.98) 0%, rgba(10, 14, 22, 0.99) 100%);
+  background: #0a0a0a;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar (light chrome) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-tertiary);
+  background: #c4c4c8;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #333340;
+  background: #a1a1a6;
 }
 
-/* Glow effects */
+/* Glow / brand emphasis */
 .glow-cyan {
-  box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+  box-shadow: 0 0 20px rgba(196, 30, 58, 0.2);
 }
 
 .text-glow-cyan {
-  text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+  text-shadow: 0 0 12px rgba(196, 30, 58, 0.35);
 }
 
-/* Animations */
 @keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 5px rgba(34, 211, 238, 0.3);
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(196, 30, 58, 0.25);
   }
   50% {
-    box-shadow: 0 0 20px rgba(34, 211, 238, 0.6);
+    box-shadow: 0 0 20px rgba(196, 30, 58, 0.45);
   }
 }
 
@@ -101,9 +103,9 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Gentle breathing glow for status lights */
 @keyframes pulse-glow-soft {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.6;
     box-shadow: 0 0 4px currentColor;
   }
@@ -117,9 +119,9 @@ body {
   animation: pulse-glow-soft 2s ease-in-out infinite;
 }
 
-/* Bar chart bars oscillating height */
 @keyframes bar-bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleY(1);
   }
   50% {
@@ -127,7 +129,6 @@ body {
   }
 }
 
-/* Horizontal scan line moving top-to-bottom */
 @keyframes scan-line {
   0% {
     transform: translateY(-100%);
@@ -145,7 +146,6 @@ body {
   }
 }
 
-/* SVG dash-offset animation for flowing lines */
 @keyframes data-stream {
   0% {
     stroke-dashoffset: 0;
@@ -155,7 +155,6 @@ body {
   }
 }
 
-/* Brief flash for task completion */
 @keyframes sparkle {
   0% {
     opacity: 0;
@@ -171,19 +170,20 @@ body {
   }
 }
 
-/* Blinking cursor for terminal monitors */
 @keyframes typing-cursor {
-  0%, 49% {
+  0%,
+  49% {
     opacity: 1;
   }
-  50%, 100% {
+  50%,
+  100% {
     opacity: 0;
   }
 }
 
-/* Improved floating particle animation */
 @keyframes float-drift {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0, 0);
     opacity: 0.1;
   }
@@ -201,9 +201,9 @@ body {
   }
 }
 
-/* Subtle spotlight intensity pulsing */
 @keyframes spotlight-breathe {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.15;
   }
   50% {
@@ -211,12 +211,13 @@ body {
   }
 }
 
-/* Monitor glitch flicker */
 @keyframes glitch-flicker {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
-  25%, 75% {
+  25%,
+  75% {
     opacity: 0.3;
   }
   50% {
@@ -224,7 +225,6 @@ body {
   }
 }
 
-/* Sparkle burst animation */
 @keyframes sparkle-burst {
   0% {
     transform: scale(0);
@@ -251,16 +251,16 @@ body {
   animation: slide-in 0.2s ease-out;
 }
 
-/* Utility classes */
 .card {
   background: var(--bg-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hub-border);
   border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .card-hover:hover {
   background: var(--bg-tertiary);
-  border-color: rgba(34, 211, 238, 0.2);
+  border-color: rgba(196, 30, 58, 0.22);
 }
 
 .status-dot {

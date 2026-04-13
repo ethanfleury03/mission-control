@@ -12,10 +12,10 @@ interface ConfirmationModalProps {
 export function ConfirmationModal({ result, onConfirm, onCancel }: ConfirmationModalProps) {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4">
-      <div className="bg-[#16161e] rounded-xl p-6 max-w-md w-full border-2 border-cyan-500 shadow-2xl">
+      <div className="bg-[#16161e] rounded-xl p-6 max-w-md w-full border-2 border-brand shadow-2xl">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-cyan-400" />
+          <div className="w-10 h-10 rounded-full bg-brand/20 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-brand" />
           </div>
           <h3 className="text-xl font-bold text-white">Confirm Changes</h3>
         </div>
@@ -27,7 +27,7 @@ export function ConfirmationModal({ result, onConfirm, onCancel }: ConfirmationM
             {result.changes.map((change, idx) => (
               <div key={idx} className="bg-[#0d0d12] rounded-lg p-3 border border-white/5">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400">
+                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-brand/20 text-brand">
                     {change.type.toUpperCase()}
                   </span>
                   <span className="text-sm text-white capitalize">{change.entity}</span>
@@ -63,7 +63,7 @@ export function ConfirmationModal({ result, onConfirm, onCancel }: ConfirmationM
         <div className="flex gap-3">
           <button
             onClick={onConfirm}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-white font-medium transition-colors flex items-center justify-center gap-2"
           >
             <Check className="w-4 h-4" />
             Confirm

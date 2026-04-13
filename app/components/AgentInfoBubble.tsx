@@ -102,14 +102,14 @@ export function AgentInfoBubble({ agent, teams = [], color, onClose, onUpdate }:
                 type="text"
                 value={editedAgent.name}
                 onChange={(e) => setEditedAgent({ ...editedAgent, name: e.target.value })}
-                className="w-full text-xl font-bold text-white mb-2 bg-white/5 border border-white/10 rounded px-2 py-1 outline-none focus:border-cyan-500/50"
+                className="w-full text-xl font-bold text-white mb-2 bg-white/5 border border-white/10 rounded px-2 py-1 outline-none focus:border-brand/50"
                 placeholder="Agent name"
               />
               <input
                 type="text"
                 value={editedAgent.model}
                 onChange={(e) => setEditedAgent({ ...editedAgent, model: e.target.value })}
-                className="w-full text-sm uppercase tracking-wider font-medium bg-white/5 border border-white/10 rounded px-2 py-1 outline-none focus:border-cyan-500/50"
+                className="w-full text-sm uppercase tracking-wider font-medium bg-white/5 border border-white/10 rounded px-2 py-1 outline-none focus:border-brand/50"
                 style={{ color }}
                 placeholder="Model"
               />
@@ -117,7 +117,7 @@ export function AgentInfoBubble({ agent, teams = [], color, onClose, onUpdate }:
                 <select
                   value={editedAgent.teamId}
                   onChange={(e) => setEditedAgent({ ...editedAgent, teamId: e.target.value })}
-                  className="w-full mt-2 text-sm bg-white/5 border border-white/10 rounded px-2 py-1.5 text-white outline-none focus:border-cyan-500/50"
+                  className="w-full mt-2 text-sm bg-white/5 border border-white/10 rounded px-2 py-1.5 text-white outline-none focus:border-brand/50"
                 >
                   {teams.map(team => (
                     <option key={team.id} value={team.id} className="bg-[#16161e]">

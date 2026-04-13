@@ -27,7 +27,7 @@ const EMPTY_METRICS: SystemMetrics = {
   tokensTotal: 0,
 };
 
-export default function MissionControl() {
+export default function ArrowHub() {
   const [activeApp, setActiveApp] = useState<HubAppId>('OVERVIEW');
   const [mounted, setMounted] = useState(false);
 

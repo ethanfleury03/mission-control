@@ -36,7 +36,7 @@ const STAGES = [
 type Stage = (typeof STAGES)[number];
 
 const stageColors: Record<Stage, string> = {
-  Intake: 'border-cyan-500/30',
+  Intake: 'border-brand/35',
   'Run ID creation': 'border-sky-500/30',
   'Content/preview generation': 'border-blue-500/30',
   'Schema validation': 'border-indigo-500/30',
@@ -338,7 +338,7 @@ export function BlogsTab() {
                   <p className="text-[11px] text-amber-300">Quality gate failed: {selectedQualityReasons.join(' • ') || 'revise required'}</p>
                 ) : null}
                 <div className="flex gap-2 flex-wrap">
-                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-cyan-500/30 text-cyan-300">{selected.metadata?.quality_gate === 'fail' ? 'Retry w/ Fixes' : 'Retry'}</button>
+                  <button disabled={savingId === selected.id} onClick={() => retryRun(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-brand/35 text-brand">{selected.metadata?.quality_gate === 'fail' ? 'Retry w/ Fixes' : 'Retry'}</button>
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-amber-500/30 text-amber-300">Revise</button>
                   <button disabled={savingId === selected.id} onClick={() => saveBlog(selected)} className="flex-1 min-w-[90px] px-2 py-1.5 text-xs rounded border border-purple-500/30 text-purple-300">Save Blog</button>
                   <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="flex-1 min-w-[120px] px-2 py-1.5 text-xs rounded border border-green-500/30 text-green-300 disabled:opacity-40">Approve + Finalize</button>
@@ -483,7 +483,7 @@ function Badge({ children, tone }: { children: ReactNode; tone: 'red' | 'green' 
     red: 'text-red-300 border-red-500/30 bg-red-500/10',
     green: 'text-green-300 border-green-500/30 bg-green-500/10',
     yellow: 'text-yellow-300 border-yellow-500/30 bg-yellow-500/10',
-    cyan: 'text-cyan-300 border-cyan-500/30 bg-cyan-500/10',
+    cyan: 'text-brand border-brand/35 bg-brand/10',
   }[tone];
   return <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cls}`}>{children}</span>;
 }

@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Arrow Systems Inc — Internal Hub',
-  description: 'Company internal apps hub — Arrow Systems Inc (arrsys.com)',
+  title: 'Arrow Hub | Arrow Systems, Inc.',
+  description: 'Internal company hub — Arrow Systems, Inc. (arrsys.com)',
 };
 
 export default function RootLayout({
