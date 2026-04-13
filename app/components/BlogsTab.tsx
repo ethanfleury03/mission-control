@@ -259,13 +259,20 @@ export function BlogsTab() {
   const selected = items.find(i => i.id === selectedId) || null;
   const selectedHtml = (selected?.metadata?.content_html as string) || '';
   const selectedMarkdown = (selected?.metadata?.content_markdown as string) || (selected?.description || '');
+  const selectedPdfUrl = (selected?.metadata?.pdf_url as string) || '';
   const selectedQualityPass = !selected ? false : (selected.metadata?.quality_gate ? selected.metadata.quality_gate === 'pass' : true);
   const selectedQualityReasons = (selected?.metadata?.quality_reasons as string[] | undefined) || [];
 
   const libraryItems = useMemo(() => {
     const q = libraryQuery.trim().toLowerCase();
     return items
-      .filter(i => !!i.metadata?.content_markdown || !!i.metadata?.content_html || normalizeStage(i.metadata?.current_stage) === 'Status report back')
+      .filter(
+        i =>
+          !!i.metadata?.content_markdown ||
+          !!i.metadata?.content_html ||
+          !!i.metadata?.pdf_url ||
+          normalizeStage(i.metadata?.current_stage) === 'Status report back',
+      )
       .filter(i => !q || i.title.toLowerCase().includes(q) || String(i.metadata?.topic || '').toLowerCase().includes(q) || String(i.metadata?.run_id || '').toLowerCase().includes(q))
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }, [items, libraryQuery]);
@@ -376,7 +383,7 @@ export function BlogsTab() {
             <div className="bg-[#0e0e0e] text-white px-4 py-2 border-b border-black/40">
               <div className="flex items-center justify-between text-[10px] uppercase tracking-wide opacity-90">
                 <span>arrsys.com</span>
-                <span>{selected ? 'Blog Preview (Light Mode)' : 'Preview Ready'}</span>
+                <span>{selected ? (selectedPdfUrl ? 'Blog PDF' : 'Blog Preview (Light Mode)') : 'Preview Ready'}</span>
               </div>
             </div>
 
@@ -410,7 +417,23 @@ export function BlogsTab() {
                       <h1 className="text-[38px] leading-tight font-semibold text-[#9d1f1f] mb-3">{selected.title}</h1>
                       <p className="text-[12px] text-[#7a7a7a] mb-4">{selected.metadata?.run_id || selected.id} • {normalizeStage(selected.metadata?.current_stage)}</p>
 
-                      {selectedHtml ? (
+                      {selectedPdfUrl ? (
+                        <div className="space-y-3">
+                          <a
+                            href={selectedPdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block text-sm text-[#9d1f1f] underline"
+                          >
+                            Open PDF in new tab
+                          </a>
+                          <iframe
+                            title="Blog PDF preview"
+                            src={selectedPdfUrl}
+                            className="w-full min-h-[520px] border border-[#e2e2e2] rounded bg-[#fafafa]"
+                          />
+                        </div>
+                      ) : selectedHtml ? (
                         <article className="prose max-w-none prose-headings:text-[#333] prose-p:text-[#2e2e2e] prose-li:text-[#2e2e2e]" dangerouslySetInnerHTML={{ __html: selectedHtml }} />
                       ) : (
                         <pre className="whitespace-pre-wrap text-[15px] text-[#2d2d2d] leading-7 font-sans">{selectedMarkdown || 'No generated content found yet.'}</pre>
@@ -423,7 +446,11 @@ export function BlogsTab() {
 
             {selected && (
               <div className="p-3 border-t border-black/10 bg-white/80 flex items-center justify-between gap-2">
-                <div className="text-xs text-[#555]">Preview: {selected.metadata?.preview_url || 'n/a'} {selected.metadata?.wp_url ? `• WP: ${selected.metadata.wp_url}` : ''}</div>
+                <div className="text-xs text-[#555]">
+                  Preview: {selected.metadata?.preview_url || 'n/a'}
+                  {selectedPdfUrl ? ` • PDF: ${selectedPdfUrl}` : ''}
+                  {selected.metadata?.wp_url ? ` • WP: ${selected.metadata.wp_url}` : ''}
+                </div>
                 <div className="flex gap-2">
                   <button disabled={savingId === selected.id} onClick={() => revise(selected)} className="px-3 py-1.5 text-xs rounded border border-amber-500/30 text-amber-700">Revise</button>
                   <button disabled={savingId === selected.id || !selectedQualityPass} onClick={() => approve(selected)} className="px-3 py-1.5 text-xs rounded border border-green-500/30 text-green-700 disabled:opacity-40">Finalize</button>

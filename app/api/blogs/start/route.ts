@@ -3,6 +3,12 @@ import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
+import {
+  buildBlogHandoffCallbackUrl,
+  isN8nBlogPipelineEnabled,
+  n8nApiBaseForPayload,
+  postN8nBlogWebhook,
+} from '../_lib/n8n';
 
 const execFileAsync = promisify(execFile);
 
@@ -158,11 +164,15 @@ export async function POST(request: NextRequest) {
     const runId = (body?.run_id || '').trim() || `run_${Date.now()}`;
     const targetWords = Number(body?.target_words) || 1800;
 
-    const requiredAgents = [BLOG_WRITER_AGENT_ID, BLOG_PUBLISHER_AGENT_ID];
-    const available = await getAvailableAgentIds();
-    const missing = requiredAgents.filter(id => !available.includes(id));
-    if (missing.length) {
-      return NextResponse.json({ error: `Missing required agents: ${missing.join(', ')}` }, { status: 400 });
+    const useN8n = isN8nBlogPipelineEnabled();
+
+    if (!useN8n) {
+      const requiredAgents = [BLOG_WRITER_AGENT_ID, BLOG_PUBLISHER_AGENT_ID];
+      const available = await getAvailableAgentIds();
+      const missing = requiredAgents.filter(id => !available.includes(id));
+      if (missing.length) {
+        return NextResponse.json({ error: `Missing required agents: ${missing.join(', ')}` }, { status: 400 });
+      }
     }
 
     const createRes = await fetch(`${API_BASE}/work/items`, {
@@ -191,12 +201,17 @@ export async function POST(request: NextRequest) {
           wp_url: '',
           image_status: 'pending',
           error_summary: '',
-          next_action: 'Queued for generation',
+          next_action: useN8n ? 'Queued for n8n workflow' : 'Queued for generation',
           orchestration_status: 'queued',
           orchestration_started_at: new Date().toISOString(),
           last_agent_update_at: '',
-          writer_agent_id: BLOG_WRITER_AGENT_ID,
-          publisher_agent_id: BLOG_PUBLISHER_AGENT_ID,
+          blog_pipeline: useN8n ? 'n8n' : 'openclaw',
+          ...(useN8n
+            ? {}
+            : {
+                writer_agent_id: BLOG_WRITER_AGENT_ID,
+                publisher_agent_id: BLOG_PUBLISHER_AGENT_ID,
+              }),
         },
       }),
     });
@@ -204,6 +219,67 @@ export async function POST(request: NextRequest) {
     const item = await createRes.json();
     if (!createRes.ok) {
       return NextResponse.json({ error: item?.error || 'Failed to create run' }, { status: createRes.status });
+    }
+
+    if (useN8n) {
+      const callbackUrl = buildBlogHandoffCallbackUrl();
+      const webhook = await postN8nBlogWebhook({
+        event: 'blog_run_start',
+        work_item_id: item.id,
+        run_id: runId,
+        title: inferred.title,
+        topic: inferred.topic,
+        niche: inferred.niche,
+        primary_keyword: inferred.primaryKeyword,
+        target_words: targetWords,
+        callback_url: callbackUrl,
+        api_base: n8nApiBaseForPayload(),
+        handoff_secret_configured: Boolean(process.env.BLOG_HANDOFF_SECRET?.trim()),
+      });
+
+      await fetch(`${API_BASE}/work/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description || null,
+          status: item.status,
+          priority: item.priority ?? 0,
+          metadata: {
+            ...(item.metadata || {}),
+            orchestration_status: webhook.ok ? 'n8n_triggered' : 'failed',
+            last_agent_update_at: new Date().toISOString(),
+            next_action: webhook.ok ? 'n8n workflow running' : 'n8n webhook failed — check logs and retry',
+            ...(webhook.ok
+              ? { error_summary: '' }
+              : {
+                  error_summary: `n8n webhook HTTP ${webhook.status}: ${webhook.body.slice(0, 400)}`,
+                }),
+          },
+        }),
+      }).catch(() => null);
+
+      if (!webhook.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            itemId: item.id,
+            runId,
+            inferred,
+            error: `n8n webhook failed (${webhook.status})`,
+            webhook: { status: webhook.status, body: webhook.body },
+          },
+          { status: 502 },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        itemId: item.id,
+        runId,
+        inferred,
+        dispatch: { n8n: true, callbackUrl },
+      });
     }
 
     dispatchWriterAsync({ item, runId, inferred, targetWords });

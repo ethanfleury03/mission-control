@@ -12,6 +12,8 @@ export type BlogHandoff = {
   title?: string;
   content_markdown?: string;
   content_html?: string;
+  /** Public URL to final blog PDF (n8n / merged output). */
+  pdf_url?: string;
   wp_url?: string;
   wp_post_id?: string | number;
   featured_image_url?: string;
@@ -78,7 +80,10 @@ export function extractBlogHandoffs(rawText: string): BlogHandoff[] {
   return objs.filter((o: any) => {
     if (!o || typeof o !== 'object') return false;
     if (o.schema === 'handoff.blog.v1') return true;
-    return Boolean(o.run_id && (o.content_markdown || o.content_html || o.wp_url || o.wp_post_id || o.error_summary));
+    return Boolean(
+      o.run_id &&
+        (o.content_markdown || o.content_html || o.pdf_url || o.wp_url || o.wp_post_id || o.error_summary),
+    );
   });
 }
 
@@ -120,6 +125,7 @@ function digestHandoff(h: BlogHandoff): string {
     status: h.status || '',
     content_markdown: h.content_markdown || '',
     content_html: h.content_html || '',
+    pdf_url: h.pdf_url || '',
     wp_url: h.wp_url || '',
     wp_post_id: h.wp_post_id || '',
     error_summary: h.error_summary || '',
@@ -143,7 +149,7 @@ export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Pr
     return { applied: false, deduped: true, stage: item.metadata?.current_stage };
   }
 
-  const hasDraft = Boolean(handoff.content_markdown || handoff.content_html);
+  const hasDraft = Boolean(handoff.content_markdown || handoff.content_html || handoff.pdf_url);
   const hasPublish = Boolean(handoff.wp_url || handoff.wp_post_id);
   const failed = Boolean(handoff.error_summary) || handoff.status === 'failed';
 
@@ -157,6 +163,7 @@ export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Pr
 
   if (handoff.content_markdown) metadataPatch.content_markdown = handoff.content_markdown;
   if (handoff.content_html) metadataPatch.content_html = handoff.content_html;
+  if (handoff.pdf_url) metadataPatch.pdf_url = handoff.pdf_url;
   if (handoff.featured_image_url) metadataPatch.featured_image_url = handoff.featured_image_url;
   if (handoff.wp_url) metadataPatch.wp_url = handoff.wp_url;
   if (handoff.wp_post_id) metadataPatch.wp_post_id = handoff.wp_post_id;
@@ -171,13 +178,17 @@ export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Pr
     metadataPatch.error_summary = '';
     nextStatus = 'completed';
   } else if (hasDraft) {
-    const q = evaluateDraftQuality({
-      content_markdown: handoff.content_markdown || item.metadata?.content_markdown,
-      content_html: handoff.content_html || item.metadata?.content_html,
-      title: handoff.title || item.title,
-      primary_keyword: item.metadata?.primary_keyword,
-      target_words: item.metadata?.target_words,
-    });
+    const pdfOnly = Boolean(handoff.pdf_url || item.metadata?.pdf_url) &&
+      !(handoff.content_markdown || handoff.content_html || item.metadata?.content_markdown || item.metadata?.content_html);
+    const q = pdfOnly
+      ? { pass: true, score: 100, checks: { pdf_ready: true }, reasons: [] as string[] }
+      : evaluateDraftQuality({
+          content_markdown: handoff.content_markdown || item.metadata?.content_markdown,
+          content_html: handoff.content_html || item.metadata?.content_html,
+          title: handoff.title || item.title,
+          primary_keyword: item.metadata?.primary_keyword,
+          target_words: item.metadata?.target_words,
+        });
 
     metadataPatch.quality_gate = q.pass ? 'pass' : 'fail';
     metadataPatch.quality_score = q.score;

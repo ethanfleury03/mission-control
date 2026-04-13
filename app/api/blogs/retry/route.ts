@@ -3,6 +3,12 @@ import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
+import {
+  buildBlogHandoffCallbackUrl,
+  isN8nBlogPipelineEnabled,
+  n8nApiBaseForPayload,
+  postN8nBlogWebhook,
+} from '../_lib/n8n';
 
 const execFileAsync = promisify(execFile);
 const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
@@ -17,6 +23,8 @@ export async function POST(request: NextRequest) {
     if (!getRes.ok) return NextResponse.json({ error: item?.error || 'Run not found' }, { status: getRes.status });
 
     const runId = item?.metadata?.run_id || itemId;
+    const useN8n = isN8nBlogPipelineEnabled();
+    const retryCount = Number(item?.metadata?.retry_count || 0) + 1;
     const qualityReasons: string[] = Array.isArray(item?.metadata?.quality_reasons) ? item.metadata.quality_reasons : [];
     const qualityFixBlock = qualityReasons.length
       ? [
@@ -50,15 +58,63 @@ export async function POST(request: NextRequest) {
         metadata: {
           ...(item.metadata || {}),
           current_stage: 'Content/preview generation',
-          next_action: 'Retrying generation',
+          next_action: useN8n ? 'Retrying n8n workflow' : 'Retrying generation',
           orchestration_status: 'queued',
           orchestration_started_at: new Date().toISOString(),
           last_agent_update_at: new Date().toISOString(),
-          retry_count: Number(item?.metadata?.retry_count || 0) + 1,
+          retry_count: retryCount,
           error_summary: '',
+          blog_pipeline: useN8n ? 'n8n' : item.metadata?.blog_pipeline || 'openclaw',
         },
       }),
     });
+
+    if (useN8n) {
+      const webhook = await postN8nBlogWebhook({
+        event: 'blog_run_retry',
+        work_item_id: itemId,
+        run_id: String(runId),
+        title: item.title,
+        topic: String(item?.metadata?.topic || ''),
+        niche: String(item?.metadata?.niche || ''),
+        primary_keyword: String(item?.metadata?.primary_keyword || ''),
+        target_words: Number(item?.metadata?.target_words || 1800),
+        callback_url: buildBlogHandoffCallbackUrl(),
+        api_base: n8nApiBaseForPayload(),
+        handoff_secret_configured: Boolean(process.env.BLOG_HANDOFF_SECRET?.trim()),
+      });
+
+      await fetch(`${API_BASE}/work/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description || null,
+          status: 'ongoing',
+          priority: item.priority ?? 0,
+          metadata: {
+            ...(item.metadata || {}),
+            retry_count: retryCount,
+            orchestration_status: webhook.ok ? 'n8n_triggered' : 'failed',
+            last_agent_update_at: new Date().toISOString(),
+            next_action: webhook.ok ? 'n8n workflow running' : 'n8n webhook failed — check logs and retry',
+            ...(webhook.ok
+              ? { error_summary: '' }
+              : {
+                  error_summary: `n8n webhook HTTP ${webhook.status}: ${webhook.body.slice(0, 400)}`,
+                }),
+          },
+        }),
+      }).catch(() => null);
+
+      if (!webhook.ok) {
+        return NextResponse.json(
+          { error: `n8n webhook failed (${webhook.status})`, webhook: { status: webhook.status, body: webhook.body } },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({ ok: true, itemId, dispatch: { n8n: true } });
+    }
 
     try {
       const { stdout } = await execFileAsync('openclaw', ['agent', '--agent', BLOG_WRITER_AGENT_ID, '--message', prompt, '--json'], {

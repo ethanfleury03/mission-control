@@ -13,7 +13,7 @@ type WorkItem = {
 };
 
 function hasDraft(item: WorkItem) {
-  return Boolean(item.metadata?.content_markdown || item.metadata?.content_html);
+  return Boolean(item.metadata?.content_markdown || item.metadata?.content_html || item.metadata?.pdf_url);
 }
 
 function hasPublishResult(item: WorkItem) {
@@ -61,7 +61,8 @@ export async function POST() {
       if (stage === 'Content/preview generation' && !hasDraft(item)) {
         const startedAt = item.metadata?.orchestration_started_at ? new Date(item.metadata.orchestration_started_at).getTime() : 0;
         const ageMs = startedAt ? Date.now() - startedAt : 0;
-        if (ageMs > 120000 && item.metadata?.orchestration_status !== 'stalled') {
+        const stallMs = item.metadata?.blog_pipeline === 'n8n' ? 25 * 60 * 1000 : 120000;
+        if (ageMs > stallMs && item.metadata?.orchestration_status !== 'stalled') {
           await patchItem(item, {
             orchestration_status: 'stalled',
             next_action: 'No agent update after 2 min. Retry run or check agent logs.',
