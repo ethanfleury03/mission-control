@@ -7,11 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
     "check:no-mock": "pwsh -File ./scripts/no-mock-check.ps1"
   },
   "dependencies": {
     "@types/dagre": "^0.7.53",
     "@xyflow/react": "^12.10.0",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",

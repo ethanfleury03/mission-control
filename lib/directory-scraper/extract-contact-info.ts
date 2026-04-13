@@ -1,22 +1,33 @@
 import type { Page } from 'playwright';
 import type { ContactInfo } from './types';
-import { extractEmails, extractPhones, extractSocialLinks, normalizeUrl, sleep } from './utils';
+import {
+  extractEmails,
+  extractPhones,
+  extractSocialLinksForCompany,
+  normalizeUrl,
+  pickBestEmail,
+  sleep,
+} from './utils';
+import type { CancelSignal } from './extract-directory-entries';
 
 const CONTACT_PATH_HINTS = ['/contact', '/about', '/team', '/sales', '/get-in-touch', '/reach-us', '/support'];
 
-async function extractFromPage(page: Page): Promise<ContactInfo> {
+async function extractFromPage(page: Page, companyDomain?: string): Promise<ContactInfo> {
   const text = await page.evaluate(() => document.body?.innerText ?? '');
   const html = await page.content();
   const allHrefs: string[] = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href)
+    Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href),
   );
 
+  const emails = extractEmails(text, html);
+  const bestEmail = pickBestEmail(emails, companyDomain);
+
   return {
-    emails: extractEmails(text, html),
+    emails: bestEmail ? [bestEmail, ...emails.filter((e) => e !== bestEmail)] : emails,
     phones: extractPhones(text, html),
     addresses: extractAddressBlocks(text),
     contactPageUrls: findContactLinks(allHrefs, page.url()),
-    socialLinks: extractSocialLinks(allHrefs),
+    socialLinks: extractSocialLinksForCompany(allHrefs, companyDomain),
   };
 }
 
@@ -58,8 +69,9 @@ function getDomain(url: string): string {
 }
 
 function mergeContacts(a: ContactInfo, b: ContactInfo): ContactInfo {
+  const emails = [...new Set([...a.emails, ...b.emails])];
   return {
-    emails: [...new Set([...a.emails, ...b.emails])],
+    emails,
     phones: [...new Set([...a.phones, ...b.phones])],
     addresses: [...new Set([...a.addresses, ...b.addresses])],
     contactPageUrls: [...new Set([...a.contactPageUrls, ...b.contactPageUrls])],
@@ -70,19 +82,20 @@ function mergeContacts(a: ContactInfo, b: ContactInfo): ContactInfo {
 export async function extractContactFromSite(
   page: Page,
   siteUrl: string,
-  signal: () => boolean,
+  signal: CancelSignal,
+  companyDomain?: string,
 ): Promise<ContactInfo> {
   let merged: ContactInfo = { emails: [], phones: [], addresses: [], contactPageUrls: [], socialLinks: [] };
 
   try {
     await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
     await sleep(500);
-    merged = mergeContacts(merged, await extractFromPage(page));
+    merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
   } catch {
     // homepage failed; continue with whatever we have
   }
 
-  if (signal()) return merged;
+  if (await Promise.resolve(signal())) return merged;
 
   const contactLinks = merged.contactPageUrls.slice(0, 2);
 
@@ -94,15 +107,25 @@ export async function extractContactFromSite(
   }
 
   for (const link of contactLinks.slice(0, 3)) {
-    if (signal()) break;
+    if (await Promise.resolve(signal())) break;
     try {
       await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15_000 });
       await sleep(400);
-      merged = mergeContacts(merged, await extractFromPage(page));
+      merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
     } catch {
       // single page failure is ok
     }
   }
 
-  return merged;
+  const domain = companyDomain ?? getDomain(siteUrl);
+  const bestEmail = pickBestEmail(merged.emails, domain);
+  const socialRanked = extractSocialLinksForCompany(
+    merged.socialLinks.map((s) => s),
+    domain,
+  );
+  return {
+    ...merged,
+    emails: bestEmail ? [bestEmail, ...merged.emails.filter((e) => e !== bestEmail)] : merged.emails,
+    socialLinks: socialRanked.length ? socialRanked : merged.socialLinks,
+  };
 }

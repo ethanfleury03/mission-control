@@ -7,7 +7,9 @@ function getAuth() {
   const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
 
   if (!email || !rawKey) {
-    throw new Error('Google Sheets credentials not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.');
+    throw new Error(
+      'Google Sheets credentials not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.',
+    );
   }
 
   const key = rawKey.replace(/\\n/g, '\n');
@@ -23,59 +25,85 @@ export function isSheetsConfigured(): boolean {
   return !!(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY);
 }
 
+function normalizeHeaderCell(v: unknown): string {
+  return String(v ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+function rowLooksLikeOurHeader(row: unknown[] | undefined): boolean {
+  const expected = getResultHeaders().map((h) => h.toLowerCase());
+  if (!row || row.length < expected.length) return false;
+  for (let i = 0; i < expected.length; i++) {
+    if (normalizeHeaderCell(row[i]) !== expected[i]) return false;
+  }
+  return true;
+}
+
 export async function exportToGoogleSheets(
   results: CompanyResult[],
   spreadsheetId: string,
   tabName: string = 'Scrape Results',
-): Promise<{ url: string; rowsWritten: number }> {
+): Promise<{ url: string; rowsWritten: number; headersWritten: boolean }> {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  // Ensure sheet/tab exists
   let sheetExists = false;
+  let sheetId = 0;
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId });
     const tabs = meta.data.sheets ?? [];
-    sheetExists = tabs.some((s) => s.properties?.title === tabName);
-  } catch (err: any) {
-    throw new Error(`Cannot access spreadsheet: ${err?.message}`);
+    const tab = tabs.find((s) => s.properties?.title === tabName);
+    sheetExists = !!tab;
+    sheetId = tab?.properties?.sheetId ?? 0;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Cannot access spreadsheet: ${msg}`);
   }
 
   if (!sheetExists) {
-    await sheets.spreadsheets.batchUpdate({
+    const add = await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
         requests: [{ addSheet: { properties: { title: tabName } } }],
       },
     });
+    const replies = add.data.replies ?? [];
+    const props = replies[0]?.addSheet?.properties;
+    sheetId = props?.sheetId ?? 0;
   }
 
-  // Check if headers exist
-  const range = `'${tabName}'!A1:L1`;
-  const existing = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-  const hasHeaders = (existing.data.values ?? []).length > 0;
+  const safeTab = tabName.replace(/'/g, "''");
+  const headerRange = `'${safeTab}'!A1:Z1`;
+  const existing = await sheets.spreadsheets.values.get({ spreadsheetId, range: headerRange });
+  const firstRow = existing.data.values?.[0] as unknown[] | undefined;
+  const hasOurHeader = rowLooksLikeOurHeader(firstRow);
+  const sheetHasAnyRow = (existing.data.values?.length ?? 0) > 0 && firstRow?.some((c) => String(c ?? '').trim() !== '');
 
   const rows: string[][] = [];
-  if (!hasHeaders) {
+  let headersWritten = false;
+
+  if (!sheetHasAnyRow) {
     rows.push(getResultHeaders());
+    headersWritten = true;
+  } else if (!hasOurHeader) {
+    rows.push(getResultHeaders());
+    headersWritten = true;
   }
+
   for (const r of results) {
     rows.push(resultToValues(r));
   }
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `'${tabName}'!A1`,
+    range: `'${safeTab}'!A1`,
     valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: { values: rows },
   });
 
-  // Freeze header row
-  if (!hasHeaders) {
-    const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const tab = meta.data.sheets?.find((s) => s.properties?.title === tabName);
-    const sheetId = tab?.properties?.sheetId ?? 0;
-
+  if (headersWritten) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -86,11 +114,43 @@ export async function exportToGoogleSheets(
               fields: 'gridProperties.frozenRowCount',
             },
           },
+          {
+            autoResizeDimensions: {
+              dimensions: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 0,
+                endIndex: getResultHeaders().length,
+              },
+            },
+          },
+        ],
+      },
+    });
+  } else {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            autoResizeDimensions: {
+              dimensions: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 0,
+                endIndex: getResultHeaders().length,
+              },
+            },
+          },
         ],
       },
     });
   }
 
-  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0`;
-  return { url, rowsWritten: results.length };
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const tab = meta.data.sheets?.find((s) => s.properties?.title === tabName);
+  const gid = tab?.properties?.sheetId ?? 0;
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${gid}`;
+
+  return { url, rowsWritten: results.length, headersWritten };
 }

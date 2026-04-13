@@ -3,9 +3,17 @@ import { createJob, getAllJobs } from '@/lib/directory-scraper/job-store';
 import { runScrapeJob } from '@/lib/directory-scraper/scrape-directory';
 import type { ScrapeJobInput } from '@/lib/directory-scraper/types';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
-  const jobs = getAllJobs();
-  return NextResponse.json(jobs);
+  try {
+    const jobs = await getAllJobs();
+    return NextResponse.json(jobs);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to list jobs';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -25,15 +33,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'URL is required (or enable mock mode)' }, { status: 400 });
     }
 
-    const job = createJob(input);
+    const job = await createJob(input);
 
-    // Fire and forget — the job runs in the background
     runScrapeJob(job.id).catch((err) => {
       console.error(`[directory-scraper] job ${job.id} crashed:`, err);
     });
 
     return NextResponse.json(job, { status: 201 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? 'Failed to create job' }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to create job';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

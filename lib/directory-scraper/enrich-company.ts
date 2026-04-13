@@ -1,8 +1,17 @@
+import { randomUUID } from 'crypto';
+import type { CancelSignal } from './extract-directory-entries';
 import type { Page } from 'playwright';
 import type { CompanyResult, DirectoryEntry } from './types';
 import { extractContactFromSite } from './extract-contact-info';
-import { extractEmails, extractPhones, extractSocialLinks, normalizeUrl, scoreResult, sleep } from './utils';
-import { v4 as uuid } from 'uuid';
+import {
+  extractEmails,
+  extractPhones,
+  extractSocialLinksForCompany,
+  normalizeDomain,
+  pickBestEmail,
+  scoreResult,
+  sleep,
+} from './utils';
 
 async function extractCompanyWebsiteFromDetail(page: Page, detailUrl: string): Promise<string> {
   try {
@@ -15,32 +24,57 @@ async function extractCompanyWebsiteFromDetail(page: Page, detailUrl: string): P
         try {
           const u = new URL(a.href);
           const host = u.hostname.replace(/^www\./, '');
-          if (host !== pageHost && !host.includes('facebook') && !host.includes('twitter') &&
-              !host.includes('linkedin') && !host.includes('instagram') && !host.includes('youtube') &&
-              !host.includes('google') && !host.includes('yelp') && !host.includes('bbb.org') &&
-              u.protocol.startsWith('http')) {
+          if (
+            host !== pageHost &&
+            !host.includes('facebook') &&
+            !host.includes('twitter') &&
+            !host.includes('linkedin') &&
+            !host.includes('instagram') &&
+            !host.includes('youtube') &&
+            !host.includes('google') &&
+            !host.includes('yelp') &&
+            !host.includes('bbb.org') &&
+            u.protocol.startsWith('http')
+          ) {
             const text = (a.textContent ?? '').toLowerCase();
             const rel = (a.getAttribute('rel') ?? '').toLowerCase();
-            if (text.includes('website') || text.includes('visit') || text.includes('home') ||
-                rel.includes('external') || a.closest('[class*="website"], [class*="link"], [class*="url"]')) {
+            if (
+              text.includes('website') ||
+              text.includes('visit') ||
+              text.includes('home') ||
+              rel.includes('external') ||
+              a.closest('[class*="website"], [class*="link"], [class*="url"]')
+            ) {
               return a.href;
             }
           }
-        } catch { /* skip malformed urls */ }
+        } catch {
+          /* skip malformed urls */
+        }
       }
       for (const a of links) {
         try {
           const u = new URL(a.href);
           const host = u.hostname.replace(/^www\./, '');
-          if (host !== pageHost && u.protocol.startsWith('http') &&
-              !host.includes('facebook') && !host.includes('twitter') &&
-              !host.includes('linkedin') && !host.includes('instagram') &&
-              !host.includes('youtube') && !host.includes('google') &&
-              !host.includes('yelp') && !host.includes('bbb.org') &&
-              !host.includes('maps.') && u.pathname === '/') {
+          if (
+            host !== pageHost &&
+            u.protocol.startsWith('http') &&
+            !host.includes('facebook') &&
+            !host.includes('twitter') &&
+            !host.includes('linkedin') &&
+            !host.includes('instagram') &&
+            !host.includes('youtube') &&
+            !host.includes('google') &&
+            !host.includes('yelp') &&
+            !host.includes('bbb.org') &&
+            !host.includes('maps.') &&
+            u.pathname === '/'
+          ) {
             return a.href;
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
       return '';
     });
@@ -54,10 +88,13 @@ export async function enrichCompany(
   page: Page,
   entry: DirectoryEntry,
   visitWebsite: boolean,
-  signal: () => boolean,
+  signal: CancelSignal,
+  existingId?: string,
 ): Promise<CompanyResult> {
+  const directoryHost = normalizeDomain(entry.url);
+
   const result: CompanyResult = {
-    id: uuid(),
+    id: existingId ?? randomUUID(),
     companyName: entry.name,
     directoryListingUrl: entry.url,
     companyWebsite: '',
@@ -70,59 +107,74 @@ export async function enrichCompany(
     notes: '',
     confidence: 'low',
     status: 'enriching',
+    needsReview: false,
   };
 
   try {
-    // Try to find company website from directory detail page
     if (entry.detailUrl) {
       result.companyWebsite = await extractCompanyWebsiteFromDetail(page, entry.detailUrl);
     }
 
-    if (signal()) {
+    if (await Promise.resolve(signal())) {
       result.status = 'done';
       return result;
     }
 
-    // Extract contact info from directory detail page itself
     let text = '';
     let html = '';
     try {
       text = await page.evaluate(() => document.body?.innerText ?? '');
       html = await page.content();
-    } catch { /* page may have navigated */ }
+    } catch {
+      /* page may have navigated */
+    }
 
     const detailEmails = extractEmails(text, html);
     const detailPhones = extractPhones(text, html);
-    const allHrefs: string[] = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href)
-    ).catch(() => []);
-    const detailSocial = extractSocialLinks(allHrefs);
+    const allHrefs: string[] = await page
+      .evaluate(() => Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href))
+      .catch(() => []);
 
-    result.email = detailEmails[0] ?? '';
+    const companyDomainEarly = result.companyWebsite ? normalizeDomain(result.companyWebsite) : undefined;
+    result.email = pickBestEmail(detailEmails, companyDomainEarly);
     result.phone = detailPhones[0] ?? '';
+    const detailSocial = extractSocialLinksForCompany(allHrefs, directoryHost);
     result.socialLinks = detailSocial.join(', ');
 
-    // If user wants enrichment and we have a company website, visit it
-    if (visitWebsite && result.companyWebsite && !signal()) {
-      const contact = await extractContactFromSite(page, result.companyWebsite, signal);
-      if (contact.emails.length && !result.email) result.email = contact.emails[0];
+    const listingHadEmail = !!result.email;
+    const listingHadPhone = !!result.phone;
+
+    if (visitWebsite && result.companyWebsite && !(await Promise.resolve(signal()))) {
+      const companyDomain = normalizeDomain(result.companyWebsite);
+      const contact = await extractContactFromSite(page, result.companyWebsite, signal, companyDomain);
+      if (contact.emails.length) {
+        const merged = pickBestEmail([...contact.emails, result.email].filter(Boolean), companyDomain);
+        result.email = merged;
+      }
       if (contact.phones.length && !result.phone) result.phone = contact.phones[0];
       if (contact.addresses.length) result.address = contact.addresses[0];
       if (contact.contactPageUrls.length) result.contactPageUrl = contact.contactPageUrls[0];
-      if (contact.socialLinks.length && !result.socialLinks) {
-        result.socialLinks = contact.socialLinks.join(', ');
+      if (contact.socialLinks.length) {
+        const mergedSocial = [...new Set([...detailSocial, ...contact.socialLinks])];
+        result.socialLinks = extractSocialLinksForCompany(mergedSocial, companyDomain).join(', ');
       }
       result.rawContact = contact;
     }
 
-    const scored = scoreResult(result);
+    const scored = scoreResult(result, {
+      emailFromListing: listingHadEmail,
+      phoneFromListing: listingHadPhone,
+    });
     result.confidence = scored.score;
     result.notes = scored.reason;
+    result.needsReview = scored.needsReview;
     result.status = 'done';
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error during enrichment';
     result.status = 'failed';
-    result.error = err?.message ?? 'Unknown error during enrichment';
-    result.notes = `Enrichment failed: ${result.error}`;
+    result.error = message;
+    result.notes = `Enrichment failed: ${message}`;
+    result.needsReview = true;
   }
 
   return result;

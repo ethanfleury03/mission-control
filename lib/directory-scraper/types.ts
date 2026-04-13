@@ -37,6 +37,8 @@ export interface CompanyResult {
   status: CompanyStatus;
   error?: string;
   rawContact?: ContactInfo;
+  /** True when confidence is low or contact info is incomplete — queue for human review */
+  needsReview?: boolean;
 }
 
 export interface JobSummary {

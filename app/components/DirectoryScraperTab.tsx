@@ -15,15 +15,14 @@ import {
   ChevronUp,
   AlertCircle,
   CheckCircle2,
-  Clock,
   Loader2,
   Globe,
   Building2,
   Mail,
   Phone,
-  MapPin,
-  Link2,
   Filter,
+  ChevronRight,
+  Flag,
 } from 'lucide-react';
 
 import type { ScrapeJob, CompanyResult, ConfidenceScore, LogEntry } from '@/lib/directory-scraper/types';
@@ -31,6 +30,7 @@ import type { ScrapeJob, CompanyResult, ConfidenceScore, LogEntry } from '@/lib/
 const API = '/api/directory-scraper';
 
 type StatusFilter = 'all' | 'done' | 'failed' | 'pending';
+type FieldFilter = 'all' | 'needs_review' | 'no_email' | 'no_phone' | 'no_website';
 
 export function DirectoryScraperTab() {
   const [url, setUrl] = useState('');
@@ -41,6 +41,8 @@ export function DirectoryScraperTab() {
   const [sheetId, setSheetId] = useState('');
   const [sheetTab, setSheetTab] = useState('');
   const [sheetsConfigured, setSheetsConfigured] = useState(false);
+  const [sheetsHint, setSheetsHint] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const [job, setJob] = useState<ScrapeJob | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -48,13 +50,21 @@ export function DirectoryScraperTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLogs, setShowLogs] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [fieldFilter, setFieldFilter] = useState<FieldFilter>('all');
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Check sheets availability
   useEffect(() => {
-    fetch(`${API}/sheets-status`).then((r) => r.json()).then((d) => setSheetsConfigured(d.configured)).catch(() => {});
+    fetch(`${API}/sheets-status`)
+      .then((r) => r.json())
+      .then((d) => {
+        setSheetsConfigured(d.configured);
+        setSheetsHint(d.hint ?? null);
+      })
+      .catch(() => {});
   }, []);
 
   const pollJob = useCallback(async (id: string) => {
@@ -64,7 +74,10 @@ export function DirectoryScraperTab() {
         const data: ScrapeJob = await res.json();
         setJob(data);
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
         }
       }
     } catch { /* poll failure is ok */ }
@@ -102,7 +115,10 @@ export function DirectoryScraperTab() {
       const data: ScrapeJob = await res.json();
       setJob(data);
       setStatusFilter('all');
+      setFieldFilter('all');
       setSearchQuery('');
+      setExpandedRowId(null);
+      setExportError(null);
       pollRef.current = setInterval(() => pollJob(data.id), 1500);
     } catch (err: any) {
       alert(err?.message || 'Network error');
@@ -117,33 +133,51 @@ export function DirectoryScraperTab() {
     pollJob(job.id);
   };
 
-  const clearResults = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  const clearResults = async () => {
+    if (!job) return;
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    await fetch(`${API}/jobs/${job.id}`, { method: 'DELETE' });
     setJob(null);
+    setExpandedRowId(null);
+    setExportError(null);
   };
 
   const retryFailed = async () => {
     if (!job) return;
     const failedIds = job.results.filter((r) => r.status === 'failed').map((r) => r.id);
     if (failedIds.length === 0) return;
-    await fetch(`${API}/jobs/${job.id}/retry`, {
+    const res = await fetch(`${API}/jobs/${job.id}/retry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ companyIds: failedIds }),
     });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      alert(e.error || 'Retry failed');
+      return;
+    }
     pollJob(job.id);
+    if (!pollRef.current) pollRef.current = setInterval(() => pollJob(job.id), 1500);
   };
 
   const exportCsv = async () => {
     if (!job) return;
     setExportLoading(true);
+    setExportError(null);
     try {
       const res = await fetch(`${API}/jobs/${job.id}/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: 'csv' }),
       });
-      if (!res.ok) { const e = await res.json(); alert(e.error); return; }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        setExportError(e.error || 'CSV export failed');
+        return;
+      }
       const blob = await res.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -157,16 +191,23 @@ export function DirectoryScraperTab() {
   const exportSheets = async () => {
     if (!job) return;
     setExportLoading(true);
+    setExportError(null);
     try {
       const sid = sheetId || job.input.googleSheetId;
-      if (!sid) { alert('Enter a Google Sheet ID first'); return; }
+      if (!sid) {
+        setExportError('Enter a Google Sheet ID before exporting.');
+        return;
+      }
       const res = await fetch(`${API}/jobs/${job.id}/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: 'sheets', googleSheetId: sid, googleSheetTab: sheetTab || 'Scrape Results' }),
       });
-      const data = await res.json();
-      if (!res.ok) { alert(data.error); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setExportError(data.error || 'Google Sheets export failed');
+        return;
+      }
       window.open(data.url, '_blank');
     } finally {
       setExportLoading(false);
@@ -175,8 +216,14 @@ export function DirectoryScraperTab() {
 
   const isRunning = job?.status === 'running' || job?.status === 'queued';
 
+  const needsReviewCount = (job?.results ?? []).filter((r) => r.needsReview).length;
+
   const filteredResults = (job?.results ?? []).filter((r) => {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    if (fieldFilter === 'needs_review' && !r.needsReview) return false;
+    if (fieldFilter === 'no_email' && r.email) return false;
+    if (fieldFilter === 'no_phone' && r.phone) return false;
+    if (fieldFilter === 'no_website' && r.companyWebsite) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
@@ -198,6 +245,14 @@ export function DirectoryScraperTab() {
       </div>
 
       <div className="flex-1 overflow-auto p-6 space-y-5">
+        {exportError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start justify-between gap-3">
+            <span>{exportError}</span>
+            <button type="button" className="text-red-600 hover:text-red-900 shrink-0" onClick={() => setExportError(null)} aria-label="Dismiss">
+              ×
+            </button>
+          </div>
+        )}
         {/* Config form */}
         <div className="bg-white rounded-lg border border-hub-border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-neutral-900 mb-4 flex items-center gap-2">
@@ -270,8 +325,9 @@ export function DirectoryScraperTab() {
                 <option value="sheets">Google Sheets</option>
               </select>
               {exportTarget === 'sheets' && !sheetsConfigured && (
-                <p className="mt-1 text-2xs text-accent-red">
-                  Sheets not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY env vars.
+                <p className="mt-1 text-2xs text-accent-red leading-relaxed">
+                  {sheetsHint ||
+                    'Sheets not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY on the server, restart, and grant the service account Editor access to your spreadsheet.'}
                 </p>
               )}
             </div>
@@ -382,12 +438,13 @@ export function DirectoryScraperTab() {
             </div>
 
             {/* Summary cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <SummaryCard icon={Building2} label="Found" value={job.summary.companiesFound} />
               <SummaryCard icon={CheckCircle2} label="Processed" value={job.summary.companiesProcessed} />
               <SummaryCard icon={Mail} label="Emails" value={job.summary.emailsFound} color="brand" />
               <SummaryCard icon={Phone} label="Phones" value={job.summary.phonesFound} color="brand" />
               <SummaryCard icon={AlertCircle} label="Failures" value={job.summary.failures} color="red" />
+              <SummaryCard icon={Flag} label="Review" value={needsReviewCount} color="red" />
             </div>
 
             {/* Progress bar */}
@@ -461,6 +518,32 @@ export function DirectoryScraperTab() {
                   </button>
                 ))}
               </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-2xs text-neutral-500 mr-1">Fields</span>
+                {(
+                  [
+                    ['all', 'All'],
+                    ['needs_review', 'Needs review'],
+                    ['no_email', 'No email'],
+                    ['no_phone', 'No phone'],
+                    ['no_website', 'No website'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFieldFilter(key)}
+                    className={cn(
+                      'px-2 py-1 text-2xs rounded-md border transition-colors',
+                      fieldFilter === key
+                        ? 'bg-neutral-800 text-white border-neutral-800'
+                        : 'text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Scrollable table */}
@@ -468,6 +551,7 @@ export function DirectoryScraperTab() {
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200 z-10">
                   <tr className="text-left text-neutral-600 uppercase tracking-wide text-2xs">
+                    <th className="px-2 py-2.5 w-8" aria-label="Expand" />
                     <th className="px-4 py-2.5 font-medium">Company</th>
                     <th className="px-4 py-2.5 font-medium">Website</th>
                     <th className="px-4 py-2.5 font-medium">Email</th>
@@ -481,11 +565,16 @@ export function DirectoryScraperTab() {
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {filteredResults.map((r) => (
-                    <ResultRow key={r.id} result={r} />
+                    <ResultRow
+                      key={r.id}
+                      result={r}
+                      expanded={expandedRowId === r.id}
+                      onToggle={() => setExpandedRowId((id) => (id === r.id ? null : r.id))}
+                    />
                   ))}
                   {filteredResults.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-neutral-500">
+                      <td colSpan={10} className="px-4 py-8 text-center text-neutral-500">
                         No results match the current filter.
                       </td>
                     </tr>
@@ -566,11 +655,38 @@ function MaybeLink({ href, children }: { href: string; children: React.ReactNode
   );
 }
 
-function ResultRow({ result }: { result: CompanyResult }) {
+function ResultRow({
+  result,
+  expanded,
+  onToggle,
+}: {
+  result: CompanyResult;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <tr className="hover:bg-neutral-50 transition-colors">
-      <td className="px-4 py-2.5 font-medium text-neutral-900 max-w-[180px]">
-        <div className="truncate" title={result.companyName}>{result.companyName}</div>
+    <>
+      <tr className="hover:bg-neutral-50 transition-colors">
+        <td className="px-2 py-2.5 align-top">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="p-1 rounded hover:bg-neutral-200 text-neutral-500"
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Collapse row' : 'Expand row'}
+          >
+            <ChevronRight className={cn('w-4 h-4 transition-transform', expanded && 'rotate-90')} />
+          </button>
+        </td>
+        <td className="px-4 py-2.5 font-medium text-neutral-900 max-w-[180px]">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="truncate" title={result.companyName}>{result.companyName}</div>
+          {result.needsReview && (
+            <span className="shrink-0 text-2xs px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800">
+              Review
+            </span>
+          )}
+        </div>
         {result.directoryListingUrl && (
           <MaybeLink href={result.directoryListingUrl}>
             <span className="text-2xs">listing</span>
@@ -579,7 +695,17 @@ function ResultRow({ result }: { result: CompanyResult }) {
       </td>
       <td className="px-4 py-2.5 max-w-[160px]">
         <MaybeLink href={result.companyWebsite}>
-          <span className="truncate">{result.companyWebsite ? new URL(result.companyWebsite).hostname : ''}</span>
+          <span className="truncate">
+            {result.companyWebsite
+              ? (() => {
+                  try {
+                    return new URL(result.companyWebsite).hostname;
+                  } catch {
+                    return result.companyWebsite;
+                  }
+                })()
+              : ''}
+          </span>
         </MaybeLink>
       </td>
       <td className="px-4 py-2.5">
@@ -602,5 +728,30 @@ function ResultRow({ result }: { result: CompanyResult }) {
         <span className="truncate block text-neutral-600" title={result.notes || result.error}>{result.notes || result.error || '—'}</span>
       </td>
     </tr>
+      {expanded && (
+        <tr className="bg-neutral-50/80">
+          <td colSpan={10} className="px-4 py-3 text-2xs text-neutral-700 border-b border-neutral-100">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <span className="font-semibold text-neutral-600">Notes</span>
+                <p className="mt-1 whitespace-pre-wrap">{result.notes || '—'}</p>
+              </div>
+              <div>
+                <span className="font-semibold text-neutral-600">Scrape error</span>
+                <p className="mt-1 text-accent-red whitespace-pre-wrap">{result.error || '—'}</p>
+              </div>
+              {result.rawContact && (
+                <div className="sm:col-span-2">
+                  <span className="font-semibold text-neutral-600">Raw extraction</span>
+                  <pre className="mt-1 p-2 bg-white border border-neutral-200 rounded text-2xs overflow-auto max-h-40">
+                    {JSON.stringify(result.rawContact, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

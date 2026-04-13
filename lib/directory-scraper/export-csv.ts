@@ -13,11 +13,21 @@ const HEADERS = [
   'Notes',
   'Confidence',
   'Status',
+  'Needs Review',
 ];
 
-function escapeField(value: string): string {
-  if (!value) return '';
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+/** Excel-friendly CSV: UTF-8 BOM, CRLF, RFC 4180 quoting */
+export function escapeField(value: string): string {
+  if (value == null || value === '') return '';
+  const mustQuote =
+    value.includes(',') ||
+    value.includes('"') ||
+    value.includes('\n') ||
+    value.includes('\r') ||
+    value.startsWith(' ') ||
+    value.endsWith(' ') ||
+    /^[=+\-@]/.test(value);
+  if (mustQuote) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
@@ -37,15 +47,18 @@ function resultToRow(r: CompanyResult): string[] {
     r.notes,
     r.confidence,
     r.status,
+    r.needsReview ? 'yes' : 'no',
   ];
 }
 
-export function exportToCsv(results: CompanyResult[]): string {
+export function exportToCsv(results: CompanyResult[], options?: { includeBom?: boolean }): string {
+  const includeBom = options?.includeBom !== false;
   const lines: string[] = [HEADERS.map(escapeField).join(',')];
   for (const r of results) {
     lines.push(resultToRow(r).map(escapeField).join(','));
   }
-  return lines.join('\n');
+  const body = lines.join('\r\n');
+  return includeBom ? `\uFEFF${body}` : body;
 }
 
 export function getResultHeaders(): string[] {

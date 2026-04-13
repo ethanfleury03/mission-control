@@ -3,10 +3,13 @@ import {
   extractEmails,
   extractPhones,
   extractSocialLinks,
+  extractSocialLinksForCompany,
   normalizeDomain,
   normalizeUrl,
   scoreResult,
   dedupeCompanies,
+  pickBestEmail,
+  companyDedupeKey,
 } from '../utils';
 import type { CompanyResult } from '../types';
 
@@ -37,6 +40,13 @@ describe('extractEmails', () => {
   it('filters out image-looking emails', () => {
     const text = 'icon@images.png logo@site.jpg';
     expect(extractEmails(text)).toEqual([]);
+  });
+});
+
+describe('pickBestEmail', () => {
+  it('prefers domain-matched email over generic', () => {
+    const best = pickBestEmail(['info@other.com', 'jane@acme.com', 'contact@acme.com'], 'acme.com');
+    expect(best).toBe('jane@acme.com');
   });
 });
 
@@ -83,6 +93,14 @@ describe('extractSocialLinks', () => {
   });
 });
 
+describe('extractSocialLinksForCompany', () => {
+  it('ranks paths containing company slug higher', () => {
+    const urls = ['https://linkedin.com/in/random', 'https://linkedin.com/company/acmecorp'];
+    const ranked = extractSocialLinksForCompany(urls, 'acmecorp.com');
+    expect(ranked[0]).toContain('company/acmecorp');
+  });
+});
+
 describe('normalizeDomain', () => {
   it('strips www and lowercases', () => {
     expect(normalizeDomain('https://WWW.Acme.COM/path')).toBe('acme.com');
@@ -120,16 +138,32 @@ describe('scoreResult', () => {
     status: 'done',
   };
 
-  it('high when email and phone', () => {
-    expect(scoreResult({ ...base, email: 'a@b.com', phone: '555' }).score).toBe('high');
+  it('high when email and phone on listing', () => {
+    const r = scoreResult(
+      { ...base, email: 'a@b.com', phone: '555' },
+      { emailFromListing: true, phoneFromListing: true },
+    );
+    expect(r.score).toBe('high');
   });
 
-  it('high when email and website', () => {
-    expect(scoreResult({ ...base, email: 'a@b.com', companyWebsite: 'https://b.com' }).score).toBe('high');
+  it('high when email matches company domain', () => {
+    const r = scoreResult({
+      ...base,
+      email: 'sales@acme.com',
+      companyWebsite: 'https://www.acme.com',
+    });
+    expect(r.score).toBe('high');
+    expect(r.reason).toContain('company domain');
   });
 
-  it('medium when phone only', () => {
-    expect(scoreResult({ ...base, phone: '555' }).score).toBe('medium');
+  it('medium when email and phone without listing flags', () => {
+    const r = scoreResult({ ...base, email: 'a@b.com', phone: '555' });
+    expect(r.score).toBe('medium');
+  });
+
+  it('medium when phone only on company site', () => {
+    const r = scoreResult({ ...base, phone: '5555555555', companyWebsite: 'https://co.com' });
+    expect(r.score).toBe('medium');
   });
 
   it('low when social only', () => {
@@ -142,7 +176,7 @@ describe('scoreResult', () => {
 });
 
 describe('dedupeCompanies', () => {
-  it('removes duplicates by normalized name + domain', () => {
+  it('collapses same normalized name on same directory host', () => {
     const entries = [
       { name: 'Acme Corp', url: 'https://dir.com/acme' },
       { name: 'acme corp', url: 'https://dir.com/acme-2' },
@@ -150,7 +184,13 @@ describe('dedupeCompanies', () => {
     ];
     const result = dedupeCompanies(entries);
     expect(result.length).toBe(2);
-    expect(result[0].name).toBe('Acme Corp');
-    expect(result[1].name).toBe('Globex');
+  });
+});
+
+describe('companyDedupeKey', () => {
+  it('uses company site domain when distinct from directory', () => {
+    const k1 = companyDedupeKey('Acme', 'https://dir.com/a', 'https://acme.com');
+    const k2 = companyDedupeKey('Acme', 'https://dir.com/b', 'https://acme.com');
+    expect(k1).toBe(k2);
   });
 });

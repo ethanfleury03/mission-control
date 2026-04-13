@@ -1,9 +1,10 @@
-import { chromium, type Browser, type Page } from 'playwright';
-import type { ScrapeJob, CompanyResult } from './types';
+import type { Browser } from 'playwright';
+import type { CompanyResult, DirectoryEntry } from './types';
 import * as store from './job-store';
-import { extractDirectoryEntries } from './extract-directory-entries';
+import { extractDirectoryEntries, type CancelSignal } from './extract-directory-entries';
 import { enrichCompany } from './enrich-company';
-import { dedupeCompanies, sleep } from './utils';
+import { dedupeDirectoryEntries, sleep } from './utils';
+import { launchChromiumForScraper } from './playwright-launch';
 import { v4 as uuid } from 'uuid';
 
 const CONCURRENCY = 2;
@@ -35,124 +36,149 @@ function mockResults(): CompanyResult[] {
     notes: c.email ? 'Email found on company domain' : c.phone ? 'Phone found' : 'Minimal contact info',
     confidence: c.email && c.phone ? 'high' : c.email || c.phone ? 'medium' : 'low',
     status: 'done',
+    needsReview: !(c.email && c.phone),
   }));
 }
 
 export async function runScrapeJob(jobId: string): Promise<void> {
-  const job = store.getJob(jobId);
+  const job = await store.getJob(jobId);
   if (!job) return;
 
-  store.updateJobStatus(jobId, 'running');
-  store.addLog(jobId, 'info', `Starting scrape job for: ${job.input.url || 'MOCK MODE'}`);
+  await store.updateJobStatus(jobId, 'running');
+  await store.addLog(jobId, 'info', `Starting scrape job for: ${job.input.url || 'MOCK MODE'}`);
 
   if (job.input.mockMode || !job.input.url) {
-    store.addLog(jobId, 'info', 'Running in mock mode');
+    await store.addLog(jobId, 'info', 'Running in mock mode');
     const results = mockResults();
-    store.setResults(jobId, results);
-    store.recalcSummary(jobId);
-    store.addLog(jobId, 'info', `Mock data loaded: ${results.length} companies`);
-    store.updateJobStatus(jobId, 'completed');
+    await store.setResults(jobId, results);
+    await store.recalcSummary(jobId);
+    await store.addLog(jobId, 'info', `Mock data loaded: ${results.length} companies`);
+    await store.updateJobStatus(jobId, 'completed');
     return;
   }
 
   let browser: Browser | null = null;
 
   try {
-    browser = await chromium.launch({ headless: true });
+    const launch = await launchChromiumForScraper();
+    browser = launch.browser;
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1280, height: 720 },
     });
     const page = await context.newPage();
 
-    const cancelled = () => store.isJobCancelled(jobId);
+    const cancelled: CancelSignal = () => store.isJobCancelled(jobId);
 
-    // Phase 1: Extract directory entries
-    store.addLog(jobId, 'info', 'Phase 1: Extracting directory entries...');
-    const entries = await extractDirectoryEntries(page, job.input.url, cancelled, job.input.maxCompanies);
+    const pendingRows = job.results.filter((r) => r.status === 'pending');
+    const isResume = pendingRows.length > 0 && job.results.length > 0;
 
-    if (cancelled()) {
-      store.addLog(jobId, 'warn', 'Job cancelled during directory extraction');
-      return;
+    let limited: DirectoryEntry[] = [];
+
+    if (isResume) {
+      await store.addLog(jobId, 'info', `Resuming job: ${pendingRows.length} pending rows`);
+    } else {
+      await store.addLog(jobId, 'info', 'Phase 1: Extracting directory entries...');
+      const entries = await extractDirectoryEntries(page, job.input.url, cancelled, job.input.maxCompanies);
+
+      if (await Promise.resolve(cancelled())) {
+        await store.addLog(jobId, 'warn', 'Job cancelled during directory extraction');
+        return;
+      }
+
+      const deduped = dedupeDirectoryEntries(entries);
+      limited = job.input.maxCompanies ? deduped.slice(0, job.input.maxCompanies) : deduped;
+
+      await store.addLog(jobId, 'info', `Found ${deduped.length} unique entries, processing ${limited.length}`);
+      await store.updateSummary(jobId, { companiesFound: limited.length });
+
+      const initialResults: CompanyResult[] = limited.map((entry) => ({
+        id: uuid(),
+        companyName: entry.name,
+        directoryListingUrl: entry.url,
+        companyWebsite: '',
+        contactName: '',
+        email: '',
+        phone: '',
+        address: '',
+        contactPageUrl: '',
+        socialLinks: '',
+        notes: '',
+        confidence: 'low',
+        status: 'pending',
+        needsReview: false,
+      }));
+      await store.setResults(jobId, initialResults);
     }
 
-    const deduped = dedupeCompanies(entries);
-    const limited = job.input.maxCompanies ? deduped.slice(0, job.input.maxCompanies) : deduped;
-
-    store.addLog(jobId, 'info', `Found ${deduped.length} unique entries, processing ${limited.length}`);
-    store.updateSummary(jobId, { companiesFound: limited.length });
-
-    // Initialize results as pending
-    const initialResults: CompanyResult[] = limited.map((entry) => ({
-      id: uuid(),
-      companyName: entry.name,
-      directoryListingUrl: entry.url,
-      companyWebsite: '',
-      contactName: '',
-      email: '',
-      phone: '',
-      address: '',
-      contactPageUrl: '',
-      socialLinks: '',
-      notes: '',
-      confidence: 'low' as const,
-      status: 'pending' as const,
-    }));
-    store.setResults(jobId, initialResults);
-
-    // Phase 2: Enrich each company
-    store.addLog(jobId, 'info', `Phase 2: Enriching ${limited.length} companies...`);
     const visitWebsites = job.input.visitCompanyWebsites ?? false;
 
-    for (let i = 0; i < limited.length; i += CONCURRENCY) {
-      if (cancelled()) {
-        store.addLog(jobId, 'warn', 'Job cancelled during enrichment');
+    const refreshed = await store.getJob(jobId);
+    const rowsToProcess = (refreshed?.results ?? []).filter((r) => r.status === 'pending');
+
+    await store.addLog(jobId, 'info', `Phase 2: Enriching ${rowsToProcess.length} companies...`);
+
+    for (let i = 0; i < rowsToProcess.length; i += CONCURRENCY) {
+      if (await Promise.resolve(cancelled())) {
+        await store.addLog(jobId, 'warn', 'Job cancelled during enrichment');
         break;
       }
 
-      const batch = limited.slice(i, i + CONCURRENCY);
-      const enrichPromises = batch.map(async (entry, batchIdx) => {
-        const globalIdx = i + batchIdx;
-        store.updateResult(jobId, initialResults[globalIdx].id, { status: 'scraping' });
+      const batch = rowsToProcess.slice(i, i + CONCURRENCY);
+      const enrichPromises = batch.map(async (row, batchIdx) => {
+        const entry: DirectoryEntry = {
+          name: row.companyName,
+          url: row.directoryListingUrl,
+          detailUrl: row.directoryListingUrl,
+        };
+        await store.updateResult(jobId, row.id, { status: 'scraping' });
 
         try {
           const enrichPage = await context.newPage();
           try {
-            const result = await enrichCompany(enrichPage, entry, visitWebsites, cancelled);
-            store.updateResult(jobId, initialResults[globalIdx].id, {
+            const result = await enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id);
+            await store.updateResult(jobId, row.id, {
               ...result,
-              id: initialResults[globalIdx].id,
+              id: row.id,
             });
           } finally {
             await enrichPage.close();
           }
-        } catch (err: any) {
-          store.updateResult(jobId, initialResults[globalIdx].id, {
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          await store.updateResult(jobId, row.id, {
             status: 'failed',
-            error: err?.message ?? 'Unknown error',
-            notes: `Enrichment failed: ${err?.message}`,
+            error: message,
+            notes: `Enrichment failed: ${message}`,
+            needsReview: true,
           });
         }
       });
 
       await Promise.all(enrichPromises);
-      store.recalcSummary(jobId);
-      store.addLog(jobId, 'info', `Processed ${Math.min(i + CONCURRENCY, limited.length)}/${limited.length}`);
+      await store.recalcSummary(jobId);
+      await store.addLog(
+        jobId,
+        'info',
+        `Processed ${Math.min(i + CONCURRENCY, rowsToProcess.length)}/${rowsToProcess.length}`,
+      );
 
-      if (i + CONCURRENCY < limited.length) {
+      if (i + CONCURRENCY < rowsToProcess.length) {
         await sleep(DELAY_BETWEEN_COMPANIES_MS);
       }
     }
 
-    store.recalcSummary(jobId);
+    await store.recalcSummary(jobId);
 
-    if (!cancelled()) {
-      store.updateJobStatus(jobId, 'completed');
-      store.addLog(jobId, 'info', 'Scrape job completed');
+    if (!(await Promise.resolve(cancelled()))) {
+      await store.updateJobStatus(jobId, 'completed');
+      await store.addLog(jobId, 'info', 'Scrape job completed');
     }
-  } catch (err: any) {
-    store.addLog(jobId, 'error', `Job failed: ${err?.message}`);
-    store.updateJobStatus(jobId, 'failed');
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    await store.addLog(jobId, 'error', `Job failed: ${message}`);
+    await store.updateJobStatus(jobId, 'failed');
   } finally {
     if (browser) {
       await browser.close().catch(() => {});

@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { DirectoryEntry } from './types';
-import { normalizeUrl, sleep } from './utils';
+import { normalizeUrl, sleep, dedupeDirectoryEntries } from './utils';
 
 const MAX_PAGES = 50;
 const MAX_ENTRIES = 2000;
@@ -84,10 +84,12 @@ function detectNextPageLink(page: Page): Promise<string | null> {
   });
 }
 
+export type CancelSignal = () => boolean | Promise<boolean>;
+
 export async function extractDirectoryEntries(
   page: Page,
   startUrl: string,
-  signal: () => boolean,
+  signal: CancelSignal,
   maxEntries?: number,
 ): Promise<DirectoryEntry[]> {
   const all: DirectoryEntry[] = [];
@@ -99,7 +101,7 @@ export async function extractDirectoryEntries(
   let pageCount = 0;
 
   while (currentUrl && pageCount < MAX_PAGES && all.length < limit) {
-    if (signal()) break;
+    if (await Promise.resolve(signal())) break;
     if (seenPageUrls.has(currentUrl)) break;
     seenPageUrls.add(currentUrl);
 
@@ -132,5 +134,5 @@ export async function extractDirectoryEntries(
     await sleep(1000);
   }
 
-  return all;
+  return dedupeDirectoryEntries(all);
 }

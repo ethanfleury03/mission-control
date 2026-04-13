@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL") ?? "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 // Organization Departments
@@ -94,4 +94,61 @@ model OrgSnapshot {
 
   @@index([createdAt])
   @@map("org_snapshots")
+}
+
+// Directory Scraper — persisted jobs (SQLite today; swap DATABASE_URL for Postgres later)
+model DirectoryScrapeJob {
+  id         String    @id @default(uuid())
+  status     String    // queued | running | cancelled | completed | failed
+  inputJson  String    // ScrapeJobInput JSON
+  startedAt  DateTime?
+  finishedAt DateTime?
+  summaryJson String   // JobSummary JSON
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  results DirectoryScrapeResult[]
+  logs    DirectoryScrapeLog[]
+
+  @@index([createdAt])
+  @@index([status])
+  @@map("directory_scrape_jobs")
+}
+
+model DirectoryScrapeResult {
+  id                  String   @id @default(uuid())
+  jobId               String
+  job                 DirectoryScrapeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  companyName         String
+  directoryListingUrl String
+  companyWebsite      String   @default("")
+  contactName         String   @default("")
+  email               String   @default("")
+  phone               String   @default("")
+  address             String   @default("")
+  contactPageUrl      String   @default("")
+  socialLinks         String   @default("")
+  notes               String   @default("")
+  confidence          String   // high | medium | low
+  status              String   // pending | scraping | enriching | done | failed
+  error               String?
+  rawContactJson      String?  // ContactInfo JSON
+  needsReview         Boolean  @default(false)
+  sortOrder           Int      @default(0)
+
+  @@index([jobId])
+  @@index([jobId, status])
+  @@map("directory_scrape_results")
+}
+
+model DirectoryScrapeLog {
+  id        String   @id @default(uuid())
+  jobId     String
+  job       DirectoryScrapeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  timestamp DateTime @default(now())
+  level     String   // info | warn | error
+  message   String
+
+  @@index([jobId])
+  @@map("directory_scrape_logs")
 }

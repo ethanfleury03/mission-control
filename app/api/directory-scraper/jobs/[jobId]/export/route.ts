@@ -3,9 +3,12 @@ import { getJob } from '@/lib/directory-scraper/job-store';
 import { exportToCsv } from '@/lib/directory-scraper/export-csv';
 import { exportToGoogleSheets, isSheetsConfigured } from '@/lib/directory-scraper/export-sheets';
 
-export async function POST(request: NextRequest, context: any) {
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
-  const job = getJob(jobId);
+  const job = await getJob(jobId);
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   if (job.results.length === 0) {
     return NextResponse.json({ error: 'No results to export' }, { status: 400 });
@@ -28,20 +31,28 @@ export async function POST(request: NextRequest, context: any) {
   if (target === 'sheets') {
     if (!isSheetsConfigured()) {
       return NextResponse.json(
-        { error: 'Google Sheets credentials not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.' },
+        {
+          error:
+            'Google Sheets is not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY in the server environment, restart the app, and share the target spreadsheet with that service account email (Editor).',
+          code: 'SHEETS_NOT_CONFIGURED',
+        },
         { status: 400 },
       );
     }
     const sheetId = body.googleSheetId || job.input.googleSheetId;
     const tabName = body.googleSheetTab || job.input.googleSheetTab || 'Scrape Results';
     if (!sheetId) {
-      return NextResponse.json({ error: 'Google Sheet ID required' }, { status: 400 });
+      return NextResponse.json({ error: 'Google Sheet ID required', code: 'MISSING_SHEET_ID' }, { status: 400 });
     }
     try {
       const result = await exportToGoogleSheets(job.results, sheetId, tabName);
       return NextResponse.json(result);
-    } catch (err: any) {
-      return NextResponse.json({ error: err?.message ?? 'Sheets export failed' }, { status: 500 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Sheets export failed';
+      return NextResponse.json(
+        { error: message, code: 'SHEETS_EXPORT_FAILED' },
+        { status: 500 },
+      );
     }
   }
 
