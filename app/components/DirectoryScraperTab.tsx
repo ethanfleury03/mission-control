@@ -78,6 +78,9 @@ export function DirectoryScraperTab() {
   const [maxCompanies, setMaxCompanies] = useState('');
   const [visitWebsites, setVisitWebsites] = useState(false);
   const [enableAiFallback, setEnableAiFallback] = useState(false);
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiHint, setAiHint] = useState<string | null>(null);
+  const [aiModel, setAiModel] = useState<string | null>(null);
   const [mockMode, setMockMode] = useState(false);
   const [exportTarget, setExportTarget] = useState<'csv' | 'sheets'>('csv');
   const [sheetId, setSheetId] = useState('');
@@ -101,13 +104,19 @@ export function DirectoryScraperTab() {
   const jobRef = useRef<ScrapeJob | null>(null);
   jobRef.current = job;
 
-  // Check sheets availability
+  // Check sheets + AI availability
   useEffect(() => {
     fetch(`${API}/sheets-status`)
       .then((r) => r.json())
+      .then((d) => { setSheetsConfigured(d.configured); setSheetsHint(d.hint ?? null); })
+      .catch(() => {});
+    fetch(`${API}/ai-status`)
+      .then((r) => r.json())
       .then((d) => {
-        setSheetsConfigured(d.configured);
-        setSheetsHint(d.hint ?? null);
+        setAiConfigured(d.configured);
+        setAiHint(d.hint ?? null);
+        setAiModel(d.model ?? null);
+        if (d.configured) setEnableAiFallback(true);
       })
       .catch(() => {});
   }, []);
@@ -388,11 +397,16 @@ export function DirectoryScraperTab() {
                   type="checkbox"
                   checked={enableAiFallback}
                   onChange={(e) => setEnableAiFallback(e.target.checked)}
-                  disabled={isRunning}
+                  disabled={isRunning || !aiConfigured}
                   className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
                 />
-                AI fallback (bounded; requires OPENAI_API_KEY)
+                <span className={aiConfigured ? '' : 'text-neutral-400'}>
+                  AI extraction {aiConfigured && aiModel ? `(${aiModel})` : '(requires OPENROUTER_API_KEY)'}
+                </span>
               </label>
+              {!aiConfigured && aiHint && (
+                <p className="text-2xs text-neutral-500 leading-relaxed ml-6">{aiHint}</p>
+              )}
               <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
                 <input
                   type="checkbox"

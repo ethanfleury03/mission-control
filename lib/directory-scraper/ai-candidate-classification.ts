@@ -16,10 +16,10 @@ export interface ClassificationAiResult {
 export async function classifyCompanyCandidatesWithAi(
   candidates: CandidateForAi[],
 ): Promise<ClassificationAiResult | null> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.OPENROUTER_API_KEY;
   if (!key || candidates.length === 0) return null;
 
-  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL ?? 'gpt-4o-mini';
+  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL ?? 'openai/gpt-4o-mini';
   const body = {
     model,
     temperature: 0,
@@ -41,11 +41,13 @@ Rules:
   };
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://arrsys.com',
+        'X-Title': 'Arrow Hub Directory Scraper',
       },
       body: JSON.stringify(body),
     });
