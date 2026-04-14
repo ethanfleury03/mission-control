@@ -538,6 +538,7 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
             id: row.id,
             nameExtractionMeta: row.nameExtractionMeta,
           });
+          await store.recalcSummary(jobId);
           await rowLog(`Enrichment finished in ${Math.round((Date.now() - rowStarted) / 1000)}s (status ${result.status})`);
         } finally {
           await enrichPage.close().catch(() => {});
@@ -552,6 +553,7 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
           needsReview: true,
           nameExtractionMeta: row.nameExtractionMeta,
         });
+        await store.recalcSummary(jobId);
       }
     });
 

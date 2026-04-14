@@ -4,6 +4,7 @@ import type { Page } from 'playwright';
 import { assertPublicHttpUrl } from './validate-scrape-url';
 import type { CompanyResult, DirectoryEntry } from './types';
 import { extractContactFromSite } from './extract-contact-info';
+import { gotoDomContentLoaded } from './navigation-timeout';
 import {
   extractEmails,
   extractPhones,
@@ -34,7 +35,7 @@ function isSamePageAsListing(detailUrl: string | undefined, listingUrl: string):
 async function extractCompanyWebsiteFromDetail(page: Page, detailUrl: string): Promise<string> {
   try {
     assertPublicHttpUrl(detailUrl, 'Directory detail page');
-    await page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+    await gotoDomContentLoaded(page, detailUrl, 20_000);
     await sleep(500);
     const website = await page.evaluate(() => {
       const links = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
@@ -163,7 +164,7 @@ export async function enrichCompany(
       );
       try {
         assertPublicHttpUrl(listingUrl, 'Directory listing page');
-        await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+        await gotoDomContentLoaded(page, listingUrl, 20_000);
         await sleep(400);
         await log('Step: listing page loaded');
       } catch {

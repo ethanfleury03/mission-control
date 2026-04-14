@@ -10,6 +10,7 @@ import {
 } from './utils';
 import type { CancelSignal } from './extract-directory-entries';
 import { assertPublicHttpUrl } from './validate-scrape-url';
+import { gotoDomContentLoaded } from './navigation-timeout';
 
 const CONTACT_PATH_HINTS = ['/contact', '/about', '/team', '/sales', '/get-in-touch', '/reach-us', '/support'];
 
@@ -96,7 +97,7 @@ export async function extractContactFromSite(
   try {
     assertPublicHttpUrl(siteUrl, 'Company site');
     await step(`Contact crawl: loading homepage ${siteUrl.slice(0, 80)}${siteUrl.length > 80 ? '…' : ''}`);
-    await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+    await gotoDomContentLoaded(page, siteUrl, 20_000);
     await sleep(500);
     merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
     await step(
@@ -123,7 +124,7 @@ export async function extractContactFromSite(
     try {
       assertPublicHttpUrl(link, 'Contact page');
       await step(`Contact crawl: loading subpage ${link.slice(0, 90)}${link.length > 90 ? '…' : ''}`);
-      await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+      await gotoDomContentLoaded(page, link, 15_000);
       await sleep(400);
       merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
     } catch {
