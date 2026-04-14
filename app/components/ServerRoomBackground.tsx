@@ -114,7 +114,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
         }}>
           <div className="absolute inset-1 flex gap-1">
             {[0, 1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="flex-1 bg-[#22d3ee]/20 rounded-sm" />
+              <div key={i} className="flex-1 bg-[#C41E3A]/20 rounded-sm" />
             ))}
           </div>
         </div>
@@ -199,7 +199,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
             {[
               '#ef4444', '#f97316', '#f59e0b', '#eab308',
               '#84cc16', '#22c55e', '#10b981', '#14b8a6',
-              '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+              '#9B1930', '#0ea5e9', '#3b82f6', '#6366f1',
               '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'
             ].map((color, idx) => (
               <div key={idx} className="rounded" style={{
@@ -289,7 +289,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
         <div 
           className="absolute inset-0 -z-10 blur-[30px] transition-opacity duration-1000" 
           style={{ 
-            background: 'radial-gradient(circle, #22d3ee30 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(196,30,58,0.19) 0%, transparent 70%)',
             opacity: 0.2 + safeActivityLevel * 0.2
           }}
         />
@@ -344,7 +344,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
         }}>
           <div className="absolute inset-2 flex gap-1">
             <div className="flex-1 bg-[#3b82f6]/20 rounded border border-[#3b82f6]/30" />
-            <div className="flex-1 bg-[#22d3ee]/20 rounded border border-[#22d3ee]/30" />
+            <div className="flex-1 bg-[#C41E3A]/20 rounded border border-[#C41E3A]/30" />
           </div>
         </div>
       </div>
@@ -361,7 +361,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
           boxShadow: '0 6px 16px rgba(0,0,0,0.7)'
         }}>
           {[0, 1, 2, 3, 4].map(i => (
-            <div key={i} className="absolute left-2 right-2 h-1 bg-[#22d3ee]/20 border-t border-[#22d3ee]/30" style={{
+            <div key={i} className="absolute left-2 right-2 h-1 bg-[#C41E3A]/20 border-t border-[#C41E3A]/30" style={{
               top: `${i * 20 + 10}%`
             }} />
           ))}
@@ -369,8 +369,8 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
             boxShadow: '0 0 4px #22c55e',
             animationDelay: '0s'
           }} />
-          <div className="absolute top-5 left-2 w-1.5 h-1.5 bg-[#22d3ee] rounded-full animate-pulse" style={{
-            boxShadow: '0 0 4px #22d3ee',
+          <div className="absolute top-5 left-2 w-1.5 h-1.5 bg-[#C41E3A] rounded-full animate-pulse" style={{
+            boxShadow: '0 0 4px #C41E3A',
             animationDelay: '0.7s'
           }} />
         </div>
@@ -409,7 +409,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
               top: `${i * 14 + 8}%`
             }} />
           ))}
-          <div className="absolute top-2 left-2 w-1 h-1 bg-[#22d3ee] rounded-full animate-pulse" style={{ animationDelay: '0s' }} />
+          <div className="absolute top-2 left-2 w-1 h-1 bg-[#C41E3A] rounded-full animate-pulse" style={{ animationDelay: '0s' }} />
           <div className="absolute top-4 left-2 w-1 h-1 bg-[#22c55e] rounded-full animate-pulse" style={{ animationDelay: '0.5s' }} />
           <div className="absolute top-6 left-2 w-1 h-1 bg-[#3b82f6] rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
         </div>
@@ -433,7 +433,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
       <div className="absolute top-[8%] left-[25%] w-48 h-3 bg-gradient-to-r from-transparent via-[#1e293b]/60 to-transparent rounded-full" style={{
         boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.5)'
       }}>
-        <div className="absolute top-1 left-4 w-1 h-1 bg-[#22d3ee] rounded-full animate-pulse" style={{ animationDelay: '0s' }} />
+        <div className="absolute top-1 left-4 w-1 h-1 bg-[#C41E3A] rounded-full animate-pulse" style={{ animationDelay: '0s' }} />
         <div className="absolute top-1 right-4 w-1 h-1 bg-[#22c55e] rounded-full animate-pulse" style={{ animationDelay: '0.5s' }} />
       </div>
       
@@ -446,9 +446,9 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
       
       {/* Floating holographic status displays */}
       <div className="absolute top-[18%] left-[15%] w-16 h-12" style={{ animation: 'spotlight-breathe 6s ease-in-out infinite' }}>
-        <div className="absolute inset-0 bg-gradient-to-br from-[#22d3ee]/30 to-[#3b82f6]/30 rounded border border-[#22d3ee]/40 backdrop-blur-sm">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#C41E3A]/30 to-[#3b82f6]/30 rounded border border-[#C41E3A]/40 backdrop-blur-sm">
           <div className="absolute inset-2 flex flex-col gap-1">
-            <div className="h-1 bg-[#22d3ee]/50 rounded" />
+            <div className="h-1 bg-[#C41E3A]/50 rounded" />
             <div className="h-1 bg-[#22c55e]/50 rounded w-3/4" />
             <div className="h-1 bg-[#eab308]/50 rounded w-1/2" />
           </div>
@@ -469,7 +469,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
         { left: '12%', top: '35%', color: '#22c55e', size: 'w-2 h-2', delay: 0 },
         { left: '88%', top: '32%', color: '#3b82f6', size: 'w-2 h-2', delay: 0.3 },
         { left: '50%', top: '15%', color: '#a855f7', size: 'w-1.5 h-1.5', delay: 0.6 },
-        { left: '30%', top: '40%', color: '#22d3ee', size: 'w-1.5 h-1.5', delay: 0.9 },
+        { left: '30%', top: '40%', color: '#C41E3A', size: 'w-1.5 h-1.5', delay: 0.9 },
         { left: '70%', top: '38%', color: '#eab308', size: 'w-1.5 h-1.5', delay: 1.2 },
         { left: '18%', top: '48%', color: '#ec4899', size: 'w-2 h-2', delay: 1.5 },
         { left: '82%', top: '44%', color: '#10b981', size: 'w-1.5 h-1.5', delay: 1.8 },
@@ -504,7 +504,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
         style={{ opacity: 0.06 + safeActivityLevel * 0.08 }}
       />
       <div 
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-72 bg-[#22d3ee] rounded-full blur-[160px] transition-opacity duration-1000" 
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-72 bg-[#C41E3A] rounded-full blur-[160px] transition-opacity duration-1000" 
         style={{ opacity: 0.05 + safeActivityLevel * 0.06 }}
       />
       
@@ -517,7 +517,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
       <div className="absolute top-1/4 right-4 w-40 h-80 bg-[#a855f7]/12 blur-[70px]" />
       
       {/* Floor uplighting */}
-      <div className="absolute bottom-0 left-1/3 w-48 h-32 bg-[#22d3ee]/8 blur-[60px]" />
+      <div className="absolute bottom-0 left-1/3 w-48 h-32 bg-[#C41E3A]/8 blur-[60px]" />
       <div className="absolute bottom-0 right-1/3 w-48 h-32 bg-[#6366f1]/8 blur-[60px]" />
       
       {/* Overall atmospheric gradient */}
@@ -535,7 +535,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
       {/* Subtle particle effects - floating data points, count scales with activity */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {[
-          { left: '15%', top: '25%', delay: '0s', duration: '8s', color: '#22d3ee' },
+          { left: '15%', top: '25%', delay: '0s', duration: '8s', color: '#C41E3A' },
           { left: '45%', top: '30%', delay: '2s', duration: '10s', color: '#3b82f6' },
           { left: '75%', top: '28%', delay: '4s', duration: '9s', color: '#a855f7' },
           { left: '30%', top: '45%', delay: '1s', duration: '11s', color: '#22c55e' },
@@ -569,7 +569,7 @@ export function ServerRoomBackground({ activityLevel = 0.5 }: ServerRoomBackgrou
         {[...Array(20)].map((_, i) => (
           <div
             key={i}
-            className="absolute w-0.5 h-3 bg-gradient-to-b from-[#22d3ee]/20 to-transparent"
+            className="absolute w-0.5 h-3 bg-gradient-to-b from-[#C41E3A]/20 to-transparent"
             style={{
               left: `${Math.random() * 100}%`,
               top: '-5%',

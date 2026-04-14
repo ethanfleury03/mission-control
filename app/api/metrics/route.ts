@@ -12,7 +12,16 @@ type BoardResponse = {
   };
 };
 
+const DISABLED = process.env.DISABLE_OPENCLAW === '1' || process.env.DISABLE_OPENCLAW === 'true';
+
 export async function GET() {
+  if (DISABLED) {
+    return NextResponse.json({
+      activeSessions: 0, totalSessions: 0, agentsOnline: 0, agentsIdle: 0,
+      activityPerMin: 0, errors60m: 0, overdueCrons: 0, wipTasks: 0,
+      blockedTasks: 0, avgDoneTime: 'n/a', healthIndex: 100, tokensTotal: 0,
+    });
+  }
   try {
     const [board, status] = await Promise.all([
       fetchBackend<BoardResponse>('/work/board'),

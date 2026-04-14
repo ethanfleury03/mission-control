@@ -8,9 +8,10 @@ import { RightSidebar } from './components/RightSidebar';
 import { BottomBar } from './components/BottomBar';
 import { KanbanBoard } from './components/KanbanBoard';
 import { AgentOffice } from './components/AgentOffice';
-import { MapTab } from './components/MapTab';
 import { BlogsTab } from './components/BlogsTab';
+import { DirectoryScraperTab } from './components/DirectoryScraperTab';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
+import type { HubAppId } from './lib/hubApps';
 
 const EMPTY_METRICS: SystemMetrics = {
   activeSessions: 0,
@@ -27,8 +28,8 @@ const EMPTY_METRICS: SystemMetrics = {
   tokensTotal: 0,
 };
 
-export default function MissionControl() {
-  const [activeTab, setActiveTab] = useState('OVERVIEW');
+export default function ArrowHub() {
+  const [activeApp, setActiveApp] = useState<HubAppId>('OPENCLAW');
   const [mounted, setMounted] = useState(false);
 
   const [metrics, setMetrics] = useState<SystemMetrics>(EMPTY_METRICS);
@@ -39,7 +40,7 @@ export default function MissionControl() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [crons, setCrons] = useState<CronJob[]>([]);
 
-  const refreshOverviewData = useCallback(async () => {
+  const refreshOpenClawData = useCallback(async () => {
     try {
       const [
         metricsRes,
@@ -67,7 +68,7 @@ export default function MissionControl() {
       if (alertsRes.ok) setAlerts(await alertsRes.json());
       if (cronsRes.ok) setCrons(await cronsRes.json());
     } catch (err) {
-      console.error('Overview refresh failed', err);
+      console.error('OpenClaw stats refresh failed', err);
     }
   }, []);
 
@@ -78,30 +79,35 @@ export default function MissionControl() {
   useEffect(() => {
     if (!mounted) return;
 
-    refreshOverviewData();
-    const id = setInterval(refreshOverviewData, 15000);
+    refreshOpenClawData();
+    const id = setInterval(refreshOpenClawData, 15000);
     return () => clearInterval(id);
-  }, [mounted, refreshOverviewData]);
+  }, [mounted, refreshOpenClawData]);
 
   if (!mounted) {
     return <div className="h-screen flex flex-col bg-bg-primary" />;
   }
 
   return (
-    <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
-      <Header activeTab={activeTab} onTabChange={setActiveTab} />
+    <div className="h-screen flex flex-col bg-bg-primary overflow-hidden hub-shell">
+      <Header activeApp={activeApp} />
 
-      <div className="flex-1 flex overflow-hidden">
-        {activeTab !== 'MAP' && activeTab !== 'AGENTS' && activeTab !== 'BLOGS' && <LeftSidebar agents={agents} sessions={sessions} />}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        <LeftSidebar
+          activeApp={activeApp}
+          onAppChange={setActiveApp}
+          agents={agents}
+          sessions={sessions}
+        />
 
-        {activeTab === 'MAP' ? (
-          <MapTab />
-        ) : activeTab === 'KANBAN' ? (
+        {activeApp === 'KANBAN' ? (
           <KanbanBoard />
-        ) : activeTab === 'BLOGS' ? (
+        ) : activeApp === 'BLOGS' ? (
           <BlogsTab />
-        ) : activeTab === 'AGENTS' ? (
+        ) : activeApp === 'AGENTS' ? (
           <AgentOffice />
+        ) : activeApp === 'SCRAPER' ? (
+          <DirectoryScraperTab />
         ) : (
           <MainContent
             metrics={metrics}
@@ -111,9 +117,7 @@ export default function MissionControl() {
           />
         )}
 
-        {activeTab !== 'KANBAN' && activeTab !== 'MAP' && activeTab !== 'AGENTS' && activeTab !== 'BLOGS' && (
-          <RightSidebar alerts={alerts} crons={crons} />
-        )}
+        {activeApp === 'OPENCLAW' && <RightSidebar alerts={alerts} crons={crons} />}
       </div>
 
       <BottomBar />

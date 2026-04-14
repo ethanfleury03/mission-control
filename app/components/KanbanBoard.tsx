@@ -222,7 +222,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
 
   return (
     <div className="h-full flex flex-col bg-bg-primary">
-      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-4">
+      <div className="px-6 py-4 border-b border-hub-border flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-text-primary">Task Board</h2>
           <span className="text-sm text-text-muted">{tasks.length} tasks</span>
@@ -241,7 +241,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
             value={contextKey}
             onChange={e => setContextKey(e.target.value)}
             placeholder="Context key (ex: channel:146...)"
-            className="w-72 px-3 py-1.5 bg-bg-tertiary border border-white/5 rounded text-sm text-text-primary focus:outline-none focus:border-accent-cyan/30"
+            className="w-72 px-3 py-1.5 bg-bg-tertiary border border-hub-border rounded text-sm text-text-primary focus:outline-none focus:border-accent-cyan/30"
           />
           <button
             onClick={() => setContextKey('')}
@@ -328,7 +328,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
 
       {showMessageModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary rounded-lg border border-white/10 p-6 w-[34rem]">
+          <div className="bg-bg-secondary rounded-lg border border-neutral-200 p-6 w-[34rem]">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">Create Task From Message</h3>
               <button onClick={() => setShowMessageModal(false)} className="text-text-muted hover:text-text-primary">
@@ -340,21 +340,21 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
                 type="text"
                 value={messageTask.messageId}
                 onChange={e => setMessageTask({ ...messageTask, messageId: e.target.value })}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary"
+                className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary"
                 placeholder="Message ID"
               />
               <input
                 type="text"
                 value={messageTask.author}
                 onChange={e => setMessageTask({ ...messageTask, author: e.target.value })}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary"
+                className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary"
                 placeholder="Author"
               />
               <textarea
                 value={messageTask.text}
                 onChange={e => setMessageTask({ ...messageTask, text: e.target.value })}
                 rows={4}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary resize-none"
+                className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary resize-none"
                 placeholder="Paste the message content"
               />
             </div>
@@ -393,7 +393,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary rounded-lg border border-white/10 p-6 w-96">
+          <div className="bg-bg-secondary rounded-lg border border-neutral-200 p-6 w-96">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">New Task</h3>
               <button onClick={() => setShowModal(false)} className="text-text-muted hover:text-text-primary">
@@ -407,7 +407,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
                   type="text"
                   value={newTask.title}
                   onChange={e => setNewTask({ ...newTask, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
                   placeholder="What needs to be done?"
                 />
               </div>
@@ -416,7 +416,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
                 <select
                   value={newTask.priority}
                   onChange={e => setNewTask({ ...newTask, priority: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
                 >
                   <option value={-1}>Low</option>
                   <option value={0}>Medium</option>
@@ -428,7 +428,7 @@ export function KanbanBoard({ initialContextKey = 'channel:1469858204237299956' 
                 <select
                   value={newTask.agentId}
                   onChange={e => setNewTask({ ...newTask, agentId: e.target.value })}
-                  className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
                 >
                   <option value="">Unassigned</option>
                   {agents.map(a => (
@@ -511,8 +511,8 @@ function EditTaskModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-bg-secondary rounded-lg border border-white/10 max-w-lg w-full">
-        <div className="flex items-center justify-between p-4 border-b border-white/5">
+      <div className="bg-bg-secondary rounded-lg border border-neutral-200 max-w-lg w-full">
+        <div className="flex items-center justify-between p-4 border-b border-hub-border">
           <h3 className="text-lg font-semibold text-text-primary">Edit Task</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">
             <X className="w-5 h-5" />
@@ -525,7 +525,7 @@ function EditTaskModal({
               type="text"
               value={editForm.title}
               onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-              className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+              className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
             />
           </div>
           <div>
@@ -534,7 +534,7 @@ function EditTaskModal({
               value={editForm.description}
               onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
               rows={3}
-              className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30 resize-none"
+              className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30 resize-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -543,7 +543,7 @@ function EditTaskModal({
               <select
                 value={editForm.priority}
                 onChange={e => setEditForm(f => ({ ...f, priority: Number(e.target.value) }))}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+                className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
               >
                 <option value={-1}>Low</option>
                 <option value={0}>Medium</option>
@@ -555,7 +555,7 @@ function EditTaskModal({
               <select
                 value={editForm.status}
                 onChange={e => setEditForm(f => ({ ...f, status: e.target.value as KanbanColumn }))}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+                className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
               >
                 {COLUMNS.map(c => (
                   <option key={c.id} value={c.id}>{c.title}</option>
@@ -568,7 +568,7 @@ function EditTaskModal({
             <select
               value={editForm.agentId}
               onChange={e => setEditForm(f => ({ ...f, agentId: e.target.value }))}
-              className="w-full px-3 py-2 bg-bg-tertiary border border-white/5 rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
+              className="w-full px-3 py-2 bg-bg-tertiary border border-hub-border rounded text-text-primary focus:outline-none focus:border-accent-cyan/30"
             >
               <option value="">Unassigned</option>
               {agents.map(a => (
@@ -581,7 +581,7 @@ function EditTaskModal({
             <span>Updated: {new Date(task.updatedAt).toLocaleString()}</span>
           </div>
         </div>
-        <div className="flex items-center justify-between p-4 border-t border-white/5">
+        <div className="flex items-center justify-between p-4 border-t border-hub-border">
           <div>
             {!showDeleteConfirm ? (
               <button
@@ -660,11 +660,11 @@ function KanbanColumn({
 
   return (
     <div
-      className="w-80 flex flex-col bg-bg-secondary rounded-lg border border-white/5"
+      className="w-80 flex flex-col bg-bg-secondary rounded-lg border border-hub-border"
       onDragOver={onDragOver}
       onDrop={e => onDrop(e, column.id)}
     >
-      <div className="p-4 border-b border-white/5">
+      <div className="p-4 border-b border-hub-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Icon className={cn('w-4 h-4', column.color)} />
@@ -690,7 +690,7 @@ function KanbanColumn({
         ))}
         <button
           onClick={() => onAddTask(column.id)}
-          className="w-full py-2 flex items-center justify-center gap-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary rounded-md transition-colors border border-dashed border-white/10 hover:border-white/20"
+          className="w-full py-2 flex items-center justify-center gap-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary rounded-md transition-colors border border-dashed border-neutral-200 hover:border-white/20"
         >
           <Plus className="w-4 h-4" />
           Add Task
@@ -716,7 +716,7 @@ function KanbanCard({ task, agentName, onDragStart, onTaskClick }: KanbanCardPro
   };
 
   return (
-    <div className="bg-bg-tertiary rounded-lg border border-white/5 hover:border-accent-cyan/30 group transition-all hover:shadow-lg hover:shadow-accent-cyan/5 flex">
+    <div className="bg-bg-tertiary rounded-lg border border-hub-border hover:border-accent-cyan/30 group transition-all hover:shadow-lg hover:shadow-accent-cyan/5 flex">
       <div
         draggable
         onDragStart={onDragStart}

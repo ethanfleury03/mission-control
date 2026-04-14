@@ -114,7 +114,7 @@ function ForgeAvatar({ className }: { className?: string }) {
 
       {/* Head - square */}
 
-      <rect x="20" y="8" width="24" height="24" fill="#22d3ee" />
+      <rect x="20" y="8" width="24" height="24" fill="#C41E3A" />
 
       {/* Eyes */}
 
@@ -124,7 +124,7 @@ function ForgeAvatar({ className }: { className?: string }) {
 
       {/* Body - square */}
 
-      <rect x="18" y="32" width="28" height="24" fill="#22d3ee" />
+      <rect x="18" y="32" width="28" height="24" fill="#C41E3A" />
 
       {/* Chest panel */}
 
@@ -132,9 +132,9 @@ function ForgeAvatar({ className }: { className?: string }) {
 
       {/* Arms */}
 
-      <rect x="8" y="36" width="10" height="6" fill="#22d3ee" />
+      <rect x="8" y="36" width="10" height="6" fill="#C41E3A" />
 
-      <rect x="46" y="36" width="10" height="6" fill="#22d3ee" />
+      <rect x="46" y="36" width="10" height="6" fill="#C41E3A" />
 
       {/* Tool in right hand - wrench */}
 
@@ -144,9 +144,9 @@ function ForgeAvatar({ className }: { className?: string }) {
 
       {/* Legs */}
 
-      <rect x="22" y="56" width="8" height="8" fill="#22d3ee" />
+      <rect x="22" y="56" width="8" height="8" fill="#C41E3A" />
 
-      <rect x="34" y="56" width="8" height="8" fill="#22d3ee" />
+      <rect x="34" y="56" width="8" height="8" fill="#C41E3A" />
 
     </svg>
 

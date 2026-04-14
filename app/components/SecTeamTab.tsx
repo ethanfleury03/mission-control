@@ -38,7 +38,7 @@ export function SecTeamTab() {
       </div>
 
       {/* Preview Banner */}
-      <div className="mb-8 p-4 bg-bg-secondary rounded-lg border border-white/5">
+      <div className="mb-8 p-4 bg-bg-secondary rounded-lg border border-hub-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-3 h-3 rounded-full bg-yellow-400 animate-pulse" />
@@ -61,7 +61,7 @@ export function SecTeamTab() {
       {/* Features Grid */}
       <div className="grid grid-cols-3 gap-4 mb-8">
         {features.map((feature) => (
-          <div key={feature.label} className="p-4 bg-bg-secondary rounded-lg border border-white/5">
+          <div key={feature.label} className="p-4 bg-bg-secondary rounded-lg border border-hub-border">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-8 h-8 rounded-md bg-bg-tertiary flex items-center justify-center">
                 <feature.icon className="w-4 h-4 text-accent-cyan" />
@@ -79,7 +79,7 @@ export function SecTeamTab() {
         <h3 className="text-sm font-medium text-text-primary mb-4">Tech Stack</h3>
         <div className="flex flex-wrap gap-2">
           {['Next.js 14', 'TypeScript', 'Prisma', 'PostgreSQL', 'Stripe', 'Docker'].map((tech) => (
-            <span key={tech} className="px-3 py-1.5 bg-bg-tertiary rounded-md text-xs text-text-secondary border border-white/5">
+            <span key={tech} className="px-3 py-1.5 bg-bg-tertiary rounded-md text-xs text-text-secondary border border-hub-border">
               {tech}
             </span>
           ))}
@@ -88,7 +88,7 @@ export function SecTeamTab() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 bg-bg-secondary rounded-lg border border-white/5">
+        <div className="p-4 bg-bg-secondary rounded-lg border border-hub-border">
           <h4 className="text-sm font-medium text-text-primary mb-2">To Start Dev Server</h4>
           <code className="block p-3 bg-bg-tertiary rounded-md text-xs font-mono text-text-secondary">
             cd workspace-coding-coordinator/arrsys-labels-store<br/>
@@ -98,7 +98,7 @@ export function SecTeamTab() {
           <p className="mt-2 text-xs text-text-muted">Then visit http://localhost:3000</p>
         </div>
 
-        <div className="p-4 bg-bg-secondary rounded-lg border border-white/5">
+        <div className="p-4 bg-bg-secondary rounded-lg border border-hub-border">
           <h4 className="text-sm font-medium text-text-primary mb-2">Environment Setup</h4>
           <code className="block p-3 bg-bg-tertiary rounded-md text-xs font-mono text-text-secondary">
             cp .env.example .env<br/>

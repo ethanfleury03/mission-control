@@ -102,10 +102,10 @@ export function AICommandBar({ onClose }: AICommandBarProps) {
       
       {/* Command Bar */}
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 w-full max-w-2xl px-4">
-        <div className="bg-[#16161e] rounded-xl border-2 border-cyan-500/30 shadow-2xl overflow-hidden">
+        <div className="bg-[#16161e] rounded-xl border-2 border-brand/35 shadow-2xl overflow-hidden">
           {/* Input Section */}
           <div className="p-4 flex items-center gap-3">
-            <Sparkles className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+            <Sparkles className="w-5 h-5 text-brand flex-shrink-0" />
             <input
               ref={inputRef}
               value={command}
@@ -116,7 +116,7 @@ export function AICommandBar({ onClose }: AICommandBarProps) {
               disabled={isProcessing}
             />
             {isProcessing ? (
-              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin flex-shrink-0" />
+              <Loader2 className="w-5 h-5 text-brand animate-spin flex-shrink-0" />
             ) : (
               <button
                 onClick={onClose}
@@ -148,7 +148,7 @@ export function AICommandBar({ onClose }: AICommandBarProps) {
                   <div className="space-y-2 mt-3">
                     {preview.changes.map((change, idx) => (
                       <div key={idx} className="bg-[#0d0d12] rounded p-2 text-xs">
-                        <span className="text-cyan-400 font-semibold">
+                        <span className="text-brand font-semibold">
                           {change.type.toUpperCase()}
                         </span>{' '}
                         <span className="text-gray-400">{change.entity}</span>

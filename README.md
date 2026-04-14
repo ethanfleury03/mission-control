@@ -8,8 +8,20 @@ cd mission-control && docker-compose up -d
 
 # Or run just the dev version
 npm install
+cp .env.example .env   # set DATABASE_URL (see .env.example)
+npx prisma migrate deploy   # or: npm run db:migrate (dev)
 npm run dev
 ```
+
+### Directory Scraper — how to try it
+
+1. **Mock mode:** under **How to load the page**, choose **Mock mode** — demo rows, no URL or APIs.
+2. **Playwright (default live):** choose **Playwright**, install Chromium with `npx playwright install chromium`, enter a public `https://` URL. Localhost/private IPs are rejected (`URL_BLOCKED`). Name extraction uses JSON-LD / deterministic heuristics, or **two-pass OpenRouter** (locate roster → extract names) when **AI extraction** is enabled and `OPENROUTER_API_KEY` is set.
+3. **Firecrawl:** set `FIRECRAWL_API_KEY`, choose **Firecrawl** — Phase 1 uses Firecrawl `/scrape` (markdown + `onlyMainContent`). AI locate/extract and optional **visit company websites** (Playwright) behave the same. Optional `FIRECRAWL_BASE_URL` for self-hosted API.
+4. **Tests:** `DATABASE_URL="file:./prisma/vitest-directory-scraper.db" npm test`
+5. **API:** `POST /api/directory-scraper/jobs` with JSON body (`scrapeFetchMode`: `playwright` | `firecrawl`, `enableAiNameFallback`, etc.); poll `GET /api/directory-scraper/jobs/:id` or `GET ...?full=1`.
+
+**Migrations:** The first directory-scraper migration file creates **only** `directory_scrape_*` tables (org chart tables live in the same Prisma schema but are not recreated by that migration). If your dev DB was created from an older migration that mixed org + scraper DDL, you may see a Prisma checksum warning — use `prisma migrate resolve` or reset the dev database. Job metadata uses `metaJson` on `directory_scrape_jobs` (see migration `20260414120000_directory_job_meta` if present, or `prisma db push`). Per-row name-extraction debug is stored in `nameExtractionMetaJson` on `directory_scrape_results` (migration `20260413170000_name_extraction_meta`).
 
 ## Components
 

@@ -34,7 +34,7 @@ export function MainContent({ metrics, tasks, sessions }: MainContentProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent-cyan" />
-          <span className="text-sm font-medium text-text-primary">Operational Overview</span>
+          <span className="text-sm font-medium text-text-primary">OpenClaw stats</span>
         </div>
         <div className="flex items-center gap-4 text-2xs text-text-muted">
           <span>Last activity: {lastActivityLabel}</span>
@@ -95,19 +95,19 @@ export function MainContent({ metrics, tasks, sessions }: MainContentProps) {
           <div className="text-2xs text-text-muted mb-4">Composite reliability score</div>
           
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-bg-tertiary rounded p-2 border border-white/5">
+            <div className="bg-bg-tertiary rounded p-2 border border-hub-border">
               <div className="text-2xs text-text-muted">OPEN &gt;24H</div>
               <div className="text-lg font-semibold text-accent-yellow">{needHumanCount}</div>
             </div>
-            <div className="bg-bg-tertiary rounded p-2 border border-white/5">
+            <div className="bg-bg-tertiary rounded p-2 border border-hub-border">
               <div className="text-2xs text-text-muted">OPEN &gt;72H</div>
               <div className="text-lg font-semibold text-text-primary">{Math.max(0, needHumanCount - 1)}</div>
             </div>
-            <div className="bg-bg-tertiary rounded p-2 border border-white/5">
+            <div className="bg-bg-tertiary rounded p-2 border border-hub-border">
               <div className="text-2xs text-text-muted">RECENT ERRORS</div>
               <div className="text-lg font-semibold text-accent-red">{metrics.errors60m}</div>
             </div>
-            <div className="bg-bg-tertiary rounded p-2 border border-white/5">
+            <div className="bg-bg-tertiary rounded p-2 border border-hub-border">
               <div className="text-2xs text-text-muted">OVERDUE CRONS</div>
               <div className="text-lg font-semibold text-text-primary">{metrics.overdueCrons}</div>
             </div>
@@ -189,7 +189,7 @@ export function MainContent({ metrics, tasks, sessions }: MainContentProps) {
             ))}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-white/5">
+          <div className="mt-4 pt-3 border-t border-hub-border">
             <div className="text-2xs text-text-muted uppercase mb-2">Agent Pulse</div>
             <div className="flex items-center justify-between">
               <div>

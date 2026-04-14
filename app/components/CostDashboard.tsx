@@ -85,12 +85,12 @@ export function CostDashboard() {
 
       {/* Main Stats */}
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-bg-tertiary rounded-lg p-3 border border-white/5">
+        <div className="bg-bg-tertiary rounded-lg p-3 border border-hub-border">
           <div className="text-2xs text-text-muted uppercase mb-1">Weekly Tokens</div>
           <div className="text-xl font-bold text-accent-cyan">{formatNumber(data.weeklyTokens)}</div>
           <div className="text-2xs text-text-muted mt-1">~${(data.weeklyCost * 0.05).toFixed(2)} est. cost</div>
         </div>
-        <div className="bg-bg-tertiary rounded-lg p-3 border border-white/5">
+        <div className="bg-bg-tertiary rounded-lg p-3 border border-hub-border">
           <div className="text-2xs text-text-muted uppercase mb-1">Weekly Cost</div>
           <div className="text-xl font-bold text-accent-green">${data.weeklyCost.toFixed(2)}</div>
           <div className={cn(
@@ -101,7 +101,7 @@ export function CostDashboard() {
             {weekOverWeek > 0 ? '+' : ''}{weekOverWeek.toFixed(1)}% vs last week
           </div>
         </div>
-        <div className="bg-bg-tertiary rounded-lg p-3 border border-white/5">
+        <div className="bg-bg-tertiary rounded-lg p-3 border border-hub-border">
           <div className="text-2xs text-text-muted uppercase mb-1">Budget Used</div>
           <div className="text-xl font-bold text-text-primary">{budgetPercent.toFixed(1)}%</div>
           <div className="text-2xs text-text-muted mt-1">${data.weeklyCost.toFixed(2)} / ${data.budgetLimit}</div>
@@ -179,7 +179,7 @@ export function CostDashboard() {
       </div>
 
       {/* Weekly Reset Info */}
-      <div className="mt-4 pt-3 border-t border-white/5">
+      <div className="mt-4 pt-3 border-t border-hub-border">
         <div className="flex items-center justify-between text-2xs">
           <span className="text-text-muted">Next reset: Monday 00:00 UTC</span>
           <span className="text-accent-cyan">{mounted ? `${daysUntilReset} days remaining` : '--'}</span>

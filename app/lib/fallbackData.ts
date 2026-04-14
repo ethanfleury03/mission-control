@@ -2,7 +2,7 @@ import { Team, Agent } from './types';
 
 // Fallback data when API server is unavailable
 export const fallbackTeams: Team[] = [
-  { id: 'team-marketing', name: 'Marketing', description: 'Marketing and content creation team', color: '#22d3ee', managerId: '2', createdAt: '2026-02-10T00:00:00Z' },
+  { id: 'team-marketing', name: 'Marketing', description: 'Marketing and content creation team', color: '#C41E3A', managerId: '2', createdAt: '2026-02-10T00:00:00Z' },
   { id: 'team-sales', name: 'Sales', description: 'Sales and lead generation team', color: '#8b5cf6', managerId: '1', createdAt: '2026-02-10T00:00:00Z' },
   { id: 'team-labels', name: 'Labels', description: 'Label and tagging operations', color: '#f59e0b', managerId: '4', createdAt: '2026-02-10T00:00:00Z' },
   { id: 'team-rip', name: 'RIP', description: 'Deprecated agents', color: '#71717a', createdAt: '2026-02-10T00:00:00Z' },

@@ -181,12 +181,12 @@ export function AgentOffice() {
   // Get agent theme colors
   const getAgentColor = (avatarType: string | undefined) => {
     const colorMap: Record<string, string> = {
-      'cat': '#22d3ee',
+      'cat': '#C41E3A',
       'robot-teal': '#14b8a6',
       'robot-orange': '#f97316',
       'robot-purple': '#a855f7',
     };
-    return avatarType ? colorMap[avatarType] || '#22d3ee' : '#22d3ee';
+    return avatarType ? colorMap[avatarType] || '#C41E3A' : '#C41E3A';
   };
 
   // Track status changes and trigger sparkle effect
@@ -217,14 +217,14 @@ export function AgentOffice() {
     <div className="flex flex-col h-full w-full bg-[#0d0d12] overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b border-white/5 w-full flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Arrow Systems Inc</h1>
+        <h1 className="text-2xl font-bold text-white">Arrow Hub</h1>
         
         {/* Team Selector Dropdown */}
         <div className="relative">
           <select
             value={selectedTeam}
             onChange={handleTeamChange}
-            className="appearance-none bg-[#1e1e2e] text-white border border-white/20 rounded-lg px-4 py-2 pr-10 text-sm font-medium cursor-pointer hover:bg-[#252530] hover:border-white/30 transition-all focus:outline-none focus:ring-2 focus:ring-[#22d3ee]/50"
+            className="appearance-none bg-[#1e1e2e] text-white border border-white/20 rounded-lg px-4 py-2 pr-10 text-sm font-medium cursor-pointer hover:bg-[#252530] hover:border-white/30 transition-all focus:outline-none focus:ring-2 focus:ring-[#C41E3A]/50"
             style={{
               boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
             }}
@@ -252,7 +252,7 @@ export function AgentOffice() {
         <div className="absolute inset-0 pointer-events-none">
           {/* Spotlight effects on agent areas - intensity scales with activity */}
           <div 
-            className="absolute top-1/3 left-1/4 w-64 h-64 bg-[#22d3ee] rounded-full blur-[80px] transition-opacity duration-1000" 
+            className="absolute top-1/3 left-1/4 w-64 h-64 bg-[#C41E3A] rounded-full blur-[80px] transition-opacity duration-1000" 
             style={{ opacity: Number.isFinite(activity?.activityLevel) ? 0.03 + activity.activityLevel * 0.05 : 0.03 }}
           />
           <div 
@@ -308,9 +308,9 @@ export function AgentOffice() {
                       {index === 0 && (
                         // Clawd: Status monitors
                         <div className="absolute inset-2 flex gap-1">
-                          <div className="flex-1 bg-[#0a0a0f] border border-[#22d3ee]/30 rounded p-1">
-                            <div className="w-full h-full bg-[#22d3ee]/20" style={{
-                              backgroundImage: 'linear-gradient(to bottom, #22d3ee 2px, transparent 2px)',
+                          <div className="flex-1 bg-[#0a0a0f] border border-[#C41E3A]/30 rounded p-1">
+                            <div className="w-full h-full bg-[#C41E3A]/20" style={{
+                              backgroundImage: 'linear-gradient(to bottom, #C41E3A 2px, transparent 2px)',
                               backgroundSize: '100% 4px'
                             }} />
                           </div>
@@ -323,7 +323,7 @@ export function AgentOffice() {
                         // Forge: Tool board
                         <div className="absolute inset-2 bg-[#334155] rounded flex items-center justify-center gap-1 flex-wrap p-1">
                           {[0,1,2,3,4,5].map(i => (
-                            <div key={i} className="w-2 h-2 bg-[#22d3ee]/40 rounded-full" />
+                            <div key={i} className="w-2 h-2 bg-[#C41E3A]/40 rounded-full" />
                           ))}
                         </div>
                       )}
@@ -337,7 +337,7 @@ export function AgentOffice() {
                         // Quill: Multiple small screens
                         <div className="absolute inset-2 grid grid-cols-2 gap-1">
                           <div className="bg-[#a855f7]/20 border border-[#a855f7]/40 rounded" />
-                          <div className="bg-[#22d3ee]/20 border border-[#22d3ee]/40 rounded" />
+                          <div className="bg-[#C41E3A]/20 border border-[#C41E3A]/40 rounded" />
                         </div>
                       )}
                     </div>
@@ -356,8 +356,8 @@ export function AgentOffice() {
                           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-2 bg-[#334155]" />
                           {/* Screen content - varies by agent */}
                           <div className="absolute inset-1 rounded" style={{
-                            background: index === 0 ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)' :
-                                       index === 1 ? 'linear-gradient(135deg, #22d3ee 0%, #14b8a6 100%)' :
+                            background: index === 0 ? 'linear-gradient(135deg, #0ea5e9 0%, #9B1930 100%)' :
+                                       index === 1 ? 'linear-gradient(135deg, #C41E3A 0%, #14b8a6 100%)' :
                                        index === 2 ? 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)' :
                                        'linear-gradient(135deg, #a855f7 0%, #c084fc 100%)',
                             boxShadow: 'inset 0 0 12px rgba(0,0,0,0.3)'
@@ -382,10 +382,10 @@ export function AgentOffice() {
                         {/* Right side - Additional equipment */}
                         {index === 0 && (
                           // Server tower
-                          <div className="w-8 h-20 bg-[#0a0a0f] border border-[#22d3ee]/40 rounded" style={{
+                          <div className="w-8 h-20 bg-[#0a0a0f] border border-[#C41E3A]/40 rounded" style={{
                             boxShadow: '0 4px 8px rgba(0,0,0,0.5)'
                           }}>
-                            <div className="absolute top-2 left-1 w-1 h-1 bg-[#22d3ee] rounded-full animate-pulse" />
+                            <div className="absolute top-2 left-1 w-1 h-1 bg-[#C41E3A] rounded-full animate-pulse" />
                             <div className="absolute top-4 left-1 w-1 h-1 bg-[#22c55e] rounded-full" />
                             <div className="absolute top-6 left-1 w-1 h-1 bg-[#3b82f6] rounded-full animate-pulse" />
                           </div>
@@ -395,8 +395,8 @@ export function AgentOffice() {
                           <div className="w-10 h-10 bg-[#334155] border border-[#1e293b] rounded" style={{
                             boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
                           }}>
-                            <div className="absolute inset-2 border-t-2 border-[#22d3ee]/30" />
-                            <div className="absolute bottom-1 left-1 w-1 h-1 bg-[#22d3ee] rounded-full" />
+                            <div className="absolute inset-2 border-t-2 border-[#C41E3A]/30" />
+                            <div className="absolute bottom-1 left-1 w-1 h-1 bg-[#C41E3A] rounded-full" />
                           </div>
                         )}
                         {index === 2 && (
@@ -413,7 +413,7 @@ export function AgentOffice() {
                             boxShadow: '0 4px 8px rgba(0,0,0,0.5)'
                           }}>
                             <div className="flex-1 bg-gradient-to-br from-[#22c55e]/30 to-[#22c55e]/10 rounded" />
-                            <div className="flex-1 bg-gradient-to-br from-[#22d3ee]/30 to-[#22d3ee]/10 rounded" />
+                            <div className="flex-1 bg-gradient-to-br from-[#C41E3A]/30 to-[#C41E3A]/10 rounded" />
                           </div>
                         )}
                       </div>
@@ -448,7 +448,7 @@ export function AgentOffice() {
                     
                     <div className="relative cursor-pointer" onClick={() => handleAgentClick(agent.id)}>
                       {agent.selected && (
-                        <div className="absolute inset-0 bg-[#22d3ee]/20 rounded-full blur-xl scale-150" />
+                        <div className="absolute inset-0 bg-[#C41E3A]/20 rounded-full blur-xl scale-150" />
                       )}
                       <AgentAvatar avatarType={agent.avatarType} />
                       {/* Status indicator */}

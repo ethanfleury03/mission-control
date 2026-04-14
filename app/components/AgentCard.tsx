@@ -19,8 +19,8 @@ export function AgentCard({ name, model, tokens, selected, onClick, className }:
       className={cn(
         'bg-[#16161e] rounded-xl p-4 border border-white/10',
         'transition-all duration-200 cursor-pointer',
-        'hover:scale-[1.02] hover:border-[#22d3ee]/30 hover:bg-[#1a1a24]',
-        selected && 'ring-2 ring-[#22d3ee] bg-[#1a1a24]',
+        'hover:scale-[1.02] hover:border-[#C41E3A]/30 hover:bg-[#1a1a24]',
+        selected && 'ring-2 ring-[#C41E3A] bg-[#1a1a24]',
         className
       )}
       style={{

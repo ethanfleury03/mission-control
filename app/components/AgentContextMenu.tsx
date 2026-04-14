@@ -127,7 +127,7 @@ export function AgentContextMenu({
                   <button
                     key={team.id}
                     className={`w-full px-4 py-2 hover:bg-white/5 flex items-center gap-3 transition-colors text-left ${
-                      team.id === agent.teamId ? 'text-cyan-400' : 'text-white'
+                      team.id === agent.teamId ? 'text-brand' : 'text-white'
                     }`}
                     onClick={() => {
                       onMoveToTeam(agent, team.id);

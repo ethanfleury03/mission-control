@@ -31,7 +31,7 @@ export function DataFlowLines({ agents }: DataFlowLinesProps) {
 
   // Color mapping for each agent
   const agentColors = {
-    'cat': '#22d3ee',           // Clawd - cyan
+    'cat': '#C41E3A',           // Clawd - cyan
     'robot-teal': '#14b8a6',    // Forge - teal
     'robot-orange': '#f97316',  // Athena - orange
     'robot-purple': '#a855f7',  // Quill - purple
