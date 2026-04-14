@@ -93,12 +93,7 @@ export default function ArrowHub() {
       <Header activeApp={activeApp} />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        <LeftSidebar
-          activeApp={activeApp}
-          onAppChange={setActiveApp}
-          agents={agents}
-          sessions={sessions}
-        />
+        <LeftSidebar activeApp={activeApp} onAppChange={setActiveApp} />
 
         {activeApp === 'KANBAN' ? (
           <KanbanBoard />
