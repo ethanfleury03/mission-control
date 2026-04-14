@@ -18,10 +18,15 @@ import { firecrawlScrape, isFirecrawlConfigured } from './firecrawl-client';
 import { discoverCompanyWebsite, findDominantPlaceholderDomain } from './discover-company-website';
 import { isSerperConfigured } from './serper-client';
 import { normalizeDomain } from './utils';
+import { runWithEnrichmentBudget } from './enrichment-timeout';
+
 const CONCURRENCY = 2;
 const DELAY_BETWEEN_COMPANIES_MS = 1200;
 const SERPER_BATCH = 2;
 const DELAY_BETWEEN_SERPER_MS = 700;
+/** Wall-clock cap per company so a hung TCP/DNS or stuck script cannot block the batch for minutes. */
+const ENRICHMENT_ROW_BUDGET_MS = 90_000;
+const ENRICHMENT_NAVIGATION_TIMEOUT_MS = 22_000;
 
 function mockResults(): CompanyResult[] {
   const companies = [
@@ -471,18 +476,23 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
         websiteDiscoveryMethod: row.websiteDiscoveryMeta?.method,
       };
       await store.updateResult(jobId, row.id, { status: 'scraping' });
+      await store.addLog(jobId, 'info', `Enriching: ${row.companyName}`);
 
       try {
         const enrichPage = await page.context().newPage();
+        enrichPage.setDefaultNavigationTimeout(ENRICHMENT_NAVIGATION_TIMEOUT_MS);
+        enrichPage.setDefaultTimeout(Math.min(ENRICHMENT_NAVIGATION_TIMEOUT_MS, 25_000));
         try {
-          const result = await enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id);
+          const result = await runWithEnrichmentBudget(ENRICHMENT_ROW_BUDGET_MS, () =>
+            enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id),
+          );
           await store.updateResult(jobId, row.id, {
             ...result,
             id: row.id,
             nameExtractionMeta: row.nameExtractionMeta,
           });
         } finally {
-          await enrichPage.close();
+          await enrichPage.close().catch(() => {});
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unknown error';
