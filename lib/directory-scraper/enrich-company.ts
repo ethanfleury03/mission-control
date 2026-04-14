@@ -12,6 +12,7 @@ import {
   pickBestEmail,
   scoreResult,
   sleep,
+  stripSharedDirectoryListingContact,
 } from './utils';
 
 /** True when detail URL is the same document as the listing (shared nav → same bogus external link for every row). */
@@ -177,6 +178,21 @@ export async function enrichCompany(
     const detailSocial = extractSocialLinksForCompany(allHrefs, directoryHost);
     result.socialLinks = detailSocial.join(', ');
 
+    const sanitized = stripSharedDirectoryListingContact(listingUrl, result.companyWebsite, {
+      email: result.email,
+      phone: result.phone,
+      address: result.address,
+      socialLinks: result.socialLinks,
+      notes: result.notes,
+    });
+    if (sanitized.stripped) {
+      result.email = sanitized.email;
+      result.phone = sanitized.phone;
+      result.address = sanitized.address;
+      result.socialLinks = sanitized.socialLinks;
+      result.notes = sanitized.notes;
+    }
+
     const listingHadEmail = !!result.email;
     const listingHadPhone = !!result.phone;
 
@@ -192,7 +208,7 @@ export async function enrichCompany(
       if (contact.addresses.length) result.address = contact.addresses[0];
       if (contact.contactPageUrls.length) result.contactPageUrl = contact.contactPageUrls[0];
       if (contact.socialLinks.length) {
-        const mergedSocial = [...new Set([...detailSocial, ...contact.socialLinks])];
+        const mergedSocial = [...new Set([...contact.socialLinks])];
         result.socialLinks = extractSocialLinksForCompany(mergedSocial, companyDomain).join(', ');
       }
       result.rawContact = contact;

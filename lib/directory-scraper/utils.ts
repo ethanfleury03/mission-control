@@ -224,6 +224,90 @@ export function emailMatchesCompanyDomain(email: string, companyDomain?: string)
   return false;
 }
 
+/**
+ * When we resolved a distinct company website, contact scraped from the directory
+ * listing/detail page is often the association footer (same phone/social for every row).
+ * Clear listing-sourced fields unless email clearly belongs to the company domain.
+ */
+export function stripSharedDirectoryListingContact(
+  listingUrl: string,
+  companyWebsite: string | undefined,
+  patch: { email?: string; phone?: string; address?: string; socialLinks?: string; notes?: string },
+): { email: string; phone: string; address: string; socialLinks: string; notes: string; stripped: boolean } {
+  let listingHost = '';
+  try {
+    listingHost = normalizeDomain(listingUrl);
+  } catch {
+    return {
+      email: patch.email ?? '',
+      phone: patch.phone ?? '',
+      address: patch.address ?? '',
+      socialLinks: patch.socialLinks ?? '',
+      notes: patch.notes ?? '',
+      stripped: false,
+    };
+  }
+  const web = companyWebsite?.trim();
+  if (!web) {
+    return {
+      email: patch.email ?? '',
+      phone: patch.phone ?? '',
+      address: patch.address ?? '',
+      socialLinks: patch.socialLinks ?? '',
+      notes: patch.notes ?? '',
+      stripped: false,
+    };
+  }
+  let companyDomain = '';
+  try {
+    companyDomain = normalizeDomain(web);
+  } catch {
+    return {
+      email: patch.email ?? '',
+      phone: patch.phone ?? '',
+      address: patch.address ?? '',
+      socialLinks: patch.socialLinks ?? '',
+      notes: patch.notes ?? '',
+      stripped: false,
+    };
+  }
+  if (!companyDomain || companyDomain === listingHost) {
+    return {
+      email: patch.email ?? '',
+      phone: patch.phone ?? '',
+      address: patch.address ?? '',
+      socialLinks: patch.socialLinks ?? '',
+      notes: patch.notes ?? '',
+      stripped: false,
+    };
+  }
+
+  const email = patch.email ?? '';
+  const keepEmail = email && emailMatchesCompanyDomain(email, companyDomain);
+  const note =
+    'Omitted directory-page phone/address/social (and generic listing email): company website host differs from listing — reps should verify on company site.';
+  const stripped = Boolean(
+    (patch.phone && patch.phone.trim()) ||
+      (patch.address && patch.address.trim()) ||
+      (patch.socialLinks && patch.socialLinks.trim()) ||
+      (email && !keepEmail),
+  );
+  const nextNotes = stripped
+    ? patch.notes?.trim()
+      ? `${patch.notes.trim()} | ${note}`
+      : note
+    : patch.notes ?? '';
+
+  return {
+    email: keepEmail ? email : '',
+    phone: '',
+    address: '',
+    socialLinks: '',
+    notes: nextNotes,
+    stripped,
+  };
+}
+
 export function scoreResult(
   result: CompanyResult,
   opts?: { emailFromListing?: boolean; phoneFromListing?: boolean },
@@ -246,8 +330,10 @@ export function scoreResult(
       score = 'high';
       reasonParts.push('Strong: email matches company website domain and phone is present');
     } else if (listingEmail && listingPhone) {
-      score = 'high';
-      reasonParts.push('Strong: email and phone both seen on the directory listing');
+      score = 'medium';
+      reasonParts.push(
+        'Review: email and phone appeared on the directory/listing page — confirm they belong to this company (not association footer)',
+      );
     } else {
       score = 'medium';
       reasonParts.push('Review: have email and phone but email domain does not match company site — confirm before outreach');
@@ -283,9 +369,12 @@ export function scoreResult(
   }
 
   const partial = !hasEmail || !hasPhone;
+  const listingFooterRisk =
+    Boolean(hasEmail && hasPhone && listingEmail && listingPhone && !emailOnCompany);
   const needsReview =
     score === 'low' ||
     (score === 'medium' && partial) ||
+    listingFooterRisk ||
     Boolean(hasEmail && !emailOnCompany && !listingEmail && companyDomain);
 
   return {

@@ -212,30 +212,13 @@ export async function runExtractionFromArtifactBundle(
 
   const { finalUrl, title, html, fullText } = bundle;
   const topContainers = discoverCandidateContainers(html, finalUrl).slice(0, 15);
-  const fragments = getTopContainerHtmlFragments(html, 6);
+  const fragments = getTopContainerHtmlFragments(html, 12);
 
+  /** JSON-LD / microdata on directory pages often lists only a few orgs (e.g. NCA itself). Never short-circuit — merge with full roster extraction. */
   const structuredCandidates: ExtractedCompanyCandidate[] = [
     ...extractFromJsonLd(html, finalUrl),
     ...extractFromMicrodata(html, finalUrl),
   ].filter((c) => isGroundedInPageText(c.name, fullText));
-
-  if (structuredCandidates.length >= 3) {
-    let deduped = dedupeCompanyCandidates(structuredCandidates);
-    if (maxCompanies) deduped = deduped.slice(0, maxCompanies);
-    return {
-      candidates: deduped,
-      debug: {
-        sourceUrl,
-        finalUrl,
-        pageTitle: title,
-        topContainers: topContainers.slice(0, 8).map(mapContainer),
-        strategyCounts: { jsonld: structuredCandidates.filter((c) => c.method === 'jsonld').length },
-        aiFallbackUsed: false,
-        iframeCount: bundle.iframeCount,
-        loadMoreClicks: bundle.loadMoreClicks,
-      },
-    };
-  }
 
   const useAi = enableAiFallback && isAiExtractionAvailable();
 
@@ -479,7 +462,7 @@ export function extractCompanyNamesFromHtml(
   const $ = cheerio.load(html);
   const fullText = $('body').text().replace(/\s+/g, ' ');
   const topContainers = discoverCandidateContainers(html, sourceUrl).slice(0, 15);
-  const fragments = getTopContainerHtmlFragments(html, 6);
+  const fragments = getTopContainerHtmlFragments(html, 12);
 
   const structuredCandidates = [
     ...extractFromJsonLd(html, sourceUrl),

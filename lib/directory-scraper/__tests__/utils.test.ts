@@ -10,6 +10,7 @@ import {
   dedupeCompanies,
   pickBestEmail,
   companyDedupeKey,
+  stripSharedDirectoryListingContact,
 } from '../utils';
 import type { CompanyResult } from '../types';
 
@@ -138,12 +139,13 @@ describe('scoreResult', () => {
     status: 'done',
   };
 
-  it('high when email and phone on listing', () => {
+  it('medium when email and phone on listing (association footer risk)', () => {
     const r = scoreResult(
       { ...base, email: 'a@b.com', phone: '555' },
       { emailFromListing: true, phoneFromListing: true },
     );
-    expect(r.score).toBe('high');
+    expect(r.score).toBe('medium');
+    expect(r.needsReview).toBe(true);
   });
 
   it('high when email matches company domain', () => {
@@ -172,6 +174,42 @@ describe('scoreResult', () => {
 
   it('low when nothing', () => {
     expect(scoreResult(base).score).toBe('low');
+  });
+});
+
+describe('stripSharedDirectoryListingContact', () => {
+  it('clears shared listing contact when company site host differs', () => {
+    const out = stripSharedDirectoryListingContact('https://members.nationalcoffee.org/foo', 'https://acme.com', {
+      email: 'info@nationalcoffee.org',
+      phone: '2127664007',
+      address: '123 Main',
+      socialLinks: 'https://www.linkedin.com/company/national-coffee-association',
+    });
+    expect(out.email).toBe('');
+    expect(out.phone).toBe('');
+    expect(out.address).toBe('');
+    expect(out.socialLinks).toBe('');
+    expect(out.stripped).toBe(true);
+    expect(out.notes).toMatch(/Omitted directory-page/);
+  });
+
+  it('keeps email when it matches company domain', () => {
+    const out = stripSharedDirectoryListingContact('https://members.nationalcoffee.org/foo', 'https://acme.com', {
+      email: 'sales@acme.com',
+      phone: '2127664007',
+    });
+    expect(out.email).toBe('sales@acme.com');
+    expect(out.phone).toBe('');
+    expect(out.stripped).toBe(true);
+  });
+
+  it('does not strip when listing host matches company website', () => {
+    const out = stripSharedDirectoryListingContact('https://dir.com/list', 'https://dir.com/member', {
+      email: 'x@dir.com',
+      phone: '555',
+    });
+    expect(out.phone).toBe('555');
+    expect(out.stripped).toBe(false);
   });
 });
 
