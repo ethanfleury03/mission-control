@@ -1,14 +1,17 @@
 'use client';
 
-import { Search, Clock, ExternalLink } from 'lucide-react';
+import { Search, Clock, ExternalLink, Power } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { HUB_APPS, type HubAppId } from '../lib/hubApps';
 
 interface HeaderProps {
   activeApp: HubAppId;
+  openClawHubOff: boolean;
+  openClawEnvLocked: boolean;
+  onOpenClawHubToggle: () => void;
 }
 
-export function Header({ activeApp }: HeaderProps) {
+export function Header({ activeApp, openClawHubOff, openClawEnvLocked, onOpenClawHubToggle }: HeaderProps) {
   const current = HUB_APPS.find((a) => a.id === activeApp);
 
   return (
@@ -58,6 +61,28 @@ export function Header({ activeApp }: HeaderProps) {
       <div className="flex-1 hidden lg:block" />
 
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <button
+          type="button"
+          onClick={onOpenClawHubToggle}
+          disabled={openClawEnvLocked}
+          title={
+            openClawEnvLocked
+              ? 'OpenClaw hub is off via DISABLE_OPENCLAW in environment (restart required to change)'
+              : openClawHubOff
+                ? 'Enable OpenClaw hub polling (metrics, sessions, agents, etc.)'
+                : 'Disable OpenClaw hub polling (quieter logs, no openclaw CLI calls from hub APIs)'
+          }
+          className={cn(
+            'hidden sm:inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-2xs font-semibold uppercase tracking-wide transition-colors',
+            openClawEnvLocked && 'opacity-50 cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400',
+            !openClawEnvLocked && openClawHubOff && 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100',
+            !openClawEnvLocked && !openClawHubOff && 'border-neutral-200 bg-white text-neutral-700 hover:border-brand/30 hover:text-brand'
+          )}
+        >
+          <Power className={cn('h-3.5 w-3.5', openClawHubOff ? 'text-amber-600' : 'text-accent-green')} />
+          <span>OpenClaw hub {openClawHubOff ? 'off' : 'on'}</span>
+        </button>
+
         <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-md border border-neutral-200">
           <Clock className="w-3.5 h-3.5 text-neutral-500" />
           <span className="text-xs font-mono text-neutral-600">8a/18s/12c</span>

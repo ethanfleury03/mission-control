@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { fetchBackend } from '../_lib/backend';
-
-const DISABLED = process.env.DISABLE_OPENCLAW === '1' || process.env.DISABLE_OPENCLAW === 'true';
+import { isOpenClawDisabledForRequest } from '../_lib/is-openclaw-disabled';
 
 export async function GET() {
-  if (DISABLED) return NextResponse.json([]);
+  if (await isOpenClawDisabledForRequest()) return NextResponse.json([]);
   try {
     const data = await fetchBackend<{ agents?: any[] }>('/api/agents');
     return NextResponse.json(data.agents ?? []);

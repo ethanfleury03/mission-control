@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getOpenClawStatus } from '../_lib/openclaw';
-
-const DISABLED = process.env.DISABLE_OPENCLAW === '1' || process.env.DISABLE_OPENCLAW === 'true';
+import { isOpenClawDisabledForRequest } from '../_lib/is-openclaw-disabled';
 
 export async function GET() {
-  if (DISABLED) return NextResponse.json([]);
+  if (await isOpenClawDisabledForRequest()) return NextResponse.json([]);
   const status = await getOpenClawStatus();
   const recent = status?.sessions?.recent ?? [];
 

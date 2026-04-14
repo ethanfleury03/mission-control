@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { fetchBackend } from '../_lib/backend';
 import { getOpenClawStatus } from '../_lib/openclaw';
+import { isOpenClawDisabledForRequest } from '../_lib/is-openclaw-disabled';
 
 type BoardResponse = {
   counts?: {
@@ -12,10 +13,8 @@ type BoardResponse = {
   };
 };
 
-const DISABLED = process.env.DISABLE_OPENCLAW === '1' || process.env.DISABLE_OPENCLAW === 'true';
-
 export async function GET() {
-  if (DISABLED) {
+  if (await isOpenClawDisabledForRequest()) {
     return NextResponse.json({
       activeSessions: 0, totalSessions: 0, agentsOnline: 0, agentsIdle: 0,
       activityPerMin: 0, errors60m: 0, overdueCrons: 0, wipTasks: 0,

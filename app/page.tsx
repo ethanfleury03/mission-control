@@ -29,9 +29,14 @@ const EMPTY_METRICS: SystemMetrics = {
   tokensTotal: 0,
 };
 
+const SIDEBAR_COLLAPSED_KEY = 'mc_sidebar_collapsed';
+
 export default function ArrowHub() {
   const [activeApp, setActiveApp] = useState<HubAppId>('OPENCLAW');
   const [mounted, setMounted] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openClawHubOff, setOpenClawHubOff] = useState(false);
+  const [openClawEnvLocked, setOpenClawEnvLocked] = useState(false);
 
   const [metrics, setMetrics] = useState<SystemMetrics>(EMPTY_METRICS);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -42,6 +47,7 @@ export default function ArrowHub() {
   const [crons, setCrons] = useState<CronJob[]>([]);
 
   const refreshOpenClawData = useCallback(async () => {
+    if (openClawHubOff) return;
     try {
       const [
         metricsRes,
@@ -71,11 +77,84 @@ export default function ArrowHub() {
     } catch (err) {
       console.error('OpenClaw stats refresh failed', err);
     }
-  }, []);
+  }, [openClawHubOff]);
 
   useEffect(() => {
     setMounted(true);
+    try {
+      setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+    } catch {
+      /* ignore */
+    }
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/hub/openclaw-toggle', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          setOpenClawHubOff(!!data.off);
+          setOpenClawEnvLocked(!!data.envDisabled);
+          if (data.off) {
+            setMetrics(EMPTY_METRICS);
+            setTasks([]);
+            setSessions([]);
+            setAgents([]);
+            setActivityData([]);
+            setAlerts([]);
+            setCrons([]);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [mounted]);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleOpenClawHub = useCallback(async () => {
+    if (openClawEnvLocked) return;
+    const next = !openClawHubOff;
+    try {
+      await fetch('/api/hub/openclaw-toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ off: next }),
+      });
+      const res = await fetch('/api/hub/openclaw-toggle', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setOpenClawHubOff(!!data.off);
+        setOpenClawEnvLocked(!!data.envDisabled);
+        if (data.off) {
+          setMetrics(EMPTY_METRICS);
+          setTasks([]);
+          setSessions([]);
+          setAgents([]);
+          setActivityData([]);
+          setAlerts([]);
+          setCrons([]);
+        } else {
+          refreshOpenClawData();
+        }
+      }
+    } catch (err) {
+      console.error('OpenClaw hub toggle failed', err);
+    }
+  }, [openClawEnvLocked, openClawHubOff, refreshOpenClawData]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -91,10 +170,20 @@ export default function ArrowHub() {
 
   return (
     <div className="h-screen flex flex-col bg-bg-primary overflow-hidden hub-shell">
-      <Header activeApp={activeApp} />
+      <Header
+        activeApp={activeApp}
+        openClawHubOff={openClawHubOff}
+        openClawEnvLocked={openClawEnvLocked}
+        onOpenClawHubToggle={toggleOpenClawHub}
+      />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        <LeftSidebar activeApp={activeApp} onAppChange={setActiveApp} />
+        <LeftSidebar
+          activeApp={activeApp}
+          onAppChange={setActiveApp}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={toggleSidebarCollapsed}
+        />
 
         {activeApp === 'KANBAN' ? (
           <KanbanBoard />
