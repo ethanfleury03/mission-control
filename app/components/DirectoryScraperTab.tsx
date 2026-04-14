@@ -25,6 +25,8 @@ import {
   Flag,
   Copy,
   ClipboardCheck,
+  Target,
+  X,
 } from 'lucide-react';
 
 import type {
@@ -34,6 +36,8 @@ import type {
   LogEntry,
   ScrapeFetchMode,
 } from '@/lib/directory-scraper/types';
+import { fetchMarkets, importScraperToMarket } from '@/lib/lead-generation/api';
+import type { Market } from '@/lib/lead-generation/types';
 
 const API = '/api/directory-scraper';
 const POLL_PAGE_SIZE = 150;
@@ -107,6 +111,15 @@ export function DirectoryScraperTab() {
   const [exportLoading, setExportLoading] = useState(false);
   const [fieldFilter, setFieldFilter] = useState<FieldFilter>('all');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  const [leadGenOpen, setLeadGenOpen] = useState(false);
+  const [leadGenMarkets, setLeadGenMarkets] = useState<Market[]>([]);
+  const [leadGenMarketId, setLeadGenMarketId] = useState('');
+  const [leadGenCountry, setLeadGenCountry] = useState('');
+  const [leadGenScope, setLeadGenScope] = useState<'filtered' | 'all'>('filtered');
+  const [leadGenLoading, setLeadGenLoading] = useState(false);
+  const [leadGenError, setLeadGenError] = useState<string | null>(null);
+  const [leadGenSuccess, setLeadGenSuccess] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -335,6 +348,54 @@ export function DirectoryScraperTab() {
     }
     return true;
   });
+
+  const openLeadGenModal = async () => {
+    if (!job) return;
+    setLeadGenError(null);
+    setLeadGenSuccess(null);
+    setLeadGenOpen(true);
+    setLeadGenMarketId('');
+    try {
+      const markets = await fetchMarkets();
+      setLeadGenMarkets(markets);
+      if (markets.length) setLeadGenMarketId(markets[0].id);
+    } catch (e) {
+      setLeadGenError(e instanceof Error ? e.message : 'Could not load Lead Gen markets');
+    }
+  };
+
+  const importToLeadGen = async () => {
+    if (!job || !leadGenMarketId) return;
+    setLeadGenLoading(true);
+    setLeadGenError(null);
+    setLeadGenSuccess(null);
+    try {
+      let resultIds: string[] | undefined;
+      if (leadGenScope === 'filtered') {
+        const ids = filteredResults.map((r) => r.id);
+        if (ids.length === 0) {
+          setLeadGenError('No rows match the current table filters. Clear filters or choose “All job results”.');
+          return;
+        }
+        resultIds = ids;
+      }
+      const out = await importScraperToMarket({
+        jobId: job.id,
+        marketId: leadGenMarketId,
+        resultIds,
+        defaultCountry: leadGenCountry.trim() || undefined,
+        skipDuplicates: true,
+      });
+      setLeadGenSuccess(
+        `Imported ${out.created} account(s)${out.skipped ? `, skipped ${out.skipped} duplicate(s)` : ''}. Open Lead Generation → Market Databases to review.`,
+      );
+      if (out.errors?.length) setLeadGenError(out.errors.slice(0, 5).join('; '));
+    } catch (e) {
+      setLeadGenError(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setLeadGenLoading(false);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-bg-primary overflow-hidden">
@@ -592,6 +653,15 @@ export function DirectoryScraperTab() {
                     <FileSpreadsheet className="w-4 h-4" /> Google Sheets
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={openLeadGenModal}
+                  disabled={exportLoading || (job.results?.length ?? 0) === 0}
+                  className="inline-flex items-center gap-2 px-3 py-2 border border-brand/40 bg-brand/5 text-brand hover:bg-brand/10 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+                  title="Send scrape results to Lead Generation market database"
+                >
+                  <Target className="w-4 h-4" /> Send to Lead Gen
+                </button>
               </>
             )}
           </div>
@@ -891,6 +961,96 @@ export function DirectoryScraperTab() {
           </div>
         )}
       </div>
+
+      {leadGenOpen && job && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" role="dialog" aria-modal>
+          <div className="bg-white rounded-lg border border-hub-border shadow-xl max-w-md w-full p-5 relative">
+            <button
+              type="button"
+              onClick={() => setLeadGenOpen(false)}
+              className="absolute top-3 right-3 p-1 rounded-md text-neutral-400 hover:text-neutral-800 hover:bg-neutral-100"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <h2 className="text-sm font-semibold text-neutral-900 pr-8 flex items-center gap-2">
+              <Target className="h-4 w-4 text-brand" />
+              Send to Lead Generation
+            </h2>
+            <p className="text-2xs text-neutral-500 mt-1 mb-4">
+              Create company accounts in a market database from this job&apos;s results. Duplicates (same job + row) are skipped by default.
+            </p>
+
+            {leadGenError && (
+              <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-2xs text-red-800">{leadGenError}</div>
+            )}
+            {leadGenSuccess && (
+              <div className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-2xs text-green-800">{leadGenSuccess}</div>
+            )}
+
+            <label className="block text-2xs font-medium text-neutral-600 mb-1">Market database</label>
+            <select
+              value={leadGenMarketId}
+              onChange={(e) => setLeadGenMarketId(e.target.value)}
+              className="w-full h-9 px-2 mb-3 text-sm border border-neutral-200 rounded-md"
+            >
+              {leadGenMarkets.length === 0 && <option value="">— No markets (check API / DB) —</option>}
+              {leadGenMarkets.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+
+            <label className="block text-2xs font-medium text-neutral-600 mb-1">Default country (optional)</label>
+            <input
+              value={leadGenCountry}
+              onChange={(e) => setLeadGenCountry(e.target.value)}
+              placeholder="e.g. Canada"
+              className="w-full h-9 px-2 mb-3 text-sm border border-neutral-200 rounded-md"
+            />
+
+            <fieldset className="mb-4">
+              <legend className="text-2xs font-medium text-neutral-600 mb-2">Rows to import</legend>
+              <label className="flex items-center gap-2 text-xs text-neutral-700 mb-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="leadgen-scope"
+                  checked={leadGenScope === 'filtered'}
+                  onChange={() => setLeadGenScope('filtered')}
+                />
+                Current table view ({filteredResults.length} row{filteredResults.length !== 1 ? 's' : ''}) — respects filters &amp; search
+              </label>
+              <label className="flex items-center gap-2 text-xs text-neutral-700 cursor-pointer">
+                <input
+                  type="radio"
+                  name="leadgen-scope"
+                  checked={leadGenScope === 'all'}
+                  onChange={() => setLeadGenScope('all')}
+                />
+                All job results ({job.results?.filter((r) => r.status !== 'failed').length ?? 0} non-failed)
+              </label>
+            </fieldset>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setLeadGenOpen(false)}
+                className="px-3 py-1.5 text-xs border border-neutral-200 rounded-md"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={importToLeadGen}
+                disabled={leadGenLoading || !leadGenMarketId}
+                className="px-3 py-1.5 text-xs bg-brand text-white rounded-md disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                {leadGenLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

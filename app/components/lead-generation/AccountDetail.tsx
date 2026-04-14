@@ -1,17 +1,19 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Building2, Globe, MapPin, Tag, Users, Target, FileText,
-  ExternalLink, Zap, Radio, MessageSquare, Shield, Layers,
+  Building2, Globe, Users, Target, FileText,
+  ExternalLink, Zap, Radio, MessageSquare, Shield, Layers, Loader2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import {
-  getAccountById, getMarketById, getSignalsByAccount,
-  getProductFitsByAccount, getReviewsByAccount, getScoreBreakdown,
+  getSignalsByAccount, getProductFitsByAccount, getReviewsByAccount, getScoreBreakdown,
 } from '@/lib/lead-generation/mock-data';
-import { REVIEW_STATE_COLORS, REVIEW_STATE_LABELS, PRODUCT_FAMILIES, SCORING_DIMENSIONS } from '@/lib/lead-generation/config';
-import { getQualificationLevel, getQualificationColor } from '@/lib/lead-generation/scoring';
+import { REVIEW_STATE_COLORS, REVIEW_STATE_LABELS, PRODUCT_FAMILIES } from '@/lib/lead-generation/config';
+import { getQualificationLevel, getQualificationColor, calculateFitScore } from '@/lib/lead-generation/scoring';
 import { FitScoreBadge, PlannedBadge, DemoDataNotice } from './shared';
+import { fetchAccount, fetchMarketById } from '@/lib/lead-generation/api';
+import type { Account, Market } from '@/lib/lead-generation/types';
 
 interface AccountDetailProps {
   accountId: string;
@@ -20,21 +22,58 @@ interface AccountDetailProps {
 }
 
 export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDetailProps) {
-  const account = getAccountById(accountId);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [market, setMarket] = useState<Market | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!account) {
+  const load = useCallback(async () => {
+    if (!accountId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const a = await fetchAccount(accountId);
+      if (!a) {
+        setAccount(null);
+        setMarket(null);
+        return;
+      }
+      setAccount(a);
+      const m = await fetchMarketById(a.marketId);
+      setMarket(m);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
+      setAccount(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [accountId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading) {
     return (
-      <div className="p-6">
-        <p className="text-sm text-neutral-500">Account not found.</p>
+      <div className="p-6 flex items-center gap-2 text-sm text-neutral-500">
+        <Loader2 className="h-5 w-5 animate-spin" /> Loading account…
       </div>
     );
   }
 
-  const market = getMarketById(account.marketId);
+  if (error || !account) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-neutral-500">{error ?? 'Account not found.'}</p>
+      </div>
+    );
+  }
+
   const signals = getSignalsByAccount(accountId);
   const productFits = getProductFitsByAccount(accountId);
   const reviews = getReviewsByAccount(accountId);
-  const scoreBreakdown = getScoreBreakdown(accountId);
+  const seedBreakdown = getScoreBreakdown(accountId);
+  const scoreBreakdown = seedBreakdown ?? calculateFitScore(account);
   const qualLevel = getQualificationLevel(account.fitScore);
   const qualColor = getQualificationColor(qualLevel);
 
@@ -62,7 +101,7 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
                     rel="noopener noreferrer"
                     className="text-xs text-brand hover:underline flex items-center gap-1"
                   >
-                    {account.domain} <ExternalLink className="h-3 w-3" />
+                    {account.domain || account.website} <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
                 {market && (
@@ -85,7 +124,7 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
           </div>
         </div>
 
-        <p className="text-xs text-neutral-600 mt-3">{account.description}</p>
+        <p className="text-xs text-neutral-600 mt-3">{account.description || '—'}</p>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-neutral-100">
           <div>
@@ -94,7 +133,7 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
           </div>
           <div>
             <p className="text-2xs text-neutral-500">Industry</p>
-            <p className="text-xs font-medium text-neutral-800">{account.industry} {account.subindustry && `— ${account.subindustry}`}</p>
+            <p className="text-xs font-medium text-neutral-800">{account.industry || '—'} {account.subindustry && `— ${account.subindustry}`}</p>
           </div>
           <div>
             <p className="text-2xs text-neutral-500">Company Size</p>
@@ -108,13 +147,12 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Fit Summary */}
         <div className="card p-4">
           <h3 className="text-xs font-semibold text-neutral-900 mb-2 flex items-center gap-1.5">
             <Target className="h-3.5 w-3.5 text-brand" />
             Fit Assessment
           </h3>
-          <p className="text-xs text-neutral-600 mb-3">{account.fitSummary}</p>
+          <p className="text-xs text-neutral-600 mb-3">{account.fitSummary || '—'}</p>
           <div className="flex items-center gap-2 mb-3">
             <span className="text-2xs text-neutral-500">Qualification:</span>
             <span className={cn('text-2xs px-1.5 py-0.5 rounded border font-medium capitalize', qualColor)}>
@@ -122,33 +160,28 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
             </span>
           </div>
 
-          {scoreBreakdown && (
-            <div className="space-y-1.5 pt-3 border-t border-neutral-100">
-              <p className="text-2xs font-semibold text-neutral-700 mb-1">Score Breakdown</p>
-              {scoreBreakdown.dimensions.map((dim) => (
-                <div key={dim.key} className="flex items-center gap-2">
-                  <span className="text-2xs text-neutral-500 w-28 shrink-0">{dim.label}</span>
-                  <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand/60 rounded-full" style={{ width: `${(dim.score / dim.maxPoints) * 100}%` }} />
-                  </div>
-                  <span className="text-2xs font-mono text-neutral-500 w-10 text-right">{dim.score}/{dim.maxPoints}</span>
+          <div className="space-y-1.5 pt-3 border-t border-neutral-100">
+            <p className="text-2xs font-semibold text-neutral-700 mb-1">
+              Score Breakdown {seedBreakdown ? '' : '(rules scaffold)'}
+            </p>
+            {scoreBreakdown.dimensions.map((dim) => (
+              <div key={dim.key} className="flex items-center gap-2">
+                <span className="text-2xs text-neutral-500 w-28 shrink-0">{dim.label}</span>
+                <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand/60 rounded-full" style={{ width: `${(dim.score / dim.maxPoints) * 100}%` }} />
                 </div>
-              ))}
-              {scoreBreakdown.recommendedBundle && (
-                <div className="mt-2 pt-2 border-t border-neutral-100">
-                  <p className="text-2xs text-neutral-500">Recommended bundle</p>
-                  <p className="text-xs font-medium text-neutral-800">{scoreBreakdown.recommendedBundle}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!scoreBreakdown && (
-            <p className="text-2xs text-neutral-400 italic">Detailed score breakdown not yet computed for this account.</p>
-          )}
+                <span className="text-2xs font-mono text-neutral-500 w-10 text-right">{dim.score}/{dim.maxPoints}</span>
+              </div>
+            ))}
+            {scoreBreakdown.recommendedBundle && (
+              <div className="mt-2 pt-2 border-t border-neutral-100">
+                <p className="text-2xs text-neutral-500">Suggested bundle (scaffold)</p>
+                <p className="text-xs font-medium text-neutral-800">{scoreBreakdown.recommendedBundle}</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Source & Metadata */}
         <div className="card p-4">
           <h3 className="text-xs font-semibold text-neutral-900 mb-2 flex items-center gap-1.5">
             <FileText className="h-3.5 w-3.5 text-neutral-400" />
@@ -162,6 +195,10 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
             <div className="flex justify-between">
               <span className="text-2xs text-neutral-500">Source Name</span>
               <span className="text-xs text-neutral-700">{account.sourceName || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-2xs text-neutral-500">Source URL</span>
+              <span className="text-xs text-neutral-700 truncate max-w-[200px]">{account.sourceUrl || '—'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-2xs text-neutral-500">Account Status</span>
@@ -184,7 +221,6 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Product Fit */}
         <div className="card p-4">
           <h3 className="text-xs font-semibold text-neutral-900 mb-2 flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5 text-neutral-400" />
@@ -206,11 +242,10 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
               ))}
             </div>
           ) : (
-            <p className="text-2xs text-neutral-400 italic">No product fit assessments yet.</p>
+            <p className="text-2xs text-neutral-400 italic">No product fit rows (demo seed only for legacy IDs).</p>
           )}
         </div>
 
-        {/* Signals */}
         <div className="card p-4">
           <h3 className="text-xs font-semibold text-neutral-900 mb-2 flex items-center gap-1.5">
             <Zap className="h-3.5 w-3.5 text-amber-500" />
@@ -230,13 +265,12 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
               ))}
             </div>
           ) : (
-            <p className="text-2xs text-neutral-400 italic">No signals captured yet.</p>
+            <p className="text-2xs text-neutral-400 italic">No signals (persisted signals table not wired yet).</p>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Reviews */}
         <div className="card p-4">
           <h3 className="text-xs font-semibold text-neutral-900 mb-2 flex items-center gap-1.5">
             <MessageSquare className="h-3.5 w-3.5 text-neutral-400" />
@@ -262,29 +296,28 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
               ))}
             </div>
           ) : (
-            <p className="text-2xs text-neutral-400 italic">No reviews yet.</p>
+            <p className="text-2xs text-neutral-400 italic">No review history rows yet.</p>
           )}
         </div>
 
-        {/* Future Sections */}
         <div className="space-y-3">
           <div className="card p-4 opacity-60">
             <h3 className="text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1.5">
               <Users className="h-3.5 w-3.5" /> Contacts <PlannedBadge />
             </h3>
-            <p className="text-2xs text-neutral-500">Buying committee contacts from licensed data. Requires data provider integration.</p>
+            <p className="text-2xs text-neutral-500">Buying committee contacts from licensed data.</p>
           </div>
           <div className="card p-4 opacity-60">
             <h3 className="text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1.5">
               <Radio className="h-3.5 w-3.5" /> Social Signals <PlannedBadge />
             </h3>
-            <p className="text-2xs text-neutral-500">Problem signals from social monitoring. Requires social signal pipeline.</p>
+            <p className="text-2xs text-neutral-500">Problem signals from social monitoring.</p>
           </div>
           <div className="card p-4 opacity-60">
             <h3 className="text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1.5">
               <Shield className="h-3.5 w-3.5" /> Internal Notes <PlannedBadge />
             </h3>
-            <p className="text-2xs text-neutral-500">Persistent internal notes and team comments. Requires database persistence.</p>
+            <p className="text-2xs text-neutral-500">Persistent internal notes.</p>
           </div>
         </div>
       </div>

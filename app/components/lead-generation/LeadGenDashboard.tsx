@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import {
   Database,
   Building2,
@@ -10,25 +11,59 @@ import {
   ArrowRight,
   Target,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { LeadGenPage } from '@/lib/lead-generation/types';
-import { SEED_MARKETS, SEED_ACCOUNTS } from '@/lib/lead-generation/mock-data';
+import { fetchMarkets, fetchAccounts } from '@/lib/lead-generation/api';
 
 interface LeadGenDashboardProps {
   onNavigate: (page: LeadGenPage) => void;
 }
 
+const PILOT = ['Canada', 'India', 'Italy', 'Mexico'] as const;
+
 export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
-  const totalAccounts = SEED_ACCOUNTS.length;
-  const qualifiedCount = SEED_ACCOUNTS.filter((a) => a.reviewState === 'qualified').length;
-  const reviewCount = SEED_ACCOUNTS.filter((a) => a.reviewState === 'new' || a.reviewState === 'needs_review').length;
-  const activeMarkets = SEED_MARKETS.filter((m) => m.status === 'active').length;
+  const [marketsCount, setMarketsCount] = useState(0);
+  const [activeMarkets, setActiveMarkets] = useState(0);
+  const [totalAccounts, setTotalAccounts] = useState(0);
+  const [qualifiedCount, setQualifiedCount] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [pilotCounts, setPilotCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [markets, accounts] = await Promise.all([fetchMarkets(), fetchAccounts()]);
+      setMarketsCount(markets.length);
+      setActiveMarkets(markets.filter((m) => m.status === 'active').length);
+      setTotalAccounts(accounts.length);
+      setQualifiedCount(accounts.filter((a) => a.reviewState === 'qualified').length);
+      setReviewCount(accounts.filter((a) => a.reviewState === 'new' || a.reviewState === 'needs_review').length);
+      const pc: Record<string, number> = {};
+      for (const c of PILOT) pc[c] = accounts.filter((a) => a.country === c).length;
+      setPilotCounts(pc);
+    } catch {
+      setMarketsCount(0);
+      setActiveMarkets(0);
+      setTotalAccounts(0);
+      setQualifiedCount(0);
+      setReviewCount(0);
+      setPilotCounts({});
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const summaryCards = [
-    { label: 'Markets', value: SEED_MARKETS.length, detail: `${activeMarkets} active`, icon: Database, color: 'text-brand', page: 'markets' as LeadGenPage },
-    { label: 'Company Records', value: totalAccounts, detail: 'demo data', icon: Building2, color: 'text-blue-600', page: 'accounts' as LeadGenPage },
-    { label: 'Qualified Leads', value: qualifiedCount, detail: `of ${totalAccounts} total`, icon: CheckCircle2, color: 'text-green-600', page: 'accounts' as LeadGenPage },
+    { label: 'Markets', value: marketsCount, detail: `${activeMarkets} active`, icon: Database, color: 'text-brand', page: 'markets' as LeadGenPage },
+    { label: 'Company Records', value: totalAccounts, detail: 'in database', icon: Building2, color: 'text-blue-600', page: 'accounts' as LeadGenPage },
+    { label: 'Qualified Leads', value: qualifiedCount, detail: totalAccounts ? `of ${totalAccounts} total` : '—', icon: CheckCircle2, color: 'text-green-600', page: 'accounts' as LeadGenPage },
     { label: 'Review Queue', value: reviewCount, detail: 'pending review', icon: ClipboardCheck, color: 'text-amber-600', page: 'review-queue' as LeadGenPage },
     { label: 'Scraper Sources', value: '5', detail: '2 active, 3 planned', icon: Download, color: 'text-purple-600', page: 'ingestion' as LeadGenPage },
     { label: 'Social Signals', value: '—', detail: 'planned', icon: Radio, color: 'text-neutral-400', page: 'social-signals' as LeadGenPage },
@@ -36,17 +71,10 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
 
   const quickLinks = [
     { label: 'Strategy Overview', description: 'Why Arrow lead gen is hard and what we are building', page: 'overview' as LeadGenPage },
-    { label: 'Coffee Market Database', description: 'Priority market — browse coffee company records', page: 'markets' as LeadGenPage },
+    { label: 'Coffee Market Database', description: 'Browse markets — open Coffee or any vertical', page: 'markets' as LeadGenPage },
     { label: 'Review Queue', description: 'Accounts needing human qualification review', page: 'review-queue' as LeadGenPage },
     { label: 'Data Model', description: 'Entity schemas and planned data structures', page: 'data-model' as LeadGenPage },
     { label: 'Ingestion Hub', description: 'Scraper and data source integration', page: 'ingestion' as LeadGenPage },
-  ];
-
-  const countryBreakdown = [
-    { country: 'Canada', count: SEED_ACCOUNTS.filter((a) => a.country === 'Canada').length },
-    { country: 'India', count: SEED_ACCOUNTS.filter((a) => a.country === 'India').length },
-    { country: 'Italy', count: SEED_ACCOUNTS.filter((a) => a.country === 'Italy').length },
-    { country: 'Mexico', count: SEED_ACCOUNTS.filter((a) => a.country === 'Mexico').length },
   ];
 
   return (
@@ -68,6 +96,12 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
           Build and qualify targeted account databases for Arrow&apos;s narrow ICP — companies that need digital label printing, flexible packaging, finishing, and compliance-driven solutions. Quality over quantity.
         </p>
       </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-neutral-500 mb-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading summary…
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
@@ -117,29 +151,26 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
           </div>
         </div>
 
-        {/* Pilot Countries */}
+        {/* Pilot Countries — counts loaded client-side would need full account fetch; show pilot list */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-neutral-900 mb-3">Pilot Countries</h3>
+          <p className="text-2xs text-neutral-500 mb-2">Per research pack — account counts in DB:</p>
           <div className="space-y-2">
-            {countryBreakdown.map((c) => (
-              <div key={c.country} className="flex items-center justify-between">
-                <span className="text-xs text-neutral-700">{c.country}</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-brand rounded-full"
-                      style={{ width: `${(c.count / totalAccounts) * 100}%` }}
-                    />
+            {PILOT.map((country) => {
+              const count = pilotCounts[country] ?? 0;
+              const pct = totalAccounts ? (count / totalAccounts) * 100 : 0;
+              return (
+                <div key={country} className="flex items-center justify-between">
+                  <span className="text-xs text-neutral-700">{country}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs font-medium text-neutral-600 w-6 text-right">{count}</span>
                   </div>
-                  <span className="text-xs font-medium text-neutral-600 w-6 text-right">{c.count}</span>
                 </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-3 border-t border-neutral-100">
-            <p className="text-2xs text-neutral-500">
-              Pilot territories: Canada, India, Italy, Mexico — per research pack.
-            </p>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -150,12 +181,12 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
           <h3 className="text-sm font-semibold text-neutral-900 mb-3">Current State</h3>
           <div className="space-y-2">
             {[
-              { label: 'Market databases defined', status: 'done' },
+              { label: 'Prisma markets + accounts (SQLite)', status: 'done' },
+              { label: 'Market CRUD + Directory Scraper → Lead Gen import', status: 'done' },
               { label: 'Typed data model (TypeScript)', status: 'done' },
-              { label: 'Seed / demo company records', status: 'done' },
+              { label: 'Auto-seed demo data on empty DB', status: 'done' },
               { label: 'Scoring framework scaffold', status: 'done' },
-              { label: 'Review queue UI', status: 'done' },
-              { label: 'Ingestion adapter interfaces', status: 'done' },
+              { label: 'Review queue UI (read from DB)', status: 'done' },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-2">
                 <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -169,9 +200,8 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
           <h3 className="text-sm font-semibold text-neutral-900 mb-3">Roadmap</h3>
           <div className="space-y-2">
             {[
-              { label: 'Database persistence (Prisma models)', status: 'next' },
-              { label: 'Scraper integration pipeline', status: 'next' },
-              { label: 'Automated scoring engine', status: 'planned' },
+              { label: 'Review actions (PATCH) + audit log', status: 'next' },
+              { label: 'Automated scoring engine + product_fit table', status: 'planned' },
               { label: 'CRM export & sync', status: 'planned' },
               { label: 'Social signal monitoring', status: 'planned' },
               { label: 'AI explanation layer', status: 'future' },

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { ClipboardCheck, ArrowRight, Filter } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { ClipboardCheck, ArrowRight, Filter, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { SEED_ACCOUNTS, SEED_MARKETS } from '@/lib/lead-generation/mock-data';
 import { REVIEW_STATE_COLORS, REVIEW_STATE_LABELS, REJECT_REASONS } from '@/lib/lead-generation/config';
 import { FitScoreBadge, DemoDataNotice } from './shared';
-import type { ReviewState } from '@/lib/lead-generation/types';
+import type { ReviewState, Account, Market } from '@/lib/lead-generation/types';
+import { fetchMarkets, fetchAccounts } from '@/lib/lead-generation/api';
 
 interface ReviewQueueProps {
   onSelectAccount: (id: string) => void;
@@ -15,16 +15,35 @@ interface ReviewQueueProps {
 const QUEUE_STATES: ReviewState[] = ['new', 'needs_review', 'watching', 'qualified', 'rejected', 'routed'];
 
 export function ReviewQueue({ onSelectAccount }: ReviewQueueProps) {
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [m, a] = await Promise.all([fetchMarkets(), fetchAccounts()]);
+      setMarkets(m);
+      setAllAccounts(a);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const [filterState, setFilterState] = useState<ReviewState | 'all'>('all');
 
   const marketLookup = useMemo(() => {
     const map = new Map<string, string>();
-    SEED_MARKETS.forEach((m) => map.set(m.id, m.name));
+    markets.forEach((m) => map.set(m.id, m.name));
     return map;
-  }, []);
+  }, [markets]);
 
   const accounts = useMemo(() => {
-    let result = [...SEED_ACCOUNTS];
+    let result = [...allAccounts];
     if (filterState !== 'all') {
       result = result.filter((a) => a.reviewState === filterState);
     }
@@ -35,15 +54,23 @@ export function ReviewQueue({ onSelectAccount }: ReviewQueueProps) {
       return b.fitScore - a.fitScore;
     });
     return result;
-  }, [filterState]);
+  }, [allAccounts, filterState]);
 
   const stateCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    SEED_ACCOUNTS.forEach((a) => {
+    allAccounts.forEach((a) => {
       counts[a.reviewState] = (counts[a.reviewState] ?? 0) + 1;
     });
     return counts;
-  }, []);
+  }, [allAccounts]);
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center gap-2 text-sm text-neutral-500">
+        <Loader2 className="h-5 w-5 animate-spin" /> Loading…
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-6xl">
@@ -68,7 +95,7 @@ export function ReviewQueue({ onSelectAccount }: ReviewQueueProps) {
               : 'bg-white text-neutral-600 border-neutral-200 hover:border-brand/30'
           )}
         >
-          All ({SEED_ACCOUNTS.length})
+          All ({allAccounts.length})
         </button>
         {QUEUE_STATES.map((state) => (
           <button
@@ -87,7 +114,6 @@ export function ReviewQueue({ onSelectAccount }: ReviewQueueProps) {
         ))}
       </div>
 
-      {/* Rejection Reasons Reference */}
       <div className="card p-3 mb-4">
         <p className="text-2xs font-semibold text-neutral-600 mb-1.5 flex items-center gap-1">
           <Filter className="h-3 w-3" /> Reject Reason Codes
@@ -101,7 +127,6 @@ export function ReviewQueue({ onSelectAccount }: ReviewQueueProps) {
         </div>
       </div>
 
-      {/* Queue Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -158,8 +183,8 @@ export function ReviewQueue({ onSelectAccount }: ReviewQueueProps) {
 
       <div className="mt-4 rounded-md bg-neutral-50 border border-neutral-200 px-4 py-3">
         <p className="text-2xs text-neutral-500">
-          <strong>Note:</strong> Review actions (qualify, reject, assign) require database persistence and are part of the next implementation phase.
-          Currently viewing seed data in a read-only review queue interface.
+          <strong>Note:</strong> Review actions (qualify, reject, assign) can be wired to PATCH{' '}
+          <code className="font-mono">/api/lead-generation/accounts/:id</code> in a follow-up.
         </p>
       </div>
     </div>

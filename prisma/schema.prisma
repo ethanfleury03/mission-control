@@ -154,3 +154,62 @@ model DirectoryScrapeLog {
   @@index([jobId])
   @@map("directory_scrape_logs")
 }
+
+// --- Lead Generation (markets + accounts; directory scraper can import into accounts) ---
+
+model LeadGenMarket {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  description      String   @default("")
+  countriesJson    String   @default("[]") // JSON string array
+  personasJson     String   @default("[]") // target personas
+  solutionAreasJson String  @default("[]")
+  status           String   @default("active") // active | building | planned | archived
+  notes            String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  accounts LeadGenAccount[]
+
+  @@index([status])
+  @@map("lead_gen_markets")
+}
+
+model LeadGenAccount {
+  id                  String    @id @default(cuid())
+  marketId            String
+  market              LeadGenMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  name                String
+  domain              String    @default("")
+  website             String    @default("")
+  country             String    @default("Unknown")
+  region              String    @default("")
+  industry            String    @default("")
+  subindustry         String    @default("")
+  companySizeBand     String    @default("unknown")
+  revenueBand         String    @default("unknown")
+  description         String    @default("")
+
+  sourceType          String    @default("demo")
+  sourceName          String    @default("")
+  sourceUrl           String    @default("")
+  directoryJobId      String?
+  directoryResultId   String?
+
+  status              String    @default("prospect")
+  fitScore            Int       @default(0)
+  fitSummary          String    @default("")
+  assignedOwner       String    @default("")
+  reviewState         String    @default("new")
+
+  lastSeenAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([marketId])
+  @@index([marketId, reviewState])
+  @@index([directoryJobId, directoryResultId])
+  @@map("lead_gen_accounts")
+}

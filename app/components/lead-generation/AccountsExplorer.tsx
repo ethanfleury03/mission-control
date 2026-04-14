@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Search, Building2, ArrowUpDown, ArrowRight } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Search, Building2, ArrowUpDown, ArrowRight, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { SEED_ACCOUNTS, SEED_MARKETS } from '@/lib/lead-generation/mock-data';
 import { REVIEW_STATE_COLORS, REVIEW_STATE_LABELS } from '@/lib/lead-generation/config';
 import { FitScoreBadge, DemoDataNotice } from './shared';
+import type { Account, Market } from '@/lib/lead-generation/types';
+import { fetchMarkets, fetchAccounts } from '@/lib/lead-generation/api';
 
 interface AccountsExplorerProps {
   onSelectAccount: (id: string) => void;
@@ -15,6 +16,11 @@ type SortField = 'name' | 'fitScore' | 'country' | 'updatedAt';
 type SortDir = 'asc' | 'desc';
 
 export function AccountsExplorer({ onSelectAccount }: AccountsExplorerProps) {
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMarket, setFilterMarket] = useState('all');
   const [filterCountry, setFilterCountry] = useState('all');
@@ -23,10 +29,27 @@ export function AccountsExplorer({ onSelectAccount }: AccountsExplorerProps) {
   const [sortField, setSortField] = useState<SortField>('fitScore');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  const markets = SEED_MARKETS;
-  const countries = useMemo(() => Array.from(new Set(SEED_ACCOUNTS.map((a) => a.country))).sort(), []);
-  const sources = useMemo(() => Array.from(new Set(SEED_ACCOUNTS.map((a) => a.sourceType))).sort(), []);
-  const reviewStates = useMemo(() => Array.from(new Set(SEED_ACCOUNTS.map((a) => a.reviewState))).sort(), []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [m, a] = await Promise.all([fetchMarkets(), fetchAccounts()]);
+      setMarkets(m);
+      setAllAccounts(a);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const countries = useMemo(() => Array.from(new Set(allAccounts.map((a) => a.country))).sort(), [allAccounts]);
+  const sources = useMemo(() => Array.from(new Set(allAccounts.map((a) => a.sourceType))).sort(), [allAccounts]);
+  const reviewStates = useMemo(() => Array.from(new Set(allAccounts.map((a) => a.reviewState))).sort(), [allAccounts]);
 
   const marketLookup = useMemo(() => {
     const map = new Map<string, string>();
@@ -35,7 +58,7 @@ export function AccountsExplorer({ onSelectAccount }: AccountsExplorerProps) {
   }, [markets]);
 
   const filteredAccounts = useMemo(() => {
-    let result = [...SEED_ACCOUNTS];
+    let result = [...allAccounts];
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -64,7 +87,7 @@ export function AccountsExplorer({ onSelectAccount }: AccountsExplorerProps) {
     });
 
     return result;
-  }, [searchQuery, filterMarket, filterCountry, filterStatus, filterSource, sortField, sortDir]);
+  }, [allAccounts, searchQuery, filterMarket, filterCountry, filterStatus, filterSource, sortField, sortDir]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -75,14 +98,26 @@ export function AccountsExplorer({ onSelectAccount }: AccountsExplorerProps) {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center gap-2 text-sm text-neutral-500">
+        <Loader2 className="h-5 w-5 animate-spin" /> Loading accounts…
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl">
       <div className="mb-4">
         <h1 className="text-xl font-bold text-neutral-900 mb-1">Company Accounts</h1>
         <p className="text-sm text-neutral-500">
-          Browse all company records across markets. {SEED_ACCOUNTS.length} total records.
+          Browse all company records across markets. {allAccounts.length} total records.
         </p>
       </div>
+
+      {loadError && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{loadError}</div>
+      )}
 
       <DemoDataNotice />
 
