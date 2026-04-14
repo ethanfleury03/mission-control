@@ -39,6 +39,8 @@ export interface DirectoryScraperPersistence {
   addLog(id: string, level: LogEntry['level'], message: string): Promise<void>;
   setResults(id: string, results: CompanyResult[]): Promise<void>;
   updateResult(id: string, companyId: string, patch: Partial<CompanyResult>): Promise<void>;
+  /** Permanently remove one result row and refresh job summary. */
+  deleteResult(jobId: string, resultId: string): Promise<boolean>;
   updateSummary(id: string, patch: Partial<JobSummary>): Promise<void>;
   recalcSummary(id: string): Promise<void>;
   isJobCancelled(id: string): Promise<boolean>;
@@ -192,6 +194,25 @@ const TEXT_FIELDS: (keyof CompanyResult)[] = [
   'notes',
 ];
 /* nameExtractionMeta merged explicitly, not blank-stripped */
+
+async function recalcSummaryWithClient(
+  prisma: PrismaClient,
+  jobId: string,
+): Promise<void> {
+  const results = await prisma.directoryScrapeResult.findMany({ where: { jobId } });
+  const done = results.filter((r) => r.status === 'done' || r.status === 'failed');
+  const summary: JobSummary = {
+    companiesFound: results.length,
+    companiesProcessed: done.length,
+    emailsFound: results.filter((r) => !!r.email).length,
+    phonesFound: results.filter((r) => !!r.phone).length,
+    failures: results.filter((r) => r.status === 'failed').length,
+  };
+  await prisma.directoryScrapeJob.update({
+    where: { id: jobId },
+    data: { summaryJson: JSON.stringify(summary) },
+  });
+}
 
 function mergeDoneRow(existing: ResultRow, patch: Partial<CompanyResult>): Partial<CompanyResult> {
   const out = { ...patch };
@@ -469,19 +490,16 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
     },
 
     async recalcSummary(id) {
-      const results = await prisma.directoryScrapeResult.findMany({ where: { jobId: id } });
-      const done = results.filter((r) => r.status === 'done' || r.status === 'failed');
-      const summary: JobSummary = {
-        companiesFound: results.length,
-        companiesProcessed: done.length,
-        emailsFound: results.filter((r) => !!r.email).length,
-        phonesFound: results.filter((r) => !!r.phone).length,
-        failures: results.filter((r) => r.status === 'failed').length,
-      };
-      await prisma.directoryScrapeJob.update({
-        where: { id },
-        data: { summaryJson: JSON.stringify(summary) },
+      await recalcSummaryWithClient(prisma, id);
+    },
+
+    async deleteResult(jobId, resultId) {
+      const del = await prisma.directoryScrapeResult.deleteMany({
+        where: { jobId, id: resultId },
       });
+      if (del.count === 0) return false;
+      await recalcSummaryWithClient(prisma, jobId);
+      return true;
     },
 
     async isJobCancelled(jobId) {

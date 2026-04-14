@@ -161,6 +161,42 @@ export function DirectoryScraperTab() {
       .catch(() => {});
   }, []);
 
+  const deleteResultRow = useCallback(async (resultId: string) => {
+    const j = jobRef.current;
+    if (!j?.id) return;
+    try {
+      const res = await fetch(`${API}/jobs/${j.id}/results/${resultId}`, { method: 'DELETE' });
+      if (!res.ok) return;
+
+      const fullRes = await fetch(`${API}/jobs/${j.id}?full=1`, { cache: 'no-store' });
+      if (fullRes.ok) {
+        setJob(await fullRes.json());
+      } else {
+        const snapRes = await fetch(
+          `${API}/jobs/${j.id}?resultsLimit=${POLL_PAGE_SIZE}&resultsOffset=0`,
+          { cache: 'no-store' },
+        );
+        if (!snapRes.ok) return;
+        const data: ScrapeJob = await snapRes.json();
+        setJob((prev) => {
+          if (!prev || prev.id !== j.id) return prev;
+          if (!data.resultsTruncated) {
+            return { ...prev, ...data, results: data.results, summary: data.summary };
+          }
+          const merged = mergePollSnapshot(prev, data);
+          return {
+            ...merged,
+            summary: data.summary,
+            results: merged.results.filter((r) => r.id !== resultId),
+          };
+        });
+      }
+      setExpandedRowId((id) => (id === resultId ? null : id));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const pollJob = useCallback(async (id: string) => {
     try {
       const res = await fetch(
@@ -980,20 +1016,22 @@ export function DirectoryScraperTab() {
                     <th className="px-4 py-2.5 font-medium">Confidence</th>
                     <th className="px-4 py-2.5 font-medium">Status</th>
                     <th className="px-4 py-2.5 font-medium">Notes</th>
+                    <th className="px-2 py-2.5 w-10 font-medium" aria-label="Delete row" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {filteredResults.map((r) => (
+                                   {filteredResults.map((r) => (
                     <ResultRow
                       key={r.id}
                       result={r}
                       expanded={expandedRowId === r.id}
                       onToggle={() => setExpandedRowId((id) => (id === r.id ? null : r.id))}
+                      onDelete={deleteResultRow}
                     />
                   ))}
                   {filteredResults.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-8 text-center text-neutral-500">
+                      <td colSpan={12} className="px-4 py-8 text-center text-neutral-500">
                         No rows match the current filters or search. Clear filters or try different keywords.
                       </td>
                     </tr>
@@ -1168,10 +1206,12 @@ function ResultRow({
   result,
   expanded,
   onToggle,
+  onDelete,
 }: {
   result: CompanyResult;
   expanded: boolean;
   onToggle: () => void;
+  onDelete: (resultId: string) => void;
 }) {
   return (
     <>
@@ -1241,10 +1281,21 @@ function ResultRow({
       <td className="px-4 py-2.5 max-w-[180px]">
         <span className="truncate block text-neutral-600" title={result.notes || result.error}>{result.notes || result.error || '—'}</span>
       </td>
+      <td className="px-2 py-2.5 align-top">
+        <button
+          type="button"
+          onClick={() => onDelete(result.id)}
+          className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          title="Delete row"
+          aria-label={`Delete ${result.companyName || 'row'}`}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </td>
     </tr>
       {expanded && (
         <tr className="bg-neutral-50/80">
-          <td colSpan={11} className="px-4 py-3 text-2xs text-neutral-700 border-b border-neutral-100">
+          <td colSpan={12} className="px-4 py-3 text-2xs text-neutral-700 border-b border-neutral-100">
             <div className="flex flex-wrap gap-2 mb-2">
               <button
                 type="button"

@@ -6,6 +6,7 @@ import {
   addLog,
   setResults,
   recalcSummary,
+  deleteResult,
   isJobCancelled,
   deleteJob,
 } from '../job-store';
@@ -105,6 +106,53 @@ describe('job-store (Prisma)', () => {
     expect(s.emailsFound).toBe(1);
     expect(s.phonesFound).toBe(1);
     expect(s.failures).toBe(1);
+  });
+
+  it('deletes a single result and recalculates summary', async () => {
+    const job = await createJob({ url: 'https://test.com' });
+    createdIds.push(job.id);
+    const results: CompanyResult[] = [
+      {
+        id: 'r-del-1',
+        companyName: 'Keep',
+        directoryListingUrl: 'https://x',
+        companyWebsite: '',
+        contactName: '',
+        email: 'keep@x.com',
+        phone: '',
+        address: '',
+        contactPageUrl: '',
+        socialLinks: '',
+        notes: '',
+        confidence: 'high',
+        status: 'done',
+      },
+      {
+        id: 'r-del-2',
+        companyName: 'Gone',
+        directoryListingUrl: 'https://y',
+        companyWebsite: '',
+        contactName: '',
+        email: '',
+        phone: '555',
+        address: '',
+        contactPageUrl: '',
+        socialLinks: '',
+        notes: '',
+        confidence: 'low',
+        status: 'failed',
+      },
+    ];
+    await setResults(job.id, results);
+    await recalcSummary(job.id);
+    expect(await deleteResult(job.id, 'r-del-2')).toBe(true);
+    const j = await getJob(job.id);
+    expect(j?.results.map((r) => r.id)).toEqual(['r-del-1']);
+    expect(j?.summary.companiesFound).toBe(1);
+    expect(j?.summary.emailsFound).toBe(1);
+    expect(j?.summary.phonesFound).toBe(0);
+    expect(j?.summary.failures).toBe(0);
+    expect(await deleteResult(job.id, 'nonexistent')).toBe(false);
   });
 
   it('tracks cancellation', async () => {

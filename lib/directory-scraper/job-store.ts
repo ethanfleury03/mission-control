@@ -46,6 +46,10 @@ export async function updateResult(id: string, companyId: string, patch: Partial
   await persistence.updateResult(id, companyId, patch);
 }
 
+export async function deleteResult(jobId: string, resultId: string) {
+  return persistence.deleteResult(jobId, resultId);
+}
+
 export async function updateSummary(id: string, patch: Partial<JobSummary>) {
   await persistence.updateSummary(id, patch);
 }
