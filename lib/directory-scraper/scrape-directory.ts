@@ -462,10 +462,13 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
 
     const batch = rowsToProcess.slice(i, i + CONCURRENCY);
     const enrichPromises = batch.map(async (row) => {
+      const detailFromMeta = row.nameExtractionMeta?.detailUrl?.trim();
       const entry: DirectoryEntry = {
         name: row.companyName,
         url: row.directoryListingUrl,
-        detailUrl: row.nameExtractionMeta?.detailUrl || row.directoryListingUrl,
+        ...(detailFromMeta ? { detailUrl: detailFromMeta } : {}),
+        existingCompanyWebsite: row.companyWebsite?.trim() || undefined,
+        websiteDiscoveryMethod: row.websiteDiscoveryMeta?.method,
       };
       await store.updateResult(jobId, row.id, { status: 'scraping' });
 

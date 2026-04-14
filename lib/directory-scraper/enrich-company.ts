@@ -14,6 +14,22 @@ import {
   sleep,
 } from './utils';
 
+/** True when detail URL is the same document as the listing (shared nav → same bogus external link for every row). */
+function isSamePageAsListing(detailUrl: string | undefined, listingUrl: string): boolean {
+  if (!detailUrl?.trim() || !listingUrl?.trim()) return true;
+  try {
+    const d = new URL(detailUrl.trim());
+    const l = new URL(listingUrl.trim());
+    const dh = d.hostname.replace(/^www\./i, '').toLowerCase();
+    const lh = l.hostname.replace(/^www\./i, '').toLowerCase();
+    const dp = d.pathname.replace(/\/+$/, '') || '/';
+    const lp = l.pathname.replace(/\/+$/, '') || '/';
+    return dh === lh && dp === lp && d.search === l.search;
+  } catch {
+    return detailUrl.trim() === listingUrl.trim();
+  }
+}
+
 async function extractCompanyWebsiteFromDetail(page: Page, detailUrl: string): Promise<string> {
   try {
     assertPublicHttpUrl(detailUrl, 'Directory detail page');
@@ -95,11 +111,14 @@ export async function enrichCompany(
 ): Promise<CompanyResult> {
   const directoryHost = normalizeDomain(entry.url);
 
+  const existingWeb = (entry.existingCompanyWebsite ?? '').trim();
+  const preferSerperWebsite = entry.websiteDiscoveryMethod === 'serper' && Boolean(existingWeb);
+
   const result: CompanyResult = {
     id: existingId ?? randomUUID(),
     companyName: entry.name,
     directoryListingUrl: entry.url,
-    companyWebsite: '',
+    companyWebsite: existingWeb,
     contactName: '',
     email: '',
     phone: '',
@@ -113,8 +132,23 @@ export async function enrichCompany(
   };
 
   try {
-    if (entry.detailUrl) {
-      result.companyWebsite = await extractCompanyWebsiteFromDetail(page, entry.detailUrl);
+    const listingUrl = entry.url;
+    const detailUrl = entry.detailUrl?.trim();
+    const samePage = isSamePageAsListing(detailUrl, listingUrl);
+
+    if (detailUrl && !samePage) {
+      const scraped = await extractCompanyWebsiteFromDetail(page, detailUrl);
+      if (scraped.trim() && !preferSerperWebsite) {
+        result.companyWebsite = scraped;
+      }
+    } else {
+      try {
+        assertPublicHttpUrl(listingUrl, 'Directory listing page');
+        await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+        await sleep(400);
+      } catch {
+        /* listing load failed — still try to read whatever is in the tab */
+      }
     }
 
     if (await Promise.resolve(signal())) {

@@ -208,4 +208,8 @@ export interface DirectoryEntry {
   url: string;
   detailUrl?: string;
   description?: string;
+  /** Preserved from scrape row — do not overwrite with listing-page link heuristics. */
+  existingCompanyWebsite?: string;
+  /** When `serper`, keep `existingCompanyWebsite` instead of a weaker listing/detail scrape guess. */
+  websiteDiscoveryMethod?: WebsiteDiscoveryMeta['method'];
 }
