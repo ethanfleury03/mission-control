@@ -1,20 +1,23 @@
 /**
- * Idempotent seed of Lead Gen markets + demo accounts (first run after schema add).
+ * Idempotent seed of Lead Gen markets + demo accounts.
+ * Uses upsert on markets + a promise chain lock so concurrent API requests don't race.
  */
 import { prisma } from '@/lib/prisma';
 import { SEED_MARKETS, SEED_ACCOUNTS } from './mock-data';
 
-export async function seedLeadGenIfEmpty(): Promise<{ seededMarkets: number; seededAccounts: number }> {
-  const existing = await prisma.leadGenMarket.count();
-  if (existing > 0) {
-    return { seededMarkets: 0, seededAccounts: 0 };
-  }
+type SeedResult = { seededMarkets: number; seededAccounts: number };
 
+/** Ensures only one performSeed runs at a time; others wait in FIFO order. */
+let seedLock: Promise<void> = Promise.resolve();
+
+async function performSeed(): Promise<SeedResult> {
   const idByLegacyId = new Map<string, string>();
 
+  let marketsTouched = 0;
   for (const m of SEED_MARKETS) {
-    const created = await prisma.leadGenMarket.create({
-      data: {
+    const row = await prisma.leadGenMarket.upsert({
+      where: { slug: m.slug },
+      create: {
         slug: m.slug,
         name: m.name,
         description: m.description,
@@ -24,8 +27,23 @@ export async function seedLeadGenIfEmpty(): Promise<{ seededMarkets: number; see
         status: m.status,
         notes: m.notes,
       },
+      update: {
+        name: m.name,
+        description: m.description,
+        countriesJson: JSON.stringify(m.countries),
+        personasJson: JSON.stringify(m.targetPersonas),
+        solutionAreasJson: JSON.stringify(m.solutionAreas),
+        status: m.status,
+        notes: m.notes,
+      },
     });
-    idByLegacyId.set(m.id, created.id);
+    idByLegacyId.set(m.id, row.id);
+    marketsTouched += 1;
+  }
+
+  const accountCount = await prisma.leadGenAccount.count();
+  if (accountCount > 0) {
+    return { seededMarkets: marketsTouched, seededAccounts: 0 };
   }
 
   let accounts = 0;
@@ -59,5 +77,14 @@ export async function seedLeadGenIfEmpty(): Promise<{ seededMarkets: number; see
     accounts += 1;
   }
 
-  return { seededMarkets: SEED_MARKETS.length, seededAccounts: accounts };
+  return { seededMarkets: marketsTouched, seededAccounts: accounts };
+}
+
+export async function seedLeadGenIfEmpty(): Promise<SeedResult> {
+  const result = seedLock.then(() => performSeed());
+  seedLock = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
 }
