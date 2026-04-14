@@ -85,15 +85,25 @@ export async function extractContactFromSite(
   siteUrl: string,
   signal: CancelSignal,
   companyDomain?: string,
+  onStep?: (msg: string) => void | Promise<void>,
 ): Promise<ContactInfo> {
+  const step = async (msg: string) => {
+    if (onStep) await Promise.resolve(onStep(msg));
+  };
+
   let merged: ContactInfo = { emails: [], phones: [], addresses: [], contactPageUrls: [], socialLinks: [] };
 
   try {
     assertPublicHttpUrl(siteUrl, 'Company site');
+    await step(`Contact crawl: loading homepage ${siteUrl.slice(0, 80)}${siteUrl.length > 80 ? '…' : ''}`);
     await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
     await sleep(500);
     merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
+    await step(
+      `Contact crawl: homepage parsed (emails ${merged.emails.length}, phones ${merged.phones.length}, contact links ${merged.contactPageUrls.length})`,
+    );
   } catch {
+    await step('Contact crawl: homepage load or parse failed (continuing with hints)');
     // homepage failed; continue with whatever we have
   }
 
@@ -112,10 +122,12 @@ export async function extractContactFromSite(
     if (await Promise.resolve(signal())) break;
     try {
       assertPublicHttpUrl(link, 'Contact page');
+      await step(`Contact crawl: loading subpage ${link.slice(0, 90)}${link.length > 90 ? '…' : ''}`);
       await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15_000 });
       await sleep(400);
       merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
     } catch {
+      await step(`Contact crawl: subpage failed ${link.slice(0, 60)}…`);
       // single page failure is ok
     }
   }

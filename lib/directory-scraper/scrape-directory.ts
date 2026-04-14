@@ -320,7 +320,10 @@ export async function runScrapeJob(jobId: string): Promise<void> {
 
 async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) {
   const job = await store.getJob(jobId);
-  if (!job?.input.enableSerperWebsiteDiscovery) return;
+  if (!job?.input.enableSerperWebsiteDiscovery) {
+    await store.addLog(jobId, 'info', 'Phase Serper: skipped (website discovery not enabled for this job).');
+    return;
+  }
   if (!isSerperConfigured()) {
     await store.addLog(jobId, 'warn', 'Serper website discovery was enabled but SERPER_API_KEY is not set; skipping.');
     return;
@@ -343,7 +346,11 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
   });
 
   if (rows.length === 0) {
-    await store.addLog(jobId, 'info', 'Serper discovery: all rows already have a website URL; skipping.');
+    await store.addLog(
+      jobId,
+      'info',
+      `Serper discovery: nothing to resolve (${allResults.length} row(s) already have distinct websites).`,
+    );
     await store.patchJobMeta(jobId, {
       websiteDiscoverySummary: {
         attempted: 0,
@@ -374,6 +381,9 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
     await store.addLog(jobId, 'info', `Serper discovery: resolving websites for ${rows.length} row(s) (top-5 Serper scoring + domain guess)…`);
   }
 
+  const serperPhaseStarted = Date.now();
+  let serperBatchIndex = 0;
+
   for (let i = 0; i < rows.length; i += SERPER_BATCH) {
     if (await Promise.resolve(cancelled())) {
       await store.addLog(jobId, 'warn', 'Job cancelled during Serper website discovery');
@@ -381,6 +391,14 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
     }
 
     const batch = rows.slice(i, i + SERPER_BATCH);
+    serperBatchIndex += 1;
+    const batchLabel = batch.map((r) => r.companyName.slice(0, 40)).join(' | ');
+    await store.addLog(
+      jobId,
+      'info',
+      `Serper batch ${serperBatchIndex}/${Math.ceil(rows.length / SERPER_BATCH)} (${i + 1}-${i + batch.length}/${rows.length}): ${batchLabel}`,
+    );
+    const batchStarted = Date.now();
     const outcomes = await Promise.all(
       batch.map(async (row) => {
         const found = await discoverCompanyWebsite(row.companyName, {
@@ -389,6 +407,11 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
         });
         return { row, found };
       }),
+    );
+    await store.addLog(
+      jobId,
+      'info',
+      `Serper batch ${serperBatchIndex} finished in ${Math.round((Date.now() - batchStarted) / 1000)}s`,
     );
 
     for (const { row, found } of outcomes) {
@@ -444,7 +467,7 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
   await store.addLog(
     jobId,
     'info',
-    `Serper discovery done: domain guess ${summary.resolvedDomainGuess}, Serper ${summary.resolvedSerper}, unresolved ${summary.unresolved}`,
+    `Serper discovery done in ${Math.round((Date.now() - serperPhaseStarted) / 1000)}s: domain guess ${summary.resolvedDomainGuess}, Serper ${summary.resolvedSerper}, unresolved ${summary.unresolved}`,
   );
 }
 
@@ -455,9 +478,24 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
   const refreshed = await store.getJob(jobId);
   const rowsToProcess = visitWebsites ? (refreshed?.results ?? []).filter((r) => r.status === 'pending') : [];
 
-  if (rowsToProcess.length > 0) {
-    await store.addLog(jobId, 'info', `Phase 2: Enriching ${rowsToProcess.length} companies...`);
+  if (!visitWebsites) {
+    await store.addLog(
+      jobId,
+      'info',
+      'Phase 2 enrichment: skipped (Visit company websites is off). Rows stay at Phase 1 contact only; no per-company site crawl.',
+    );
+    return;
   }
+
+  if (rowsToProcess.length > 0) {
+    await store.addLog(
+      jobId,
+      'info',
+      `Phase 2 enrichment: ${rowsToProcess.length} pending row(s), concurrency ${CONCURRENCY}, ~${Math.round(ENRICHMENT_ROW_BUDGET_MS / 1000)}s budget per row`,
+    );
+  }
+
+  const enrichPhaseStarted = Date.now();
 
   for (let i = 0; i < rowsToProcess.length; i += CONCURRENCY) {
     if (await Promise.resolve(cancelled())) {
@@ -466,6 +504,11 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
     }
 
     const batch = rowsToProcess.slice(i, i + CONCURRENCY);
+    await store.addLog(
+      jobId,
+      'info',
+      `Enrichment batch: rows ${i + 1}-${i + batch.length} of ${rowsToProcess.length} — ${batch.map((r) => r.companyName.slice(0, 35)).join(' | ')}`,
+    );
     const enrichPromises = batch.map(async (row) => {
       const detailFromMeta = row.nameExtractionMeta?.detailUrl?.trim();
       const entry: DirectoryEntry = {
@@ -476,21 +519,26 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
         websiteDiscoveryMethod: row.websiteDiscoveryMeta?.method,
       };
       await store.updateResult(jobId, row.id, { status: 'scraping' });
-      await store.addLog(jobId, 'info', `Enriching: ${row.companyName}`);
+      const rowLog = async (msg: string) => {
+        await store.addLog(jobId, 'info', `[${row.companyName.slice(0, 48)}] ${msg}`);
+      };
+      await rowLog('Enrichment started');
 
       try {
         const enrichPage = await page.context().newPage();
         enrichPage.setDefaultNavigationTimeout(ENRICHMENT_NAVIGATION_TIMEOUT_MS);
         enrichPage.setDefaultTimeout(Math.min(ENRICHMENT_NAVIGATION_TIMEOUT_MS, 25_000));
         try {
+          const rowStarted = Date.now();
           const result = await runWithEnrichmentBudget(ENRICHMENT_ROW_BUDGET_MS, () =>
-            enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id),
+            enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id, rowLog),
           );
           await store.updateResult(jobId, row.id, {
             ...result,
             id: row.id,
             nameExtractionMeta: row.nameExtractionMeta,
           });
+          await rowLog(`Enrichment finished in ${Math.round((Date.now() - rowStarted) / 1000)}s (status ${result.status})`);
         } finally {
           await enrichPage.close().catch(() => {});
         }
@@ -518,7 +566,7 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
     await store.addLog(
       jobId,
       'info',
-      `Processed ${Math.min(i + CONCURRENCY, rowsToProcess.length)}/${rowsToProcess.length}`,
+      `Enrichment progress: ${Math.min(i + CONCURRENCY, rowsToProcess.length)}/${rowsToProcess.length} (elapsed ${Math.round((Date.now() - enrichPhaseStarted) / 1000)}s)`,
     );
 
     if (i + CONCURRENCY < rowsToProcess.length) {
@@ -527,4 +575,11 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
   }
 
   await store.recalcSummary(jobId);
+  if (rowsToProcess.length > 0) {
+    await store.addLog(
+      jobId,
+      'info',
+      `Phase 2 enrichment complete: ${rowsToProcess.length} row(s) in ${Math.round((Date.now() - enrichPhaseStarted) / 1000)}s total`,
+    );
+  }
 }

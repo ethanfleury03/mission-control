@@ -109,7 +109,12 @@ export async function enrichCompany(
   visitWebsite: boolean,
   signal: CancelSignal,
   existingId?: string,
+  onLog?: (message: string) => void | Promise<void>,
 ): Promise<CompanyResult> {
+  const log = async (message: string) => {
+    if (onLog) await Promise.resolve(onLog(message));
+  };
+
   const directoryHost = normalizeDomain(entry.url);
 
   const existingWeb = (entry.existingCompanyWebsite ?? '').trim();
@@ -138,16 +143,31 @@ export async function enrichCompany(
     const samePage = isSamePageAsListing(detailUrl, listingUrl);
 
     if (detailUrl && !samePage) {
+      await log('Step: open member/detail page for listing scrape');
       const scraped = await extractCompanyWebsiteFromDetail(page, detailUrl);
       if (scraped.trim() && !preferSerperWebsite) {
         result.companyWebsite = scraped;
       }
+      await log(
+        scraped.trim() && !preferSerperWebsite
+          ? `Step: detail page suggested website → ${scraped.slice(0, 60)}…`
+          : preferSerperWebsite
+            ? 'Step: keeping Serper website (not overwriting from detail page)'
+            : 'Step: no website extracted from detail page',
+      );
     } else {
+      await log(
+        samePage && detailUrl
+          ? 'Step: detail URL same as listing — loading listing once for contact scrape'
+          : 'Step: load directory listing page for contact scrape',
+      );
       try {
         assertPublicHttpUrl(listingUrl, 'Directory listing page');
         await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
         await sleep(400);
+        await log('Step: listing page loaded');
       } catch {
+        await log('Step: listing page load failed (reading tab if any)');
         /* listing load failed — still try to read whatever is in the tab */
       }
     }
@@ -191,6 +211,9 @@ export async function enrichCompany(
       result.address = sanitized.address;
       result.socialLinks = sanitized.socialLinks;
       result.notes = sanitized.notes;
+      await log(
+        'Step: cleared likely directory-wide phone/email/social (company site host ≠ listing host)',
+      );
     }
 
     const listingHadEmail = !!result.email;
@@ -199,7 +222,10 @@ export async function enrichCompany(
     if (visitWebsite && result.companyWebsite && !(await Promise.resolve(signal()))) {
       assertPublicHttpUrl(result.companyWebsite, 'Company website');
       const companyDomain = normalizeDomain(result.companyWebsite);
-      const contact = await extractContactFromSite(page, result.companyWebsite, signal, companyDomain);
+      await log(`Step: crawl company website for contact (${companyDomain})`);
+      const contact = await extractContactFromSite(page, result.companyWebsite, signal, companyDomain, (m) =>
+        log(m),
+      );
       if (contact.emails.length) {
         const merged = pickBestEmail([...contact.emails, result.email].filter(Boolean), companyDomain);
         result.email = merged;
@@ -212,6 +238,11 @@ export async function enrichCompany(
         result.socialLinks = extractSocialLinksForCompany(mergedSocial, companyDomain).join(', ');
       }
       result.rawContact = contact;
+      await log(
+        `Step: company site crawl done (email ${result.email ? 'yes' : 'no'}, phone ${result.phone ? 'yes' : 'no'})`,
+      );
+    } else if (visitWebsite && !result.companyWebsite) {
+      await log('Step: skip company website crawl (no website URL for this row)');
     }
 
     const scored = scoreResult(result, {
