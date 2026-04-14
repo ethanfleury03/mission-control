@@ -135,6 +135,7 @@ model DirectoryScrapeResult {
   error               String?
   rawContactJson      String?  // ContactInfo JSON
   nameExtractionMetaJson String? // Name-extraction pipeline debug JSON
+  websiteDiscoveryMetaJson String? // Serper / domain-guess website resolution audit JSON
   needsReview         Boolean  @default(false)
   sortOrder           Int      @default(0)
 

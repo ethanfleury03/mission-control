@@ -84,6 +84,15 @@ export interface NameExtractionDebugSummary {
   fetchEngine?: ScrapeFetchMode;
 }
 
+/** Counts after Serper + domain-guess pass (job meta) */
+export interface WebsiteDiscoveryJobSummary {
+  attempted: number;
+  resolvedDomainGuess: number;
+  resolvedSerper: number;
+  unresolved: number;
+  skippedAlreadyHadUrl: number;
+}
+
 export interface ScrapeJobInput {
   url: string;
   maxCompanies?: number;
@@ -96,6 +105,18 @@ export interface ScrapeJobInput {
   mockMode?: boolean;
   /** playwright = local browser (default); firecrawl = Firecrawl API (requires FIRECRAWL_API_KEY). */
   scrapeFetchMode?: ScrapeFetchMode;
+  /**
+   * When true, resolve missing company homepages via domain guess + Serper.dev search (requires SERPER_API_KEY).
+   * Cheap vs per-company LLM; runs after name extraction, before optional Playwright site visits.
+   */
+  enableSerperWebsiteDiscovery?: boolean;
+}
+
+/** How we resolved companyWebsite when Serper discovery ran */
+export interface WebsiteDiscoveryMeta {
+  method: 'domain-guess' | 'serper' | 'none';
+  detail: string;
+  serperQuery?: string;
 }
 
 export interface ContactInfo {
@@ -128,6 +149,8 @@ export interface CompanyResult {
   sortOrder?: number;
   /** Name pipeline debug (selectors, method, scores) */
   nameExtractionMeta?: NameExtractionMeta;
+  /** Serper / domain-guess website resolution audit */
+  websiteDiscoveryMeta?: WebsiteDiscoveryMeta;
 }
 
 export interface JobSummary {
@@ -154,6 +177,7 @@ export interface JobMeta {
   durationMs?: number;
   /** Latest name-extraction pipeline diagnostics */
   nameExtractionDebug?: NameExtractionDebugSummary;
+  websiteDiscoverySummary?: WebsiteDiscoveryJobSummary;
 }
 
 export interface LogEntry {

@@ -1,5 +1,10 @@
 import type { Browser } from 'playwright';
-import type { CompanyResult, DirectoryEntry } from './types';
+import type {
+  CompanyResult,
+  DirectoryEntry,
+  WebsiteDiscoveryJobSummary,
+  WebsiteDiscoveryMeta,
+} from './types';
 import * as store from './job-store';
 import { enrichCompany } from './enrich-company';
 import { sleep } from './utils';
@@ -10,9 +15,12 @@ import { extractCompanyNamesFromPage, extractCompanyNamesFromFirecrawl } from '.
 import { candidateToCompanyResult } from './name-result-mapper';
 import type { CancelSignal } from './extract-directory-entries';
 import { firecrawlScrape, isFirecrawlConfigured } from './firecrawl-client';
-
+import { discoverCompanyWebsite } from './discover-company-website';
+import { isSerperConfigured } from './serper-client';
 const CONCURRENCY = 2;
 const DELAY_BETWEEN_COMPANIES_MS = 1200;
+const SERPER_BATCH = 2;
+const DELAY_BETWEEN_SERPER_MS = 700;
 
 function mockResults(): CompanyResult[] {
   const companies = [
@@ -234,6 +242,7 @@ export async function runScrapeJob(jobId: string): Promise<void> {
         await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
       }
 
+      await runWebsiteDiscoveryPhase(jobId, cancelled);
       await runEnrichmentPhase(jobId, page, cancelled);
 
       if (!(await Promise.resolve(cancelled()))) {
@@ -272,6 +281,8 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
     }
 
+    await runWebsiteDiscoveryPhase(jobId, cancelled);
+
     if (visitWebsites && initialResults.some((r) => r.status === 'pending')) {
       const launch = await launchChromiumForScraper();
       browser = launch.browser;
@@ -299,6 +310,93 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       await browser.close().catch(() => {});
     }
   }
+}
+
+async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) {
+  const job = await store.getJob(jobId);
+  if (!job?.input.enableSerperWebsiteDiscovery) return;
+  if (!isSerperConfigured()) {
+    await store.addLog(jobId, 'warn', 'Serper website discovery was enabled but SERPER_API_KEY is not set; skipping.');
+    return;
+  }
+
+  const refreshed = await store.getJob(jobId);
+  const rows = (refreshed?.results ?? []).filter((r) => !r.companyWebsite?.trim());
+  if (rows.length === 0) {
+    await store.addLog(jobId, 'info', 'Serper discovery: all rows already have a website URL; skipping.');
+    await store.patchJobMeta(jobId, {
+      websiteDiscoverySummary: {
+        attempted: 0,
+        resolvedDomainGuess: 0,
+        resolvedSerper: 0,
+        unresolved: 0,
+        skippedAlreadyHadUrl: refreshed?.results.length ?? 0,
+      },
+    });
+    return;
+  }
+
+  const summary: WebsiteDiscoveryJobSummary = {
+    attempted: rows.length,
+    resolvedDomainGuess: 0,
+    resolvedSerper: 0,
+    unresolved: 0,
+    skippedAlreadyHadUrl: (refreshed?.results.length ?? 0) - rows.length,
+  };
+
+  await store.addLog(jobId, 'info', `Serper discovery: resolving websites for ${rows.length} row(s) (domain guess + search)…`);
+
+  for (let i = 0; i < rows.length; i += SERPER_BATCH) {
+    if (await Promise.resolve(cancelled())) {
+      await store.addLog(jobId, 'warn', 'Job cancelled during Serper website discovery');
+      break;
+    }
+
+    const batch = rows.slice(i, i + SERPER_BATCH);
+    await Promise.all(
+      batch.map(async (row) => {
+        const found = await discoverCompanyWebsite(row.companyName, {
+          directoryListingUrl: row.directoryListingUrl,
+        });
+        const meta: WebsiteDiscoveryMeta = {
+          method: found.method,
+          detail: found.detail,
+          serperQuery: found.serperQuery,
+        };
+        if (found.method === 'domain-guess') summary.resolvedDomainGuess += 1;
+        else if (found.method === 'serper') summary.resolvedSerper += 1;
+        else summary.unresolved += 1;
+
+        const website = found.website.trim();
+        const patch: Partial<CompanyResult> = { websiteDiscoveryMeta: meta };
+        if (website) {
+          patch.companyWebsite = website;
+          const noteLine = `Website (${found.method}): ${found.detail}`;
+          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
+        } else if (found.detail) {
+          const noteLine = `Website lookup: ${found.detail}`;
+          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
+        }
+
+        await store.updateResult(jobId, row.id, patch);
+      }),
+    );
+
+    await store.recalcSummary(jobId);
+    const last = batch[batch.length - 1];
+    if (last) await store.patchJobMeta(jobId, { lastProcessedCompanyName: last.companyName });
+
+    if (i + SERPER_BATCH < rows.length) {
+      await sleep(DELAY_BETWEEN_SERPER_MS);
+    }
+  }
+
+  await store.patchJobMeta(jobId, { websiteDiscoverySummary: summary });
+  await store.addLog(
+    jobId,
+    'info',
+    `Serper discovery done: domain guess ${summary.resolvedDomainGuess}, Serper ${summary.resolvedSerper}, unresolved ${summary.unresolved}`,
+  );
 }
 
 async function runEnrichmentPhase(jobId: string, page: import('playwright').Page, cancelled: CancelSignal) {
