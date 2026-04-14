@@ -15,8 +15,9 @@ import { extractCompanyNamesFromPage, extractCompanyNamesFromFirecrawl } from '.
 import { candidateToCompanyResult } from './name-result-mapper';
 import type { CancelSignal } from './extract-directory-entries';
 import { firecrawlScrape, isFirecrawlConfigured } from './firecrawl-client';
-import { discoverCompanyWebsite } from './discover-company-website';
+import { discoverCompanyWebsite, findDominantPlaceholderDomain } from './discover-company-website';
 import { isSerperConfigured } from './serper-client';
+import { normalizeDomain } from './utils';
 const CONCURRENCY = 2;
 const DELAY_BETWEEN_COMPANIES_MS = 1200;
 const SERPER_BATCH = 2;
@@ -321,7 +322,21 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
   }
 
   const refreshed = await store.getJob(jobId);
-  const rows = (refreshed?.results ?? []).filter((r) => !r.companyWebsite?.trim());
+  const allResults = refreshed?.results ?? [];
+  const dominant = findDominantPlaceholderDomain(allResults);
+  const rejectHosts = dominant ? [dominant] : undefined;
+
+  const rows = allResults.filter((r) => {
+    const w = r.companyWebsite?.trim();
+    if (!w) return true;
+    if (!dominant) return false;
+    try {
+      return normalizeDomain(w) === dominant;
+    } catch {
+      return false;
+    }
+  });
+
   if (rows.length === 0) {
     await store.addLog(jobId, 'info', 'Serper discovery: all rows already have a website URL; skipping.');
     await store.patchJobMeta(jobId, {
@@ -330,7 +345,7 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
         resolvedDomainGuess: 0,
         resolvedSerper: 0,
         unresolved: 0,
-        skippedAlreadyHadUrl: refreshed?.results.length ?? 0,
+        skippedAlreadyHadUrl: allResults.length,
       },
     });
     return;
@@ -341,10 +356,18 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
     resolvedDomainGuess: 0,
     resolvedSerper: 0,
     unresolved: 0,
-    skippedAlreadyHadUrl: (refreshed?.results.length ?? 0) - rows.length,
+    skippedAlreadyHadUrl: allResults.length - rows.length,
   };
 
-  await store.addLog(jobId, 'info', `Serper discovery: resolving websites for ${rows.length} row(s) (domain guess + search)…`);
+  if (dominant) {
+    await store.addLog(
+      jobId,
+      'info',
+      `Serper discovery: ${rows.length} row(s) — including ${summary.skippedAlreadyHadUrl} re-scan(s) for shared domain "${dominant}" (listing placeholder)`,
+    );
+  } else {
+    await store.addLog(jobId, 'info', `Serper discovery: resolving websites for ${rows.length} row(s) (top-5 Serper scoring + domain guess)…`);
+  }
 
   for (let i = 0; i < rows.length; i += SERPER_BATCH) {
     if (await Promise.resolve(cancelled())) {
@@ -353,34 +376,55 @@ async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) 
     }
 
     const batch = rows.slice(i, i + SERPER_BATCH);
-    await Promise.all(
+    const outcomes = await Promise.all(
       batch.map(async (row) => {
         const found = await discoverCompanyWebsite(row.companyName, {
           directoryListingUrl: row.directoryListingUrl,
+          rejectHosts,
         });
-        const meta: WebsiteDiscoveryMeta = {
-          method: found.method,
-          detail: found.detail,
-          serperQuery: found.serperQuery,
-        };
-        if (found.method === 'domain-guess') summary.resolvedDomainGuess += 1;
-        else if (found.method === 'serper') summary.resolvedSerper += 1;
-        else summary.unresolved += 1;
+        return { row, found };
+      }),
+    );
 
-        const website = found.website.trim();
-        const patch: Partial<CompanyResult> = { websiteDiscoveryMeta: meta };
-        if (website) {
-          patch.companyWebsite = website;
-          const noteLine = `Website (${found.method}): ${found.detail}`;
+    for (const { row, found } of outcomes) {
+      const meta: WebsiteDiscoveryMeta = {
+        method: found.method,
+        detail: found.detail,
+        serperQuery: found.serperQuery,
+      };
+      if (found.method === 'domain-guess') summary.resolvedDomainGuess += 1;
+      else if (found.method === 'serper') summary.resolvedSerper += 1;
+      else summary.unresolved += 1;
+
+      const website = found.website.trim();
+      const patch: Partial<CompanyResult> = { websiteDiscoveryMeta: meta };
+      if (website) {
+        patch.companyWebsite = website;
+        const noteLine = `Website (${found.method}): ${found.detail}`;
+        patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
+      } else {
+        const hadPlaceholder =
+          dominant &&
+          row.companyWebsite?.trim() &&
+          (() => {
+            try {
+              return normalizeDomain(row.companyWebsite) === dominant;
+            } catch {
+              return false;
+            }
+          })();
+        if (hadPlaceholder) {
+          patch.companyWebsite = '';
+          const noteLine = `Website cleared: was shared listing domain (${dominant}); ${found.detail}`;
           patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
         } else if (found.detail) {
           const noteLine = `Website lookup: ${found.detail}`;
           patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
         }
+      }
 
-        await store.updateResult(jobId, row.id, patch);
-      }),
-    );
+      await store.updateResult(jobId, row.id, patch);
+    }
 
     await store.recalcSummary(jobId);
     const last = batch[batch.length - 1];
