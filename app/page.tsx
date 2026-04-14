@@ -10,6 +10,7 @@ import { KanbanBoard } from './components/KanbanBoard';
 import { AgentOffice } from './components/AgentOffice';
 import { BlogsTab } from './components/BlogsTab';
 import { DirectoryScraperTab } from './components/DirectoryScraperTab';
+import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
 import type { HubAppId } from './lib/hubApps';
 
@@ -103,6 +104,8 @@ export default function ArrowHub() {
           <AgentOffice />
         ) : activeApp === 'SCRAPER' ? (
           <DirectoryScraperTab />
+        ) : activeApp === 'LEAD_GEN' ? (
+          <LeadGenerationTab />
         ) : (
           <MainContent
             metrics={metrics}

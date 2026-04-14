@@ -5,9 +5,10 @@ import {
   Newspaper,
   Bot,
   Globe,
+  Target,
 } from 'lucide-react';
 
-export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS' | 'SCRAPER';
+export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS' | 'SCRAPER' | 'LEAD_GEN';
 
 export interface HubApp {
   id: HubAppId;
@@ -46,5 +47,11 @@ export const HUB_APPS: HubApp[] = [
     label: 'Directory Scraper',
     description: 'Extract contacts from directories',
     icon: Globe,
+  },
+  {
+    id: 'LEAD_GEN',
+    label: 'Lead Generation',
+    description: 'Market databases & account qualification',
+    icon: Target,
   },
 ];
