@@ -54,6 +54,7 @@ function mergePollSnapshot(prev: ScrapeJob | null, snap: ScrapeJob): ScrapeJob {
       ...prev,
       ...r,
       nameExtractionMeta: r.nameExtractionMeta ?? prev?.nameExtractionMeta,
+      websiteDiscoveryMeta: r.websiteDiscoveryMeta ?? prev?.websiteDiscoveryMeta,
     });
   }
   const merged = Array.from(map.values()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -95,6 +96,9 @@ export function DirectoryScraperTab() {
   const [scrapeFetchMode, setScrapeFetchMode] = useState<ScrapeFetchMode>('playwright');
   const [firecrawlConfigured, setFirecrawlConfigured] = useState(false);
   const [firecrawlHint, setFirecrawlHint] = useState<string | null>(null);
+  const [enableSerperDiscovery, setEnableSerperDiscovery] = useState(false);
+  const [serperConfigured, setSerperConfigured] = useState(false);
+  const [serperHint, setSerperHint] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<'csv' | 'sheets'>('csv');
   const [sheetId, setSheetId] = useState('');
   const [sheetTab, setSheetTab] = useState('');
@@ -148,6 +152,13 @@ export function DirectoryScraperTab() {
         setFirecrawlHint(d.hint ?? null);
       })
       .catch(() => {});
+    fetch(`${API}/serper-status`)
+      .then((r) => r.json())
+      .then((d) => {
+        setSerperConfigured(d.configured);
+        setSerperHint(d.hint ?? null);
+      })
+      .catch(() => {});
   }, []);
 
   const pollJob = useCallback(async (id: string) => {
@@ -194,6 +205,7 @@ export function DirectoryScraperTab() {
           url: url.trim(),
           maxCompanies: maxCompanies ? Number(maxCompanies) : undefined,
           visitCompanyWebsites: visitWebsites,
+          enableSerperWebsiteDiscovery: enableSerperDiscovery,
           enableAiNameFallback: enableAiFallback,
           exportTarget,
           googleSheetId: sheetId,
@@ -470,6 +482,21 @@ export function DirectoryScraperTab() {
                 />
                 Visit company websites for enrichment
               </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableSerperDiscovery}
+                  onChange={(e) => setEnableSerperDiscovery(e.target.checked)}
+                  disabled={isRunning || !serperConfigured}
+                  className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
+                />
+                <span className={serperConfigured ? '' : 'text-neutral-400'}>
+                  Find company websites (Serper search)
+                </span>
+              </label>
+              {!serperConfigured && serperHint && (
+                <p className="text-2xs text-neutral-500 leading-relaxed ml-6">{serperHint}</p>
+              )}
               <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -761,6 +788,22 @@ export function DirectoryScraperTab() {
                   )}
                 </div>
               </details>
+            )}
+
+            {job.meta?.websiteDiscoverySummary && (
+              <div className="mb-3 text-2xs border border-emerald-100 rounded-md bg-emerald-50/60 px-3 py-2 text-emerald-900">
+                <span className="font-medium">Website discovery (Serper):</span> attempted{' '}
+                {job.meta.websiteDiscoverySummary.attempted}, domain guess{' '}
+                {job.meta.websiteDiscoverySummary.resolvedDomainGuess}, Serper{' '}
+                {job.meta.websiteDiscoverySummary.resolvedSerper}, unresolved{' '}
+                {job.meta.websiteDiscoverySummary.unresolved}
+                {job.meta.websiteDiscoverySummary.skippedAlreadyHadUrl > 0 && (
+                  <span className="text-emerald-800">
+                    {' '}
+                    · skipped (already had URL) {job.meta.websiteDiscoverySummary.skippedAlreadyHadUrl}
+                  </span>
+                )}
+              </div>
             )}
 
             {(job.meta?.lastProcessedCompanyName || job.meta?.lastError || job.meta?.sheetsExportNote) && (
@@ -1241,6 +1284,23 @@ function ResultRow({
                     </dd>
                     <dt className="text-neutral-500">Reasons</dt>
                     <dd>{result.nameExtractionMeta.reasons?.join('; ') || '—'}</dd>
+                  </dl>
+                </div>
+              )}
+              {result.websiteDiscoveryMeta && (
+                <div className="sm:col-span-2">
+                  <span className="font-semibold text-neutral-600">Website discovery</span>
+                  <dl className="mt-1 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-2xs">
+                    <dt className="text-neutral-500">Method</dt>
+                    <dd className="font-mono">{result.websiteDiscoveryMeta.method}</dd>
+                    <dt className="text-neutral-500">Detail</dt>
+                    <dd className="break-all">{result.websiteDiscoveryMeta.detail}</dd>
+                    {result.websiteDiscoveryMeta.serperQuery && (
+                      <>
+                        <dt className="text-neutral-500">Search query</dt>
+                        <dd className="font-mono break-all">{result.websiteDiscoveryMeta.serperQuery}</dd>
+                      </>
+                    )}
                   </dl>
                 </div>
               )}

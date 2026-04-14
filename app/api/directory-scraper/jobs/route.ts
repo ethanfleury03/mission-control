@@ -4,6 +4,7 @@ import { runScrapeJob } from '@/lib/directory-scraper/scrape-directory';
 import type { ScrapeJobInput } from '@/lib/directory-scraper/types';
 import { validateScrapeUrl } from '@/lib/directory-scraper/validate-scrape-url';
 import { isFirecrawlConfigured } from '@/lib/directory-scraper/firecrawl-client';
+import { isSerperConfigured } from '@/lib/directory-scraper/serper-client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       googleSheetTab: body.googleSheetTab ?? '',
       mockMode: !!body.mockMode,
       scrapeFetchMode: fetchMode,
+      enableSerperWebsiteDiscovery: !!body.enableSerperWebsiteDiscovery,
     };
 
     if (!input.url && !input.mockMode) {
@@ -43,6 +45,13 @@ export async function POST(request: NextRequest) {
     if (input.scrapeFetchMode === 'firecrawl' && !input.mockMode && !isFirecrawlConfigured()) {
       return NextResponse.json(
         { error: 'Firecrawl mode requires FIRECRAWL_API_KEY in server environment.', code: 'FIRECRAWL_NOT_CONFIGURED' },
+        { status: 400 },
+      );
+    }
+
+    if (input.enableSerperWebsiteDiscovery && !input.mockMode && !isSerperConfigured()) {
+      return NextResponse.json(
+        { error: 'Serper discovery requires SERPER_API_KEY in server environment.', code: 'SERPER_NOT_CONFIGURED' },
         { status: 400 },
       );
     }

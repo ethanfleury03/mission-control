@@ -12,6 +12,7 @@ import type {
   ContactInfo,
   JobMeta,
   NameExtractionMeta,
+  WebsiteDiscoveryMeta,
 } from './types';
 
 export interface GetJobSnapshotOptions {
@@ -89,6 +90,7 @@ function resultFromRow(r: {
   error: string | null;
   rawContactJson: string | null;
   nameExtractionMetaJson: string | null;
+  websiteDiscoveryMetaJson: string | null;
   needsReview: boolean;
   sortOrder: number;
 }): CompanyResult {
@@ -104,6 +106,14 @@ function resultFromRow(r: {
   if (r.nameExtractionMetaJson) {
     try {
       nameExtractionMeta = JSON.parse(r.nameExtractionMetaJson) as NameExtractionMeta;
+    } catch {
+      /* ignore */
+    }
+  }
+  let websiteDiscoveryMeta: WebsiteDiscoveryMeta | undefined;
+  if (r.websiteDiscoveryMetaJson) {
+    try {
+      websiteDiscoveryMeta = JSON.parse(r.websiteDiscoveryMetaJson) as WebsiteDiscoveryMeta;
     } catch {
       /* ignore */
     }
@@ -127,6 +137,7 @@ function resultFromRow(r: {
     needsReview: r.needsReview,
     sortOrder: r.sortOrder,
     nameExtractionMeta,
+    websiteDiscoveryMeta,
   };
 }
 
@@ -389,6 +400,7 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
               error: r.error ?? null,
               rawContactJson: r.rawContact ? JSON.stringify(r.rawContact) : null,
               nameExtractionMetaJson: r.nameExtractionMeta ? JSON.stringify(r.nameExtractionMeta) : null,
+              websiteDiscoveryMetaJson: r.websiteDiscoveryMeta ? JSON.stringify(r.websiteDiscoveryMeta) : null,
               needsReview: r.needsReview ?? false,
               sortOrder: idx,
             },
@@ -431,6 +443,11 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
       if (mergedPatch.nameExtractionMeta !== undefined) {
         data.nameExtractionMetaJson = mergedPatch.nameExtractionMeta
           ? JSON.stringify(mergedPatch.nameExtractionMeta)
+          : null;
+      }
+      if (mergedPatch.websiteDiscoveryMeta !== undefined) {
+        data.websiteDiscoveryMetaJson = mergedPatch.websiteDiscoveryMeta
+          ? JSON.stringify(mergedPatch.websiteDiscoveryMeta)
           : null;
       }
 
