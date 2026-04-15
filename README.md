@@ -11,7 +11,7 @@ npm install
 cp .env.example .env   # set DATABASE_URL (see .env.example)
 npx prisma migrate deploy   # or: npm run db:migrate (dev)
 npm run dev
-# App: http://localhost:3000
+# App: http://localhost:3002
 ```
 
 ### Directory Scraper — how to try it
