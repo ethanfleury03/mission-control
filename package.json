@@ -14,6 +14,8 @@
     "check:no-mock": "pwsh -File ./scripts/no-mock-check.ps1"
   },
   "dependencies": {
+    "@libsql/client": "^0.6.2",
+    "@prisma/adapter-libsql": "^5.22.0",
     "@types/dagre": "^0.7.53",
     "@xyflow/react": "^12.10.0",
     "cheerio": "^1.2.0",
@@ -36,7 +38,7 @@
     "seed": "npx tsx prisma/seed.ts"
   },
   "devDependencies": {
-    "@prisma/client": "^5.17.0",
+    "@prisma/client": "^5.22.0",
     "@types/node": "^20.19.33",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19",
@@ -44,7 +46,7 @@
     "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.24",
     "postcss": "^8.5.6",
-    "prisma": "^5.17.0",
+    "prisma": "^5.22.0",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",

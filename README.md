@@ -8,19 +8,48 @@ cd mission-control && docker-compose up -d
 
 # Or run just the dev version
 npm install
-cp .env.example .env   # set DATABASE_URL (see .env.example)
-npx prisma migrate deploy   # or: npm run db:migrate (dev)
-# SQLite dev DB file is NOT in git (.gitignore). After clone, apply schema + seed demo Lead Gen data:
-npm run db:push && npm run db:seed
+cp .env.example .env
+# Option A — shared Turso DB (recommended for a team): set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (see below). Then:
+npx prisma generate
 npm run dev
 # App: http://localhost:3002
+# Option B — local SQLite only: leave Turso vars unset, set DATABASE_URL (see .env.example), then:
+npm run db:push && npm run db:seed
+npm run dev
 ```
+
+### Turso (hosted SQLite, one DB for every machine)
+
+Prisma CLI (`db push`, `migrate dev`) still uses **`DATABASE_URL`** pointing at a **local** `dev.db` to generate and verify SQL. The running Next.js app uses **`TURSO_DATABASE_URL`** + **`TURSO_AUTH_TOKEN`** when those are set, via the LibSQL driver adapter in `lib/prisma.ts`. If `TURSO_DATABASE_URL` is unset, the app falls back to normal Prisma SQLite against `DATABASE_URL` (local file, CI, Vitest).
+
+**One-time (per developer):** [Turso](https://turso.tech) account and CLI (`brew install tursodatabase/tap/turso`), then `turso auth login`, `turso db create mission-control`, `turso db show mission-control` (copy URL), `turso db tokens create mission-control` (copy token). Put URL and token in `.env` as `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+
+**Applying schema to Turso:** Prisma cannot run `migrate deploy` directly against Turso the way it does for a file URL. Workflow:
+
+1. Update the Prisma schema, then run **`npm run db:push`** (or `npm run db:migrate` in dev) against **local** `DATABASE_URL` so your `dev.db` matches and migration SQL under `prisma/migrations/` is what you expect.
+2. Apply each migration file to the remote database (replace `mission-control` with your DB name):
+
+```bash
+turso db shell mission-control < prisma/migrations/20260413155415_first/migration.sql
+turso db shell mission-control < prisma/migrations/20260413144813_directory_scraper/migration.sql
+turso db shell mission-control < prisma/migrations/20260413170000_name_extraction_meta/migration.sql
+turso db shell mission-control < prisma/migrations/20260414120000_directory_job_meta/migration.sql
+turso db shell mission-control < prisma/migrations/20260414190000_website_discovery_meta/migration.sql
+turso db shell mission-control < prisma/migrations/20260415120000_lead_gen_tables/migration.sql
+```
+
+3. **Seed** demo markets (idempotent): `npm run db:seed` (with Turso vars in `.env` so Prisma hits the hosted DB).
+
+For **future schema changes**, generate SQL locally with `npm run db:migrate` (or add a migration and `db push`), then run `turso db shell mission-control < prisma/migrations/<new_folder>/migration.sql`.
+
+**New machine with an already-populated Turso DB:** `git pull`, `npm install`, copy `.env` with `TURSO_*` set, `npx prisma generate`, `npm run dev` — no local `db:push` or seed required unless you want local-only data.
 
 ### Lead Generation database
 
-- **Markets and companies live in your local `DATABASE_URL` file** (e.g. `prisma/dev.db`), not in the repo — a fresh clone starts with an empty DB until you run migrations/`db:push` and seed.
+- **With Turso:** markets and companies live in the **hosted** database; everyone shares the same data when using the same `TURSO_*` credentials.
+- **Without Turso:** data lives in your local **`DATABASE_URL`** file (e.g. `prisma/dev.db`), which is not in git — a fresh clone starts empty until `db:push` and seed.
 - **Demo data** is defined in code (`lib/lead-generation/mock-data.ts`) and written by **`npm run db:seed`** (or automatically on first API hit to Lead Gen if the app can reach the DB).
-- If Market Databases shows **0 markets**, run from the project root: `npm run db:push && npm run db:seed`, then refresh.
+- If Market Databases shows **0 markets**, run `npm run db:seed` (Turso) or `npm run db:push && npm run db:seed` (local only), then refresh.
 
 ### Directory Scraper — how to try it
 
