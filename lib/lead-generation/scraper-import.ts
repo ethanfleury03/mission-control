@@ -1,6 +1,24 @@
 import type { CompanyResult } from '@/lib/directory-scraper/types';
+import { pickBestEmail } from '@/lib/directory-scraper/utils';
 import { buildFitSummary, mapScrapedCompanyToAccountCandidate, normalizeDomain } from './adapters';
 import type { ScrapedCompanyCandidate } from './adapters';
+
+/** Top-level fields are canonical; fall back to rawContact when enrichment only filled that blob. */
+export function pickEmailFromScrapeResult(result: CompanyResult): string {
+  const direct = (result.email ?? '').trim();
+  if (direct) return direct;
+  const emails = result.rawContact?.emails?.filter((e): e is string => Boolean(e?.trim())) ?? [];
+  if (emails.length === 0) return '';
+  const host = normalizeDomain(result.companyWebsite || null);
+  return pickBestEmail(emails, host || undefined).trim();
+}
+
+export function pickPhoneFromScrapeResult(result: CompanyResult): string {
+  const direct = (result.phone ?? '').trim();
+  if (direct) return direct;
+  const phones = result.rawContact?.phones?.filter((p): p is string => Boolean(p?.trim())) ?? [];
+  return (phones[0] ?? '').trim();
+}
 
 export function companyResultToScrapedCandidate(r: CompanyResult, jobId: string): ScrapedCompanyCandidate {
   const website = r.companyWebsite?.trim() || '';
@@ -63,8 +81,8 @@ export function buildAccountCreateData(input: ImportAccountInput) {
     sourceUrl: result.directoryListingUrl ?? '',
     directoryJobId: jobId,
     directoryResultId: result.id,
-    email: (result.email ?? '').trim(),
-    phone: (result.phone ?? '').trim(),
+    email: pickEmailFromScrapeResult(result),
+    phone: pickPhoneFromScrapeResult(result),
     status: 'prospect' as const,
     fitScore: 0,
     fitSummary: buildFitSummary({ ...mapped, country, industry: mapped.industry }),

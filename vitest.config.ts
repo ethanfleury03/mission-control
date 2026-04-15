@@ -7,7 +7,7 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     fileParallelism: false,
     pool: 'forks',
-    include: ['lib/directory-scraper/__tests__/**/*.test.ts'],
+    include: ['lib/directory-scraper/__tests__/**/*.test.ts', 'lib/lead-generation/__tests__/**/*.test.ts'],
   },
   resolve: {
     alias: {
