@@ -7,7 +7,9 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(): PrismaClient {
-  const tursoUrl = process.env.TURSO_DATABASE_URL?.trim();
+  // Vitest sets NODE_ENV=test; always use local file Prisma engine for tests (see vitest.setup DATABASE_URL).
+  const tursoUrl =
+    process.env.NODE_ENV !== 'test' ? process.env.TURSO_DATABASE_URL?.trim() : '';
   if (tursoUrl) {
     const libsql = createClient({
       url: tursoUrl,

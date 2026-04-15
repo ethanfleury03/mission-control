@@ -1,6 +1,7 @@
 /**
  * Idempotent seed of Lead Gen markets + demo accounts.
- * Uses upsert on markets + a promise chain lock so concurrent API requests don't race.
+ * Uses findUnique + create/update on markets (Turso + driver adapter can 400 on upsert)
+ * and a promise chain lock so concurrent API requests don't race.
  */
 import { prisma } from '@/lib/prisma';
 import { SEED_MARKETS, SEED_ACCOUNTS } from './mock-data';
@@ -13,30 +14,31 @@ let seedLock: Promise<void> = Promise.resolve();
 async function performSeed(): Promise<SeedResult> {
   const idByLegacyId = new Map<string, string>();
 
+  const marketData = (m: (typeof SEED_MARKETS)[number]) => ({
+    name: m.name,
+    description: m.description,
+    countriesJson: JSON.stringify(m.countries),
+    personasJson: JSON.stringify(m.targetPersonas),
+    solutionAreasJson: JSON.stringify(m.solutionAreas),
+    status: m.status,
+    notes: m.notes,
+  });
+
   let marketsTouched = 0;
   for (const m of SEED_MARKETS) {
-    const row = await prisma.leadGenMarket.upsert({
-      where: { slug: m.slug },
-      create: {
-        slug: m.slug,
-        name: m.name,
-        description: m.description,
-        countriesJson: JSON.stringify(m.countries),
-        personasJson: JSON.stringify(m.targetPersonas),
-        solutionAreasJson: JSON.stringify(m.solutionAreas),
-        status: m.status,
-        notes: m.notes,
-      },
-      update: {
-        name: m.name,
-        description: m.description,
-        countriesJson: JSON.stringify(m.countries),
-        personasJson: JSON.stringify(m.targetPersonas),
-        solutionAreasJson: JSON.stringify(m.solutionAreas),
-        status: m.status,
-        notes: m.notes,
-      },
-    });
+    // Avoid prisma.upsert here: Turso + driver adapter can return HTTP 400 on UPSERT/RETURNING batches.
+    const existing = await prisma.leadGenMarket.findUnique({ where: { slug: m.slug } });
+    const row = existing
+      ? await prisma.leadGenMarket.update({
+          where: { slug: m.slug },
+          data: marketData(m),
+        })
+      : await prisma.leadGenMarket.create({
+          data: {
+            slug: m.slug,
+            ...marketData(m),
+          },
+        });
     idByLegacyId.set(m.id, row.id);
     marketsTouched += 1;
   }
