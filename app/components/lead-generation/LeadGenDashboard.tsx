@@ -5,8 +5,6 @@ import {
   Database,
   Building2,
   CheckCircle2,
-  ClipboardCheck,
-  Download,
   Radio,
   ArrowRight,
   Target,
@@ -28,7 +26,6 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
   const [activeMarkets, setActiveMarkets] = useState(0);
   const [totalAccounts, setTotalAccounts] = useState(0);
   const [qualifiedCount, setQualifiedCount] = useState(0);
-  const [reviewCount, setReviewCount] = useState(0);
   const [pilotCounts, setPilotCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +37,6 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
       setActiveMarkets(markets.filter((m) => m.status === 'active').length);
       setTotalAccounts(accounts.length);
       setQualifiedCount(accounts.filter((a) => a.reviewState === 'qualified').length);
-      setReviewCount(accounts.filter((a) => a.reviewState === 'new' || a.reviewState === 'needs_review').length);
       const pc: Record<string, number> = {};
       for (const c of PILOT) pc[c] = accounts.filter((a) => a.country === c).length;
       setPilotCounts(pc);
@@ -49,7 +45,6 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
       setActiveMarkets(0);
       setTotalAccounts(0);
       setQualifiedCount(0);
-      setReviewCount(0);
       setPilotCounts({});
     } finally {
       setLoading(false);
@@ -64,17 +59,14 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
     { label: 'Markets', value: marketsCount, detail: `${activeMarkets} active`, icon: Database, color: 'text-brand', page: 'markets' as LeadGenPage },
     { label: 'Company Records', value: totalAccounts, detail: 'in database', icon: Building2, color: 'text-blue-600', page: 'accounts' as LeadGenPage },
     { label: 'Qualified Leads', value: qualifiedCount, detail: totalAccounts ? `of ${totalAccounts} total` : '—', icon: CheckCircle2, color: 'text-green-600', page: 'accounts' as LeadGenPage },
-    { label: 'Review Queue', value: reviewCount, detail: 'pending review', icon: ClipboardCheck, color: 'text-amber-600', page: 'review-queue' as LeadGenPage },
-    { label: 'Scraper Sources', value: '5', detail: '2 active, 3 planned', icon: Download, color: 'text-purple-600', page: 'ingestion' as LeadGenPage },
     { label: 'Social Signals', value: '—', detail: 'planned', icon: Radio, color: 'text-neutral-400', page: 'social-signals' as LeadGenPage },
   ];
 
   const quickLinks = [
     { label: 'Strategy Overview', description: 'Why Arrow lead gen is hard and what we are building', page: 'overview' as LeadGenPage },
     { label: 'Coffee Market Database', description: 'Browse markets — open Coffee or any vertical', page: 'markets' as LeadGenPage },
-    { label: 'Review Queue', description: 'Accounts needing human qualification review', page: 'review-queue' as LeadGenPage },
-    { label: 'Data Model', description: 'Entity schemas and planned data structures', page: 'data-model' as LeadGenPage },
-    { label: 'Ingestion Hub', description: 'Scraper and data source integration', page: 'ingestion' as LeadGenPage },
+    { label: 'Accounts Explorer', description: 'Review imported companies and qualification status', page: 'accounts' as LeadGenPage },
+    { label: 'Social Signals', description: 'Track the next planned enrichment layer', page: 'social-signals' as LeadGenPage },
   ];
 
   return (

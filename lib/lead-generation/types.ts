@@ -339,7 +339,4 @@ export type LeadGenPage =
   | 'market-detail'
   | 'accounts'
   | 'account-detail'
-  | 'review-queue'
-  | 'data-model'
-  | 'ingestion'
   | 'social-signals';

@@ -6,9 +6,6 @@ import {
   BookOpen,
   Database,
   Building2,
-  ClipboardCheck,
-  Boxes,
-  Download,
   Radio,
   ArrowLeft,
 } from 'lucide-react';
@@ -20,9 +17,6 @@ import { MarketDatabases } from './MarketDatabases';
 import { MarketDetail } from './MarketDetail';
 import { AccountsExplorer } from './AccountsExplorer';
 import { AccountDetail } from './AccountDetail';
-import { ReviewQueue } from './ReviewQueue';
-import { DataModelHub } from './DataModelHub';
-import { IngestionHub } from './IngestionHub';
 import { SocialSignals } from './SocialSignals';
 
 interface NavItem {
@@ -36,9 +30,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: BookOpen },
   { id: 'markets', label: 'Market Databases', icon: Database },
   { id: 'accounts', label: 'Accounts', icon: Building2 },
-  { id: 'review-queue', label: 'Review Queue', icon: ClipboardCheck },
-  { id: 'data-model', label: 'Data Model', icon: Boxes },
-  { id: 'ingestion', label: 'Ingestion Hub', icon: Download },
   { id: 'social-signals', label: 'Social Signals', icon: Radio },
 ];
 
@@ -81,12 +72,6 @@ export function LeadGenerationTab() {
             onNavigateMarket={(slug) => navigate('market-detail', { marketSlug: slug })}
           />
         );
-      case 'review-queue':
-        return <ReviewQueue onSelectAccount={(id) => navigate('account-detail', { accountId: id })} />;
-      case 'data-model':
-        return <DataModelHub />;
-      case 'ingestion':
-        return <IngestionHub />;
       case 'social-signals':
         return <SocialSignals />;
       default:
