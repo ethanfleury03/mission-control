@@ -11,12 +11,22 @@ import {
 import type { CancelSignal } from './extract-directory-entries';
 import { assertPublicHttpUrl } from './validate-scrape-url';
 import { gotoDomContentLoaded } from './navigation-timeout';
+import { runWithTimeout } from './async-timeout';
 
 const CONTACT_PATH_HINTS = ['/contact', '/about', '/team', '/sales', '/get-in-touch', '/reach-us', '/support'];
+/** Avoid multi‑MB `page.content()` over CDP (can appear “stuck” on heavy marketing sites). */
+const MAX_HTML_SLICE = 450_000;
+const EXTRACT_FROM_PAGE_MS = 22_000;
 
 async function extractFromPage(page: Page, companyDomain?: string): Promise<ContactInfo> {
   const text = await page.evaluate(() => document.body?.innerText ?? '');
-  const html = await page.content();
+  const html = await page.evaluate(() => {
+    try {
+      return (document.documentElement?.outerHTML ?? '').slice(0, MAX_HTML_SLICE);
+    } catch {
+      return '';
+    }
+  });
   const allHrefs: string[] = await page.evaluate(() =>
     Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href),
   );
@@ -98,8 +108,12 @@ export async function extractContactFromSite(
     assertPublicHttpUrl(siteUrl, 'Company site');
     await step(`Contact crawl: loading homepage ${siteUrl.slice(0, 80)}${siteUrl.length > 80 ? '…' : ''}`);
     await gotoDomContentLoaded(page, siteUrl, 20_000);
-    await sleep(500);
-    merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
+    await sleep(300);
+    await step('Contact crawl: parsing homepage DOM…');
+    merged = mergeContacts(
+      merged,
+      await runWithTimeout(EXTRACT_FROM_PAGE_MS, 'Homepage DOM extract', () => extractFromPage(page, companyDomain)),
+    );
     await step(
       `Contact crawl: homepage parsed (emails ${merged.emails.length}, phones ${merged.phones.length}, contact links ${merged.contactPageUrls.length})`,
     );
@@ -125,8 +139,12 @@ export async function extractContactFromSite(
       assertPublicHttpUrl(link, 'Contact page');
       await step(`Contact crawl: loading subpage ${link.slice(0, 90)}${link.length > 90 ? '…' : ''}`);
       await gotoDomContentLoaded(page, link, 15_000);
-      await sleep(400);
-      merged = mergeContacts(merged, await extractFromPage(page, companyDomain));
+      await sleep(250);
+      await step('Contact crawl: parsing subpage DOM…');
+      merged = mergeContacts(
+        merged,
+        await runWithTimeout(EXTRACT_FROM_PAGE_MS, 'Subpage DOM extract', () => extractFromPage(page, companyDomain)),
+      );
     } catch {
       await step(`Contact crawl: subpage failed ${link.slice(0, 60)}…`);
       // single page failure is ok

@@ -5,6 +5,10 @@ import { assertPublicHttpUrl } from './validate-scrape-url';
 import type { CompanyResult, DirectoryEntry } from './types';
 import { extractContactFromSite } from './extract-contact-info';
 import { gotoDomContentLoaded } from './navigation-timeout';
+import { runWithTimeout } from './async-timeout';
+
+const LISTING_HTML_SLICE = 450_000;
+const LISTING_EXTRACT_MS = 22_000;
 import {
   extractEmails,
   extractPhones,
@@ -181,10 +185,18 @@ export async function enrichCompany(
     let text = '';
     let html = '';
     try {
-      text = await page.evaluate(() => document.body?.innerText ?? '');
-      html = await page.content();
+      await runWithTimeout(LISTING_EXTRACT_MS, 'Listing page extract', async () => {
+        text = await page.evaluate(() => document.body?.innerText ?? '');
+        html = await page.evaluate(() => {
+          try {
+            return (document.documentElement?.outerHTML ?? '').slice(0, LISTING_HTML_SLICE);
+          } catch {
+            return '';
+          }
+        });
+      });
     } catch {
-      /* page may have navigated */
+      /* page may have navigated or extract timed out */
     }
 
     const detailEmails = extractEmails(text, html);
