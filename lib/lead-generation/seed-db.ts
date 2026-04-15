@@ -73,6 +73,7 @@ async function performSeed(): Promise<SeedResult> {
         fitSummary: a.fitSummary,
         assignedOwner: a.assignedOwner,
         reviewState: a.reviewState,
+        leadPipelineStage: 'discovered',
         lastSeenAt: new Date(a.lastSeenAt),
       },
     });

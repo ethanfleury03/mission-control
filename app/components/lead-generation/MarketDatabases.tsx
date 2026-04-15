@@ -136,7 +136,8 @@ export function MarketDatabases({ onSelectMarket }: MarketDatabasesProps) {
         <div>
           <h1 className="text-xl font-bold text-neutral-900 mb-1">Market Databases</h1>
           <p className="text-sm text-neutral-500">
-            Industry-specific company databases. Data is stored in the Mission Control database; first load seeds demo markets if empty.
+            Industry-specific company databases. Data lives in your local <code className="text-2xs bg-neutral-100 px-1 rounded">DATABASE_URL</code> (not in git).
+            Opening Lead Gen usually seeds demo markets; if you see none, run <code className="text-2xs bg-neutral-100 px-1 rounded">npm run db:push &amp;&amp; npm run db:seed</code> in the repo.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -163,6 +164,21 @@ export function MarketDatabases({ onSelectMarket }: MarketDatabasesProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {markets.length === 0 && (
+            <div className="md:col-span-2 card p-6 border border-amber-200 bg-amber-50/50">
+              <p className="text-sm font-medium text-neutral-900 mb-2">No markets in this database yet</p>
+              <p className="text-xs text-neutral-600 mb-3">
+                Your SQLite file is not copied when you <code className="font-mono bg-white px-1 rounded border">git pull</code>. From the project folder run:
+              </p>
+              <pre className="text-2xs bg-neutral-900 text-neutral-100 p-3 rounded-md overflow-x-auto mb-3">
+                npm run db:push{'\n'}
+                npm run db:seed
+              </pre>
+              <p className="text-2xs text-neutral-500">
+                Ensure <code className="font-mono">.env</code> has <code className="font-mono">DATABASE_URL</code> (see <code className="font-mono">.env.example</code>), then refresh this page or use <strong>Add market</strong>.
+              </p>
+            </div>
+          )}
           {markets.map((market) => (
             <div
               key={market.id}

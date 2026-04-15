@@ -10,9 +10,17 @@ cd mission-control && docker-compose up -d
 npm install
 cp .env.example .env   # set DATABASE_URL (see .env.example)
 npx prisma migrate deploy   # or: npm run db:migrate (dev)
+# SQLite dev DB file is NOT in git (.gitignore). After clone, apply schema + seed demo Lead Gen data:
+npm run db:push && npm run db:seed
 npm run dev
 # App: http://localhost:3002
 ```
+
+### Lead Generation database
+
+- **Markets and companies live in your local `DATABASE_URL` file** (e.g. `prisma/dev.db`), not in the repo — a fresh clone starts with an empty DB until you run migrations/`db:push` and seed.
+- **Demo data** is defined in code (`lib/lead-generation/mock-data.ts`) and written by **`npm run db:seed`** (or automatically on first API hit to Lead Gen if the app can reach the DB).
+- If Market Databases shows **0 markets**, run from the project root: `npm run db:push && npm run db:seed`, then refresh.
 
 ### Directory Scraper — how to try it
 
