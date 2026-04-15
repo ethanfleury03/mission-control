@@ -518,7 +518,10 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
         existingCompanyWebsite: row.companyWebsite?.trim() || undefined,
         websiteDiscoveryMethod: row.websiteDiscoveryMeta?.method,
       };
-      await store.updateResult(jobId, row.id, { status: 'scraping' });
+      // Skip the cosmetic "scraping" status write — each write costs a Turso
+      // HTTP round-trip, and firing one per row exceeded the free-tier rate limit
+      // on large jobs (~150+ rows), causing subsequent updateResult writes to be
+      // silently dropped. recalcSummary is also moved to per-batch only.
       const rowLog = async (msg: string) => {
         await store.addLog(jobId, 'info', `[${row.companyName.slice(0, 48)}] ${msg}`);
       };
@@ -538,7 +541,6 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
             id: row.id,
             nameExtractionMeta: row.nameExtractionMeta,
           });
-          await store.recalcSummary(jobId);
           await rowLog(`Enrichment finished in ${Math.round((Date.now() - rowStarted) / 1000)}s (status ${result.status})`);
         } finally {
           await enrichPage.close().catch(() => {});
@@ -553,7 +555,6 @@ async function runEnrichmentPhase(jobId: string, page: import('playwright').Page
           needsReview: true,
           nameExtractionMeta: row.nameExtractionMeta,
         });
-        await store.recalcSummary(jobId);
       }
     });
 
