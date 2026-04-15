@@ -35,6 +35,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ a
   if (str('name')) data.name = str('name');
   if (str('domain') !== undefined) data.domain = str('domain');
   if (str('website') !== undefined) data.website = str('website');
+  if (str('email') !== undefined) data.email = str('email');
+  if (str('phone') !== undefined) data.phone = str('phone');
   if (str('country')) data.country = str('country');
   if (str('region') !== undefined) data.region = str('region');
   if (str('industry') !== undefined) data.industry = str('industry');

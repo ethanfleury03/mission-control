@@ -185,6 +185,8 @@ model LeadGenAccount {
   name                String
   domain              String    @default("")
   website             String    @default("")
+  email               String    @default("")
+  phone               String    @default("")
   country             String    @default("Unknown")
   region              String    @default("")
   industry            String    @default("")

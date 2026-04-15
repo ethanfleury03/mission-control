@@ -93,10 +93,16 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
             </div>
             <div>
               <h1 className="text-lg font-bold text-neutral-900">{account.name}</h1>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                {account.email && (
+                  <a href={`mailto:${account.email}`} className="text-xs text-brand hover:underline">
+                    {account.email}
+                  </a>
+                )}
+                {account.phone && <span className="text-xs text-neutral-600">{account.phone}</span>}
                 {account.website && (
                   <a
-                    href={account.website}
+                    href={account.website.startsWith('http') ? account.website : `https://${account.website}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-brand hover:underline flex items-center gap-1"

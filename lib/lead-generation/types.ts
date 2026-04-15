@@ -53,6 +53,10 @@ export interface Account {
   name: string;
   domain: string;
   website: string;
+  /** Primary contact email when known (e.g. from directory scraper import). */
+  email: string;
+  /** Primary phone when known. */
+  phone: string;
   country: string;
   region: string;
   industry: string;

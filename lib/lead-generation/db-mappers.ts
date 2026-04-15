@@ -37,6 +37,8 @@ export function prismaAccountToDomain(a: PrismaAccount): Account {
     name: a.name,
     domain: a.domain,
     website: a.website,
+    email: a.email ?? '',
+    phone: a.phone ?? '',
     country: a.country,
     region: a.region,
     industry: a.industry,

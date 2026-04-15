@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
     where.OR = [
       { name: { contains: q } },
       { domain: { contains: q } },
+      { email: { contains: q } },
+      { phone: { contains: q } },
       { industry: { contains: q } },
     ];
   }
@@ -64,6 +66,8 @@ export async function POST(request: NextRequest) {
       name,
       domain: typeof body.domain === 'string' ? body.domain : '',
       website: typeof body.website === 'string' ? body.website : '',
+      email: typeof body.email === 'string' ? body.email : '',
+      phone: typeof body.phone === 'string' ? body.phone : '',
       country: typeof body.country === 'string' ? body.country : 'Unknown',
       region: typeof body.region === 'string' ? body.region : '',
       industry: typeof body.industry === 'string' ? body.industry : '',

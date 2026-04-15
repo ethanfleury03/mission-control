@@ -63,6 +63,8 @@ export function buildAccountCreateData(input: ImportAccountInput) {
     sourceUrl: result.directoryListingUrl ?? '',
     directoryJobId: jobId,
     directoryResultId: result.id,
+    email: (result.email ?? '').trim(),
+    phone: (result.phone ?? '').trim(),
     status: 'prospect' as const,
     fitScore: 0,
     fitSummary: buildFitSummary({ ...mapped, country, industry: mapped.industry }),
