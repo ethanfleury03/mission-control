@@ -398,41 +398,42 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
     },
 
     async setResults(id, results) {
-      await prisma.$transaction(async (tx) => {
-        await tx.directoryScrapeResult.deleteMany({ where: { jobId: id } });
-        for (let idx = 0; idx < results.length; idx++) {
-          const r = results[idx];
-          await tx.directoryScrapeResult.create({
-            data: {
-              id: r.id,
-              jobId: id,
-              companyName: r.companyName,
-              directoryListingUrl: r.directoryListingUrl,
-              companyWebsite: r.companyWebsite ?? '',
-              contactName: r.contactName ?? '',
-              email: r.email ?? '',
-              phone: r.phone ?? '',
-              address: r.address ?? '',
-              contactPageUrl: r.contactPageUrl ?? '',
-              socialLinks: r.socialLinks ?? '',
-              notes: r.notes ?? '',
-              confidence: r.confidence,
-              status: r.status,
-              error: r.error ?? null,
-              rawContactJson: r.rawContact ? JSON.stringify(r.rawContact) : null,
-              nameExtractionMetaJson: r.nameExtractionMeta ? JSON.stringify(r.nameExtractionMeta) : null,
-              websiteDiscoveryMetaJson: r.websiteDiscoveryMeta ? JSON.stringify(r.websiteDiscoveryMeta) : null,
-              needsReview: r.needsReview ?? false,
-              sortOrder: idx,
-            },
-          });
-        }
-        const s = emptySummary();
-        s.companiesFound = results.length;
-        await tx.directoryScrapeJob.update({
-          where: { id },
-          data: { summaryJson: JSON.stringify(s) },
+      // Use sequential plain awaits instead of an interactive transaction.
+      // Prisma interactive transactions have a 5 s default timeout that Turso
+      // (HTTP, ~100 ms/query) blows through for any job with more than ~40 rows.
+      await prisma.directoryScrapeResult.deleteMany({ where: { jobId: id } });
+      for (let idx = 0; idx < results.length; idx++) {
+        const r = results[idx];
+        await prisma.directoryScrapeResult.create({
+          data: {
+            id: r.id,
+            jobId: id,
+            companyName: r.companyName,
+            directoryListingUrl: r.directoryListingUrl,
+            companyWebsite: r.companyWebsite ?? '',
+            contactName: r.contactName ?? '',
+            email: r.email ?? '',
+            phone: r.phone ?? '',
+            address: r.address ?? '',
+            contactPageUrl: r.contactPageUrl ?? '',
+            socialLinks: r.socialLinks ?? '',
+            notes: r.notes ?? '',
+            confidence: r.confidence,
+            status: r.status,
+            error: r.error ?? null,
+            rawContactJson: r.rawContact ? JSON.stringify(r.rawContact) : null,
+            nameExtractionMetaJson: r.nameExtractionMeta ? JSON.stringify(r.nameExtractionMeta) : null,
+            websiteDiscoveryMetaJson: r.websiteDiscoveryMeta ? JSON.stringify(r.websiteDiscoveryMeta) : null,
+            needsReview: r.needsReview ?? false,
+            sortOrder: idx,
+          },
         });
+      }
+      const s = emptySummary();
+      s.companiesFound = results.length;
+      await prisma.directoryScrapeJob.update({
+        where: { id },
+        data: { summaryJson: JSON.stringify(s) },
       });
     },
 
