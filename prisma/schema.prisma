@@ -206,6 +206,13 @@ model LeadGenAccount {
   fitSummary          String    @default("")
   assignedOwner       String    @default("")
   reviewState         String    @default("new")
+  // leadPipelineStage: discovered | triaged_ok | triaged_hold | rejected | pushed_to_hubspot | push_failed
+  leadPipelineStage   String    @default("discovered")
+
+  hubspotContactId    String?
+  hubspotPushedAt     DateTime?
+  hubspotPushedBy     String    @default("")
+  hubspotLastPushError String  @default("")
 
   lastSeenAt          DateTime?
   createdAt           DateTime  @default(now())

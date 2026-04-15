@@ -79,6 +79,73 @@ export async function deleteMarket(marketId: string): Promise<void> {
   }
 }
 
+export async function fetchHubSpotConfig(): Promise<{
+  pushDisabled: boolean;
+  portalConfigured: boolean;
+  portalId: string | null;
+}> {
+  const res = await fetch(`${BASE}/hubspot-config`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function pushAccountToHubSpot(accountId: string): Promise<{ hubspotContactId: string; account: Account }> {
+  const res = await fetch(`${BASE}/accounts/${encodeURIComponent(accountId)}/push-to-hubspot`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
+  return {
+    hubspotContactId: (data as { hubspotContactId: string }).hubspotContactId,
+    account: (data as { account: Account }).account,
+  };
+}
+
+export async function bulkPushAccountsToHubSpot(accountIds: string[]): Promise<{
+  pushed: number;
+  failed: number;
+  results: { id: string; ok: boolean; error?: string; hubspotContactId?: string }[];
+}> {
+  const res = await fetch(`${BASE}/accounts/bulk-push-hubspot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountIds }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
+  return data as {
+    pushed: number;
+    failed: number;
+    results: { id: string; ok: boolean; error?: string; hubspotContactId?: string }[];
+  };
+}
+
+export async function importCsvToMarket(marketId: string, file: File): Promise<{
+  created: number;
+  skipped: number;
+  errors: string[];
+  truncated?: boolean;
+}> {
+  const form = new FormData();
+  form.set('marketId', marketId);
+  form.set('file', file);
+  const res = await fetch(`${BASE}/accounts/import-csv`, { method: 'POST', body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
+  return data as { created: number; skipped: number; errors: string[]; truncated?: boolean };
+}
+
+export async function updateAccount(accountId: string, patch: Partial<Account>): Promise<Account> {
+  const res = await fetch(`${BASE}/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error((e as { error?: string }).error ?? res.statusText);
+  }
+  return res.json();
+}
+
 export async function importScraperToMarket(body: {
   jobId: string;
   marketId: string;

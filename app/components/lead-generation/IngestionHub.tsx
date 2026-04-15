@@ -1,13 +1,15 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import {
   Download, Upload, Database, Radio, FileSpreadsheet, Globe,
-  CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, XCircle,
+  CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, XCircle, Loader2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { SEED_INGESTION_SOURCES, SEED_INGESTION_RUNS, getIngestionRunsBySource } from '@/lib/lead-generation/mock-data';
 import { INGESTION_PIPELINE_STAGES } from '@/lib/lead-generation/config';
-import type { IngestionSourceStatus, IngestionRunStatus } from '@/lib/lead-generation/types';
+import type { IngestionSourceStatus, IngestionRunStatus, Market } from '@/lib/lead-generation/types';
+import { fetchMarkets, importCsvToMarket } from '@/lib/lead-generation/api';
 
 const SOURCE_ICONS: Record<string, typeof Globe> = {
   internal_scraper: Globe,
@@ -32,6 +34,84 @@ const RUN_STATUS_STYLES: Record<IngestionRunStatus, { icon: typeof CheckCircle2;
   cancelled: { icon: AlertCircle, color: 'text-neutral-400' },
 };
 
+function CsvImportCard() {
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [marketId, setMarketId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const loadMarkets = useCallback(async () => {
+    try {
+      const m = await fetchMarkets();
+      setMarkets(m);
+      setMarketId((prev) => (prev || (m[0]?.id ?? '')));
+    } catch {
+      setMsg('Could not load markets.');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMarkets();
+  }, [loadMarkets]);
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !marketId) {
+      setMsg('Pick a market and a CSV file.');
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const out = await importCsvToMarket(marketId, file);
+      const extra = out.truncated ? ' (truncated at 500 rows)' : '';
+      setMsg(`Imported ${out.created} rows, skipped ${out.skipped}.${extra}`);
+      if (out.errors.length) setMsg((prev) => `${prev} ${out.errors.slice(0, 3).join(' ')}`);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card p-4 mb-4 border border-emerald-200/60 bg-emerald-50/30">
+      <div className="flex items-start gap-3">
+        <div className="h-9 w-9 rounded-md bg-emerald-100 flex items-center justify-center shrink-0">
+          <FileSpreadsheet className="h-4 w-4 text-emerald-800" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-neutral-900 mb-1">CSV → market (beta)</h3>
+          <p className="text-2xs text-neutral-600 mb-3">
+            Upload a CSV with headers such as <span className="font-mono">name</span>,{' '}
+            <span className="font-mono">company</span>, <span className="font-mono">email</span>,{' '}
+            <span className="font-mono">phone</span>, <span className="font-mono">website</span>,{' '}
+            <span className="font-mono">country</span>. Rows are appended to the selected market (max 500 per upload).
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={marketId}
+              onChange={(e) => setMarketId(e.target.value)}
+              className="h-8 text-xs border border-neutral-200 rounded-md px-2 bg-white min-w-[180px]"
+            >
+              {markets.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <label className="inline-flex items-center gap-2 h-8 px-3 rounded-md text-xs font-medium bg-white border border-neutral-200 cursor-pointer hover:bg-neutral-50">
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              Choose CSV
+              <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} disabled={busy || !marketId} />
+            </label>
+          </div>
+          {msg && <p className="text-2xs text-neutral-700 mt-2">{msg}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function IngestionHub() {
   return (
     <div className="p-6 max-w-5xl">
@@ -41,6 +121,8 @@ export function IngestionHub() {
           Data source integrations and import pipeline for populating market databases.
         </p>
       </div>
+
+      <CsvImportCard />
 
       {/* Architecture Summary */}
       <div className="card p-4 mb-4">

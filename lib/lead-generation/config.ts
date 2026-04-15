@@ -50,6 +50,25 @@ export const REVIEW_STATE_LABELS: Record<string, string> = {
   routed: 'Routed',
 };
 
+/** Internal triage / HubSpot handoff — not HubSpot deal stages. */
+export const LEAD_PIPELINE_STAGE_LABELS: Record<string, string> = {
+  discovered: 'Discovered',
+  triaged_ok: 'Triaged · OK',
+  triaged_hold: 'Triaged · Hold',
+  rejected: 'Rejected',
+  pushed_to_hubspot: 'In HubSpot',
+  push_failed: 'Push failed',
+};
+
+export const LEAD_PIPELINE_STAGE_COLORS: Record<string, string> = {
+  discovered: 'bg-neutral-100 text-neutral-700',
+  triaged_ok: 'bg-emerald-100 text-emerald-800',
+  triaged_hold: 'bg-amber-100 text-amber-800',
+  rejected: 'bg-red-100 text-red-800',
+  pushed_to_hubspot: 'bg-sky-100 text-sky-800',
+  push_failed: 'bg-orange-100 text-orange-900',
+};
+
 export const REVIEW_STATE_COLORS: Record<string, string> = {
   new: 'bg-blue-100 text-blue-800',
   needs_review: 'bg-amber-100 text-amber-800',

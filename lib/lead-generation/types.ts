@@ -31,6 +31,15 @@ export type ReviewState =
   | 'rejected'
   | 'watching'
   | 'routed';
+
+/** Internal triage before HubSpot — not CRM deal stages. */
+export type LeadPipelineStage =
+  | 'discovered'
+  | 'triaged_ok'
+  | 'triaged_hold'
+  | 'rejected'
+  | 'pushed_to_hubspot'
+  | 'push_failed';
 export type CompanySizeBand = 'small' | 'mid-market' | 'enterprise' | 'unknown';
 export type RevenueBand =
   | 'under_1m'
@@ -72,6 +81,12 @@ export interface Account {
   fitSummary: string;
   assignedOwner: string;
   reviewState: ReviewState;
+  /** Defaults to `discovered` when omitted (e.g. older mock rows). */
+  leadPipelineStage?: LeadPipelineStage;
+  hubspotContactId?: string | null;
+  hubspotPushedAt?: string | null;
+  hubspotPushedBy?: string;
+  hubspotLastPushError?: string;
   lastSeenAt: string;
   createdAt: string;
   updatedAt: string;

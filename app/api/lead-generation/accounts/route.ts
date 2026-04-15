@@ -7,13 +7,14 @@ import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** GET ?marketId=&country=&reviewState=&sourceType=&q= */
+/** GET ?marketId=&country=&reviewState=&leadPipelineStage=&sourceType=&q= */
 export async function GET(request: NextRequest) {
   await seedLeadGenIfEmpty();
   const { searchParams } = new URL(request.url);
   const marketId = searchParams.get('marketId') ?? undefined;
   const country = searchParams.get('country') ?? undefined;
   const reviewState = searchParams.get('reviewState') ?? undefined;
+  const leadPipelineStage = searchParams.get('leadPipelineStage') ?? undefined;
   const sourceType = searchParams.get('sourceType') ?? undefined;
   const q = searchParams.get('q')?.trim().toLowerCase();
 
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
   if (marketId) where.marketId = marketId;
   if (country) where.country = country;
   if (reviewState) where.reviewState = reviewState;
+  if (leadPipelineStage) where.leadPipelineStage = leadPipelineStage;
   if (sourceType) where.sourceType = sourceType;
   if (q) {
     where.OR = [

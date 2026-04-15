@@ -1,7 +1,15 @@
 import type { LeadGenAccount as PrismaAccount, LeadGenMarket as PrismaMarket } from '@prisma/client';
-import type { Account, Market, MarketStatus } from './types';
+import type { Account, LeadPipelineStage, Market, MarketStatus } from './types';
 
 const MARKET_STATUSES: MarketStatus[] = ['active', 'building', 'planned', 'archived'];
+const PIPELINE_STAGES: import('./types').LeadPipelineStage[] = [
+  'discovered',
+  'triaged_ok',
+  'triaged_hold',
+  'rejected',
+  'pushed_to_hubspot',
+  'push_failed',
+];
 
 function parseJsonArray(s: string): string[] {
   try {
@@ -30,6 +38,11 @@ export function prismaMarketToDomain(m: PrismaMarket, companyCount: number): Mar
   };
 }
 
+function parsePipelineStage(s: string | null | undefined): LeadPipelineStage {
+  const v = (s ?? 'discovered').trim();
+  return PIPELINE_STAGES.includes(v as LeadPipelineStage) ? (v as LeadPipelineStage) : 'discovered';
+}
+
 export function prismaAccountToDomain(a: PrismaAccount): Account {
   return {
     id: a.id,
@@ -54,6 +67,11 @@ export function prismaAccountToDomain(a: PrismaAccount): Account {
     fitSummary: a.fitSummary,
     assignedOwner: a.assignedOwner,
     reviewState: a.reviewState as Account['reviewState'],
+    leadPipelineStage: parsePipelineStage(a.leadPipelineStage),
+    hubspotContactId: a.hubspotContactId ?? null,
+    hubspotPushedAt: a.hubspotPushedAt?.toISOString() ?? null,
+    hubspotPushedBy: a.hubspotPushedBy ?? '',
+    hubspotLastPushError: a.hubspotLastPushError ?? '',
     lastSeenAt: (a.lastSeenAt ?? a.updatedAt).toISOString(),
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),

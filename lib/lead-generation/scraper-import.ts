@@ -88,6 +88,7 @@ export function buildAccountCreateData(input: ImportAccountInput) {
     fitSummary: buildFitSummary({ ...mapped, country, industry: mapped.industry }),
     assignedOwner: '',
     reviewState,
+    leadPipelineStage: 'discovered',
     lastSeenAt: new Date(),
   };
 }

@@ -58,3 +58,13 @@ export function DemoDataNotice() {
     </div>
   );
 }
+
+/** HubSpot is CRM of record; in-app fit/signals are illustrative unless sourced from HubSpot. */
+export function HubSpotHandoffBanner() {
+  return (
+    <div className="rounded-md bg-sky-50 border border-sky-200 px-3 py-2 text-2xs text-sky-900">
+      <strong className="font-semibold">Not a CRM.</strong> Lead Gen is for discovery and light triage. Fit scores and signals here are
+      illustrative unless synced from HubSpot — push worth-it leads to HubSpot as contacts and continue qualification there.
+    </div>
+  );
+}

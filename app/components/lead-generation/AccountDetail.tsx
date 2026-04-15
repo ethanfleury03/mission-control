@@ -2,18 +2,24 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Building2, Globe, Users, Target, FileText,
-  ExternalLink, Zap, Radio, MessageSquare, Shield, Layers, Loader2,
+  Building2, Users, Target, FileText,
+  ExternalLink, Zap, Radio, MessageSquare, Shield, Layers, Loader2, Send,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import {
   getSignalsByAccount, getProductFitsByAccount, getReviewsByAccount, getScoreBreakdown,
 } from '@/lib/lead-generation/mock-data';
-import { REVIEW_STATE_COLORS, REVIEW_STATE_LABELS, PRODUCT_FAMILIES } from '@/lib/lead-generation/config';
+import {
+  REVIEW_STATE_COLORS, REVIEW_STATE_LABELS, PRODUCT_FAMILIES,
+  LEAD_PIPELINE_STAGE_LABELS, LEAD_PIPELINE_STAGE_COLORS,
+} from '@/lib/lead-generation/config';
 import { getQualificationLevel, getQualificationColor, calculateFitScore } from '@/lib/lead-generation/scoring';
-import { FitScoreBadge, PlannedBadge, DemoDataNotice } from './shared';
-import { fetchAccount, fetchMarketById } from '@/lib/lead-generation/api';
-import type { Account, Market } from '@/lib/lead-generation/types';
+import { FitScoreBadge, PlannedBadge, DemoDataNotice, HubSpotHandoffBanner } from './shared';
+import {
+  fetchAccount, fetchMarketById, fetchHubSpotConfig, pushAccountToHubSpot, updateAccount,
+} from '@/lib/lead-generation/api';
+import type { Account, LeadPipelineStage, Market } from '@/lib/lead-generation/types';
+import { hubspotEligibilityReason, isEligibleForHubSpotPush } from '@/lib/lead-generation/push-eligibility';
 
 interface AccountDetailProps {
   accountId: string;
@@ -26,13 +32,20 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
   const [market, setMarket] = useState<Market | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hubCfg, setHubCfg] = useState<{ pushDisabled: boolean; portalConfigured: boolean; portalId: string | null } | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!accountId) return;
     setLoading(true);
     setError(null);
     try {
-      const a = await fetchAccount(accountId);
+      const [a, cfg] = await Promise.all([
+        fetchAccount(accountId),
+        fetchHubSpotConfig().catch(() => null),
+      ]);
+      setHubCfg(cfg);
       if (!a) {
         setAccount(null);
         setMarket(null);
@@ -80,9 +93,54 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
   const productFamilyLabel = (key: string) =>
     PRODUCT_FAMILIES.find((p) => p.key === key)?.label ?? key;
 
+  const pipelineStage = account.leadPipelineStage ?? 'discovered';
+  const eligible = isEligibleForHubSpotPush(account);
+  const hubspotUrl =
+    hubCfg?.portalId && account.hubspotContactId
+      ? `https://app.hubspot.com/contacts/${hubCfg.portalId}/contact/${account.hubspotContactId}`
+      : null;
+
+  const onPipelineChange = async (next: LeadPipelineStage) => {
+    try {
+      const updated = await updateAccount(account.id, { leadPipelineStage: next });
+      setAccount(updated);
+    } catch (e) {
+      setPushMsg(e instanceof Error ? e.message : 'Update failed');
+    }
+  };
+
+  const onPushHubSpot = async () => {
+    setPushing(true);
+    setPushMsg(null);
+    try {
+      const { account: updated } = await pushAccountToHubSpot(account.id);
+      setAccount(updated);
+      const cfg = await fetchHubSpotConfig().catch(() => null);
+      if (cfg) setHubCfg(cfg);
+      setPushMsg('Pushed to HubSpot.');
+    } catch (e) {
+      setPushMsg(e instanceof Error ? e.message : 'Push failed');
+    } finally {
+      setPushing(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-5xl">
       <DemoDataNotice />
+      <div className="mt-3 space-y-2">
+        <HubSpotHandoffBanner />
+        {hubCfg?.pushDisabled && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
+            HubSpot push is disabled server-side (<code className="font-mono">DISABLE_HUBSPOT_PUSH</code>). Configure token to push contacts.
+          </div>
+        )}
+        {!hubCfg?.portalConfigured && !hubCfg?.pushDisabled && (
+          <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-2xs text-neutral-600">
+            Set <code className="font-mono">HUBSPOT_PORTAL_ID</code> in env to enable &quot;Open in HubSpot&quot; links after push.
+          </div>
+        )}
+      </div>
 
       {/* Header */}
       <div className="card p-5 mt-3 mb-4">
@@ -122,11 +180,62 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <FitScoreBadge score={account.fitScore} />
-            <span className={cn('text-2xs px-2 py-0.5 rounded font-medium', REVIEW_STATE_COLORS[account.reviewState])}>
-              {REVIEW_STATE_LABELS[account.reviewState]}
-            </span>
+          <div className="flex flex-col items-end gap-2 max-w-[min(100%,320px)]">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <FitScoreBadge score={account.fitScore} />
+              <span className={cn('text-2xs px-2 py-0.5 rounded font-medium', REVIEW_STATE_COLORS[account.reviewState])}>
+                {REVIEW_STATE_LABELS[account.reviewState]}
+              </span>
+              <span
+                className={cn(
+                  'text-2xs px-2 py-0.5 rounded font-medium',
+                  LEAD_PIPELINE_STAGE_COLORS[pipelineStage] ?? 'bg-neutral-100 text-neutral-600',
+                )}
+              >
+                {LEAD_PIPELINE_STAGE_LABELS[pipelineStage] ?? pipelineStage}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <span className="text-2xs text-neutral-500">Pipeline</span>
+              <select
+                value={pipelineStage}
+                onChange={(e) => onPipelineChange(e.target.value as LeadPipelineStage)}
+                className="h-7 text-2xs border border-neutral-200 rounded-md px-1.5 bg-white text-neutral-800 max-w-[148px]"
+              >
+                {(Object.keys(LEAD_PIPELINE_STAGE_LABELS) as LeadPipelineStage[]).map((k) => (
+                  <option key={k} value={k}>
+                    {LEAD_PIPELINE_STAGE_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={onPushHubSpot}
+                disabled={pushing || hubCfg?.pushDisabled || !eligible}
+                title={eligible ? 'Create/update contact in HubSpot' : hubspotEligibilityReason(account) ?? undefined}
+                className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-2xs font-medium bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                {pushing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                Push to HubSpot
+              </button>
+              {hubspotUrl && (
+                <a
+                  href={hubspotUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-2xs font-medium border border-sky-200 text-sky-800 bg-sky-50 hover:bg-sky-100"
+                >
+                  Open in HubSpot <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+            {pushMsg && <p className="text-2xs text-right text-neutral-600 w-full">{pushMsg}</p>}
+            {account.hubspotLastPushError && pipelineStage === 'push_failed' && (
+              <p className="text-2xs text-right text-red-700 w-full break-words" title={account.hubspotLastPushError}>
+                {account.hubspotLastPushError.slice(0, 120)}
+                {account.hubspotLastPushError.length > 120 ? '…' : ''}
+              </p>
+            )}
           </div>
         </div>
 

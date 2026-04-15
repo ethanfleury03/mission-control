@@ -52,6 +52,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ a
   if (str('fitSummary') !== undefined) data.fitSummary = str('fitSummary');
   if (str('assignedOwner') !== undefined) data.assignedOwner = str('assignedOwner');
   if (str('reviewState')) data.reviewState = str('reviewState');
+  if (str('leadPipelineStage') !== undefined) {
+    const s = str('leadPipelineStage');
+    if (s !== undefined) data.leadPipelineStage = s;
+  }
   if (str('marketId')) {
     const m = await prisma.leadGenMarket.findUnique({ where: { id: String(body.marketId) } });
     if (!m) return NextResponse.json({ error: 'market not found' }, { status: 400 });
