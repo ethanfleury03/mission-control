@@ -435,7 +435,7 @@ export function DirectoryScraperTab() {
         skipDuplicates: true,
       });
       setLeadGenSuccess(
-        `Imported ${out.created} account(s)${out.skipped ? `, skipped ${out.skipped} duplicate(s)` : ''}. Open Lead Generation → Market Databases to review.`,
+        `Imported ${out.created} new, updated ${out.updated ?? 0} existing${out.skipped ? `, skipped ${out.skipped}` : ''}. Open Lead Generation → a market to review.`,
       );
       if (out.errors?.length) setLeadGenError(out.errors.slice(0, 5).join('; '));
     } catch (e) {

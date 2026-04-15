@@ -52,40 +52,87 @@ export async function POST(request: NextRequest) {
   if (idFilter) results = results.filter((r) => idFilter.has(r.id));
   results = results.filter((r) => r.status !== 'failed');
 
-  const existingPairs = skipDuplicates
-    ? await prisma.leadGenAccount.findMany({
-        where: { marketId, directoryJobId: jobId },
-        select: { directoryResultId: true, domain: true },
-      })
-    : [];
+  const resultIds = [...new Set(results.map((r) => r.id).filter(Boolean))] as string[];
 
-  const pairSet = new Set(
-    existingPairs.map((e) => `${e.directoryResultId ?? ''}:${normalizeDomain(e.domain)}`),
-  );
+  /** Accounts in this market already tied to these scrape rows — refresh on re-import (email/phone/website). */
+  const existingByResultId = new Map<string, { id: string }>();
+  if (skipDuplicates && resultIds.length > 0) {
+    const rows = await prisma.leadGenAccount.findMany({
+      where: { marketId, directoryResultId: { in: resultIds } },
+      select: { id: true, directoryResultId: true },
+    });
+    for (const row of rows) {
+      if (row.directoryResultId) existingByResultId.set(row.directoryResultId, { id: row.id });
+    }
+  }
+
+  /** Same job+market already imported this domain+result combo (legacy dedupe when directoryResultId missing). */
+  const domainResultKeys = new Set<string>();
+  if (skipDuplicates) {
+    const legacy = await prisma.leadGenAccount.findMany({
+      where: { marketId, directoryJobId: jobId },
+      select: { directoryResultId: true, domain: true },
+    });
+    for (const e of legacy) {
+      domainResultKeys.add(`${e.directoryResultId ?? ''}:${normalizeDomain(e.domain)}`);
+    }
+  }
 
   let created = 0;
+  let updated = 0;
   let skipped = 0;
   const errors: string[] = [];
-  const createdAccounts: ReturnType<typeof prismaAccountToDomain>[] = [];
+  const sampleAccounts: ReturnType<typeof prismaAccountToDomain>[] = [];
+
+  const pushSample = (a: ReturnType<typeof prismaAccountToDomain>) => {
+    if (sampleAccounts.length < 50) sampleAccounts.push(a);
+  };
 
   for (const r of results) {
     const domain = normalizeDomain(r.companyWebsite || null);
-    const key = `${r.id}:${domain}`;
-    if (skipDuplicates && pairSet.has(key)) {
-      skipped += 1;
-      continue;
-    }
-    if (skipDuplicates && r.id && existingPairs.some((e) => e.directoryResultId === r.id)) {
+    const dedupeKey = `${r.id ?? ''}:${domain}`;
+    if (skipDuplicates && domainResultKeys.has(dedupeKey) && !existingByResultId.has(r.id)) {
       skipped += 1;
       continue;
     }
 
     try {
       const data = buildAccountCreateData({ marketId, jobId, result: r, defaultCountry });
+      const existingId = r.id ? existingByResultId.get(r.id)?.id : undefined;
+
+      if (existingId) {
+        const a = await prisma.leadGenAccount.update({
+          where: { id: existingId },
+          data: {
+            directoryJobId: jobId,
+            name: data.name,
+            domain: data.domain,
+            website: data.website,
+            email: data.email,
+            phone: data.phone,
+            country: data.country,
+            region: data.region,
+            industry: data.industry,
+            subindustry: data.subindustry,
+            companySizeBand: data.companySizeBand,
+            description: data.description,
+            sourceUrl: data.sourceUrl,
+            reviewState: data.reviewState,
+            fitSummary: data.fitSummary,
+            lastSeenAt: data.lastSeenAt,
+          },
+        });
+        updated += 1;
+        domainResultKeys.add(dedupeKey);
+        pushSample(prismaAccountToDomain(a));
+        continue;
+      }
+
       const a = await prisma.leadGenAccount.create({ data });
       created += 1;
-      pairSet.add(key);
-      createdAccounts.push(prismaAccountToDomain(a));
+      if (r.id) existingByResultId.set(r.id, { id: a.id });
+      domainResultKeys.add(dedupeKey);
+      pushSample(prismaAccountToDomain(a));
     } catch (e) {
       errors.push(`${r.companyName}: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -93,8 +140,9 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     created,
+    updated,
     skipped,
     errors: errors.slice(0, 20),
-    accounts: createdAccounts.slice(0, 50),
+    accounts: sampleAccounts,
   });
 }

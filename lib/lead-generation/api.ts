@@ -85,7 +85,7 @@ export async function importScraperToMarket(body: {
   resultIds?: string[];
   defaultCountry?: string;
   skipDuplicates?: boolean;
-}): Promise<{ created: number; skipped: number; errors: string[] }> {
+}): Promise<{ created: number; updated?: number; skipped: number; errors: string[] }> {
   const res = await fetch(`${BASE}/accounts/import-from-scraper`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -93,5 +93,5 @@ export async function importScraperToMarket(body: {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
-  return data as { created: number; skipped: number; errors: string[] };
+  return data as { created: number; updated?: number; skipped: number; errors: string[] };
 }

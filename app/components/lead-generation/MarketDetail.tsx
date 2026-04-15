@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Database, MapPin, Users, Wrench, Building2, Filter, Zap, Download, ArrowRight, Loader2, ExternalLink } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { REVIEW_STATE_COLORS, REVIEW_STATE_LABELS } from '@/lib/lead-generation/config';
 import { FitScoreBadge } from './shared';
 import type { Account, Market } from '@/lib/lead-generation/types';
 import { fetchMarketBySlug, fetchAccounts } from '@/lib/lead-generation/api';
@@ -194,15 +193,14 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-neutral-50 border-b border-neutral-100">
+                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Company</th>
+                <th className="text-left px-4 py-2 font-semibold text-neutral-600">URL</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Email</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Phone</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">URL</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Company</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Country</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Subindustry</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Size</th>
+                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Industry</th>
                 <th className="text-center px-4 py-2 font-semibold text-neutral-600">Fit Score</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Status</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Source</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600"></th>
               </tr>
@@ -214,17 +212,11 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
                   className="border-b border-neutral-50 hover:bg-neutral-50 cursor-pointer transition-colors"
                   onClick={() => onSelectAccount(account.id)}
                 >
-                  <td className="px-4 py-2.5 text-neutral-700 max-w-[160px]">
-                    {account.email ? (
-                      <a href={`mailto:${account.email}`} className="text-brand hover:underline truncate block" title={account.email}>
-                        {account.email}
-                      </a>
-                    ) : (
-                      <span className="text-neutral-400">—</span>
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-neutral-900">{account.name}</p>
+                    {account.domain && !account.website?.trim() && (
+                      <p className="text-2xs text-neutral-400">{account.domain}</p>
                     )}
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-700 whitespace-nowrap">
-                    {account.phone ? account.phone : <span className="text-neutral-400">—</span>}
                   </td>
                   <td className="px-4 py-2.5 max-w-[180px]">
                     {account.website?.trim() ? (
@@ -243,22 +235,23 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
                       <span className="text-neutral-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5">
-                    <p className="font-medium text-neutral-900">{account.name}</p>
-                    {account.domain && !account.website?.trim() && (
-                      <p className="text-2xs text-neutral-400">{account.domain}</p>
+                  <td className="px-4 py-2.5 text-neutral-700 max-w-[160px]">
+                    {account.email ? (
+                      <a href={`mailto:${account.email}`} className="text-brand hover:underline truncate block" title={account.email}>
+                        {account.email}
+                      </a>
+                    ) : (
+                      <span className="text-neutral-400">—</span>
                     )}
                   </td>
+                  <td className="px-4 py-2.5 text-neutral-700 whitespace-nowrap">
+                    {account.phone ? account.phone : <span className="text-neutral-400">—</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-neutral-600">{account.country}</td>
-                  <td className="px-4 py-2.5 text-neutral-600">{account.subindustry || '—'}</td>
                   <td className="px-4 py-2.5 text-neutral-600 capitalize">{account.companySizeBand.replace('-', ' ')}</td>
+                  <td className="px-4 py-2.5 text-neutral-600">{account.industry || account.subindustry || '—'}</td>
                   <td className="px-4 py-2.5 text-center">
                     <FitScoreBadge score={account.fitScore} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className={cn('text-2xs px-1.5 py-0.5 rounded font-medium', REVIEW_STATE_COLORS[account.reviewState] ?? 'bg-neutral-100 text-neutral-600')}>
-                      {REVIEW_STATE_LABELS[account.reviewState] ?? account.reviewState}
-                    </span>
                   </td>
                   <td className="px-4 py-2.5 text-neutral-500 capitalize">{account.sourceType.replace(/_/g, ' ')}</td>
                   <td className="px-4 py-2.5">
