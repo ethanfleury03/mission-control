@@ -54,7 +54,7 @@ export function PlannedBadge() {
 export function DemoDataNotice() {
   return (
     <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-2xs text-amber-700">
-      Records may include initial demo seed data plus real imports (e.g. Directory Scraper). Treat outreach data per your compliance process.
+      Lead records only appear here after explicit imports or manual entry. Treat outreach data per your compliance process and review conflicts before pushing to CRM.
     </div>
   );
 }

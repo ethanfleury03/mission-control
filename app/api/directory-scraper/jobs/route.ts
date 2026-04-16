@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createJob, getAllJobs } from '@/lib/directory-scraper/job-store';
-import { runScrapeJob } from '@/lib/directory-scraper/scrape-directory';
+import { addLog, createJob, getAllJobs } from '@/lib/directory-scraper/job-store';
 import type { ScrapeJobInput } from '@/lib/directory-scraper/types';
 import { validateScrapeUrl } from '@/lib/directory-scraper/validate-scrape-url';
 import { isFirecrawlConfigured } from '@/lib/directory-scraper/firecrawl-client';
@@ -33,44 +32,41 @@ export async function POST(request: NextRequest) {
       exportTarget: body.exportTarget ?? 'csv',
       googleSheetId: body.googleSheetId ?? '',
       googleSheetTab: body.googleSheetTab ?? '',
-      mockMode: !!body.mockMode,
       scrapeFetchMode: fetchMode,
       enableSerperWebsiteDiscovery: !!body.enableSerperWebsiteDiscovery,
     };
 
-    if (!input.url && !input.mockMode) {
-      return NextResponse.json({ error: 'URL is required (or enable mock mode)' }, { status: 400 });
+    if (!input.url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    if (input.scrapeFetchMode === 'firecrawl' && !input.mockMode && !isFirecrawlConfigured()) {
+    if (input.scrapeFetchMode === 'firecrawl' && !isFirecrawlConfigured()) {
       return NextResponse.json(
         { error: 'Firecrawl mode requires FIRECRAWL_API_KEY in server environment.', code: 'FIRECRAWL_NOT_CONFIGURED' },
         { status: 400 },
       );
     }
 
-    if (input.enableSerperWebsiteDiscovery && !input.mockMode && !isSerperConfigured()) {
+    if (input.enableSerperWebsiteDiscovery && !isSerperConfigured()) {
       return NextResponse.json(
         { error: 'Serper discovery requires SERPER_API_KEY in server environment.', code: 'SERPER_NOT_CONFIGURED' },
         { status: 400 },
       );
     }
 
-    if (!input.mockMode && input.url) {
-      const v = validateScrapeUrl(input.url);
-      if (!v.ok) {
-        return NextResponse.json(
-          { error: v.error ?? 'URL not allowed', code: 'URL_BLOCKED' },
-          { status: 400 },
-        );
-      }
-      if (v.normalizedUrl) input.url = v.normalizedUrl;
+    const v = validateScrapeUrl(input.url);
+    if (!v.ok) {
+      return NextResponse.json(
+        { error: v.error ?? 'URL not allowed', code: 'URL_BLOCKED' },
+        { status: 400 },
+      );
     }
+    if (v.normalizedUrl) input.url = v.normalizedUrl;
 
     const job = await createJob(input);
-
-    runScrapeJob(job.id).catch((err) => {
-      console.error(`[directory-scraper] job ${job.id} crashed:`, err);
+    await addLog(job.id, 'info', `Job queued for ${input.url}`, {
+      phase: 'queued',
+      eventCode: 'JOB_QUEUED',
     });
 
     return NextResponse.json(job, { status: 201 });

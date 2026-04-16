@@ -1,4 +1,13 @@
 export type JobStatus = 'queued' | 'running' | 'cancelled' | 'completed' | 'failed';
+export type JobPhase =
+  | 'queued'
+  | 'extracting_names'
+  | 'discovering_websites'
+  | 'enriching'
+  | 'exporting_optional'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 export type CompanyStatus = 'pending' | 'scraping' | 'enriching' | 'done' | 'failed';
 export type ConfidenceScore = 'high' | 'medium' | 'low';
 export type ExportTarget = 'csv' | 'sheets';
@@ -102,7 +111,6 @@ export interface ScrapeJobInput {
   exportTarget?: ExportTarget;
   googleSheetId?: string;
   googleSheetTab?: string;
-  mockMode?: boolean;
   /** playwright = local browser (default); firecrawl = Firecrawl API (requires FIRECRAWL_API_KEY). */
   scrapeFetchMode?: ScrapeFetchMode;
   /**
@@ -161,6 +169,17 @@ export interface JobSummary {
   failures: number;
 }
 
+export interface JobProgress {
+  phase: JobPhase;
+  current: number;
+  total: number;
+  percentage: number;
+  completedCompanies: number;
+  totalCompanies: number;
+  currentCompanyName?: string;
+  message?: string;
+}
+
 /** Per-job observability + export bookkeeping (JSON in DB) */
 export interface JobMeta {
   lastProcessedCompanyName?: string;
@@ -183,16 +202,30 @@ export interface JobMeta {
 export interface LogEntry {
   timestamp: string;
   level: 'info' | 'warn' | 'error';
+  phase?: JobPhase;
+  eventCode?: string;
   message: string;
 }
 
 export interface ScrapeJob {
   id: string;
   status: JobStatus;
+  phase: JobPhase;
   input: ScrapeJobInput;
+  attemptCount: number;
+  maxAttempts: number;
+  queuedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  heartbeatAt: string | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  nextRetryAt: string | null;
+  cancelRequestedAt: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
   summary: JobSummary;
+  progress: JobProgress;
   meta: JobMeta;
   results: CompanyResult[];
   logs: LogEntry[];

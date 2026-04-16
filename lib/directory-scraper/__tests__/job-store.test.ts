@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import {
+  claimNextJob,
   createJob,
   getJob,
   updateJobStatus,
@@ -8,6 +9,9 @@ import {
   recalcSummary,
   deleteResult,
   isJobCancelled,
+  renewJobLease,
+  releaseJobLease,
+  requestJobCancel,
   deleteJob,
 } from '../job-store';
 import type { CompanyResult } from '../types';
@@ -22,10 +26,11 @@ describe('job-store (Prisma)', () => {
   });
 
   it('creates and retrieves a job', async () => {
-    const job = await createJob({ url: 'https://test.com', mockMode: false });
+    const job = await createJob({ url: 'https://test.com' });
     createdIds.push(job.id);
     expect(job.id).toBeTruthy();
     expect(job.status).toBe('queued');
+    expect(job.phase).toBe('queued');
     const fetched = await getJob(job.id);
     expect(fetched?.id).toBe(job.id);
   });
@@ -42,10 +47,12 @@ describe('job-store (Prisma)', () => {
   it('adds logs', async () => {
     const job = await createJob({ url: 'https://test.com' });
     createdIds.push(job.id);
-    await addLog(job.id, 'info', 'test message');
+    await addLog(job.id, 'info', 'test message', { phase: 'queued', eventCode: 'TEST_EVENT' });
     const j = await getJob(job.id);
     expect(j?.logs.length).toBe(1);
     expect(j?.logs[0].message).toBe('test message');
+    expect(j?.logs[0].phase).toBe('queued');
+    expect(j?.logs[0].eventCode).toBe('TEST_EVENT');
   });
 
   it('recalculates summary', async () => {
@@ -155,12 +162,24 @@ describe('job-store (Prisma)', () => {
     expect(await deleteResult(job.id, 'nonexistent')).toBe(false);
   });
 
-  it('tracks cancellation', async () => {
+  it('tracks cancellation requests', async () => {
     const job = await createJob({ url: 'https://test.com' });
     createdIds.push(job.id);
     expect(await isJobCancelled(job.id)).toBe(false);
-    await updateJobStatus(job.id, 'cancelled');
+    await requestJobCancel(job.id);
     expect(await isJobCancelled(job.id)).toBe(true);
+  });
+
+  it('claims and renews a worker lease', async () => {
+    const job = await createJob({ url: 'https://test.com' });
+    createdIds.push(job.id);
+    const claimed = await claimNextJob('worker-test', 15_000);
+    expect(claimed?.id).toBe(job.id);
+    expect(claimed?.attemptCount).toBe(1);
+    expect(await renewJobLease(job.id, 'worker-test', 15_000)).toBe(true);
+    await releaseJobLease(job.id, 'worker-test');
+    const refreshed = await getJob(job.id);
+    expect(refreshed?.leaseOwner).toBeNull();
   });
 
   it('deletes a job', async () => {

@@ -1,41 +1,66 @@
 import { prisma } from '@/lib/prisma';
 import { createPrismaPersistence } from './persistence';
-import type { ScrapeJob, ScrapeJobInput, CompanyResult, LogEntry, JobSummary, JobMeta } from './types';
+import type {
+  ScrapeJob,
+  ScrapeJobInput,
+  CompanyResult,
+  LogEntry,
+  JobSummary,
+  JobMeta,
+  JobPhase,
+  JobProgress,
+} from './types';
 
 const persistence = createPrismaPersistence(prisma);
 
-export async function createJob(input: ScrapeJobInput) {
-  return persistence.createJob(input);
+export async function createJob(input: ScrapeJobInput, options?: { maxAttempts?: number }) {
+  return persistence.createJob(input, options);
 }
 
 export async function getJob(id: string) {
-  const j = await persistence.getJob(id);
-  return j ?? undefined;
+  const job = await persistence.getJob(id);
+  return job ?? undefined;
 }
 
 export async function getJobSnapshot(
   id: string,
   options?: { resultsOffset?: number; resultsLimit?: number; logsLimit?: number },
 ) {
-  const j = await persistence.getJobSnapshot(id, options);
-  return j ?? undefined;
+  const job = await persistence.getJobSnapshot(id, options);
+  return job ?? undefined;
 }
 
 export async function getAllJobs() {
   return persistence.listJobs(100);
 }
 
-export async function updateJobStatus(id: string, status: ScrapeJob['status']) {
-  const patch: { startedAt?: Date | null; finishedAt?: Date | null } = {};
-  if (status === 'running') patch.startedAt = new Date();
-  if (status === 'completed' || status === 'cancelled' || status === 'failed') {
-    patch.finishedAt = new Date();
-  }
+export async function updateJobStatus(
+  id: string,
+  status: ScrapeJob['status'],
+  patch?: {
+    phase?: JobPhase;
+    startedAt?: Date | null;
+    finishedAt?: Date | null;
+    heartbeatAt?: Date | null;
+    leaseOwner?: string | null;
+    leaseExpiresAt?: Date | null;
+    nextRetryAt?: Date | null;
+    cancelRequestedAt?: Date | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    progress?: JobProgress;
+  },
+) {
   await persistence.updateJobStatus(id, status, patch);
 }
 
-export async function addLog(id: string, level: LogEntry['level'], message: string) {
-  await persistence.addLog(id, level, message);
+export async function addLog(
+  id: string,
+  level: LogEntry['level'],
+  message: string,
+  options?: { phase?: JobPhase; eventCode?: string },
+) {
+  await persistence.addLog(id, level, message, options);
 }
 
 export async function setResults(id: string, results: CompanyResult[]) {
@@ -62,6 +87,14 @@ export async function isJobCancelled(id: string) {
   return persistence.isJobCancelled(id);
 }
 
+export async function requestJobCancel(id: string) {
+  await persistence.requestCancel(id);
+}
+
+export async function clearJobCancellation(id: string) {
+  await persistence.clearCancellation(id);
+}
+
 export async function deleteJob(id: string) {
   return persistence.deleteJob(id);
 }
@@ -72,4 +105,17 @@ export async function resumeJob(id: string) {
 
 export async function patchJobMeta(id: string, patch: Partial<JobMeta>) {
   await persistence.patchMeta(id, patch);
+}
+
+export async function claimNextJob(owner: string, leaseMs: number) {
+  const job = await persistence.claimNextJob({ owner, leaseMs });
+  return job ?? undefined;
+}
+
+export async function renewJobLease(id: string, owner: string, leaseMs: number) {
+  return persistence.renewLease(id, owner, leaseMs);
+}
+
+export async function releaseJobLease(id: string, owner?: string) {
+  await persistence.releaseLease(id, owner);
 }

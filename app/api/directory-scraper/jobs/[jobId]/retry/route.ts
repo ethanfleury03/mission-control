@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getJob, updateResult, addLog, resumeJob } from '@/lib/directory-scraper/job-store';
-import { runScrapeJob } from '@/lib/directory-scraper/scrape-directory';
+import { addLog, clearJobCancellation, getJob, resumeJob, updateResult, updateJobStatus } from '@/lib/directory-scraper/job-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,15 +33,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
     return NextResponse.json({ error: 'No matching failed rows to retry' }, { status: 400 });
   }
 
-  await addLog(jobId, 'info', `Reset ${resetCount} failed rows for retry; resuming scrape…`);
+  const resumePhase = job.input.visitCompanyWebsites
+    ? 'enriching'
+    : job.input.enableSerperWebsiteDiscovery
+      ? 'discovering_websites'
+      : 'exporting_optional';
 
-  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-    await resumeJob(jobId);
-  }
-
-  runScrapeJob(jobId).catch((err) => {
-    console.error(`[directory-scraper] retry job ${jobId} crashed:`, err);
+  await clearJobCancellation(jobId);
+  await resumeJob(jobId);
+  await updateJobStatus(jobId, 'queued', {
+    phase: resumePhase,
+    errorCode: null,
+    errorMessage: null,
+    nextRetryAt: null,
+    finishedAt: null,
+  });
+  await addLog(jobId, 'info', `Reset ${resetCount} failed rows and re-queued the job for worker pickup.`, {
+    phase: resumePhase,
+    eventCode: 'JOB_REQUEUED',
   });
 
-  return NextResponse.json({ resetCount, resumed: true });
+  return NextResponse.json({ resetCount, resumed: true, status: 'queued' });
 }

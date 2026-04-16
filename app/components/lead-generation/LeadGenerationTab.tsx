@@ -113,8 +113,8 @@ export function LeadGenerationTab() {
         </nav>
         <div className="p-3 border-t border-hub-border">
           <div className="rounded-md bg-amber-50 border border-amber-200 px-2.5 py-2">
-            <p className="text-2xs font-medium text-amber-800">Dev / Demo Data</p>
-            <p className="text-2xs text-amber-600 mt-0.5">Synthetic seed data for development. Not production leads.</p>
+            <p className="text-2xs font-medium text-amber-800">Imported Data</p>
+            <p className="text-2xs text-amber-600 mt-0.5">Markets and accounts stay empty until you create or import them.</p>
           </div>
         </div>
       </div>

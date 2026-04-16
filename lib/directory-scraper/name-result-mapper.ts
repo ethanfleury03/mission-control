@@ -1,5 +1,5 @@
 import type { CompanyResult, ConfidenceScore, ExtractedCompanyCandidate, NameExtractionMeta } from './types';
-import { v4 as uuid } from 'uuid';
+import { createHash } from 'crypto';
 
 export function numericScoreToLabel(score: number): ConfidenceScore {
   if (score >= 62) return 'high';
@@ -41,8 +41,20 @@ export function candidateToCompanyResult(
     aiRefined: c.method === 'ai-classified' || c.reasons.some((r) => r.startsWith('ai:')),
   };
 
+  const stableId = createHash('sha1')
+    .update(
+      [
+        c.normalizedName,
+        c.listingUrl ?? '',
+        c.detailUrl ?? '',
+        c.sourceUrl,
+        c.companyWebsiteHint ?? '',
+      ].join('|'),
+    )
+    .digest('hex');
+
   return {
-    id: uuid(),
+    id: stableId,
     companyName: c.name,
     directoryListingUrl: listing,
     companyWebsite: website,

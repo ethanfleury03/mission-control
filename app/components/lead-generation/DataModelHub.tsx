@@ -120,7 +120,7 @@ export function DataModelHub() {
           <p>
             <strong>Current state:</strong> All &ldquo;typed&rdquo; entities have full TypeScript interfaces in{' '}
             <code className="text-2xs bg-neutral-100 px-1 py-0.5 rounded">lib/lead-generation/types.ts</code>{' '}
-            with seed data in{' '}
+            with local fixture examples in{' '}
             <code className="text-2xs bg-neutral-100 px-1 py-0.5 rounded">lib/lead-generation/mock-data.ts</code>.
           </p>
           <p>

@@ -92,7 +92,6 @@ export function DirectoryScraperTab() {
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiHint, setAiHint] = useState<string | null>(null);
   const [aiModel, setAiModel] = useState<string | null>(null);
-  const [mockMode, setMockMode] = useState(false);
   const [scrapeFetchMode, setScrapeFetchMode] = useState<ScrapeFetchMode>('playwright');
   const [firecrawlConfigured, setFirecrawlConfigured] = useState(false);
   const [firecrawlHint, setFirecrawlHint] = useState<string | null>(null);
@@ -126,6 +125,7 @@ export function DirectoryScraperTab() {
   const [leadGenSuccess, setLeadGenSuccess] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const jobRef = useRef<ScrapeJob | null>(null);
   jobRef.current = job;
@@ -223,9 +223,53 @@ export function DirectoryScraperTab() {
     }
   }, []);
 
-  useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  const stopWatchingJob = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
   }, []);
+
+  const startWatchingJob = useCallback((id: string) => {
+    stopWatchingJob();
+    try {
+      const source = new EventSource(`${API}/jobs/${id}/events?resultsLimit=${POLL_PAGE_SIZE}&logsLimit=100`);
+      eventSourceRef.current = source;
+
+      source.addEventListener('job', (event) => {
+        const data = JSON.parse((event as MessageEvent<string>).data) as ScrapeJob;
+        setJob((prev) => mergePollSnapshot(prev, data));
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+          stopWatchingJob();
+          void pollJob(id);
+        }
+      });
+
+      source.onerror = () => {
+        source.close();
+        if (eventSourceRef.current === source) {
+          eventSourceRef.current = null;
+        }
+        if (!pollRef.current) {
+          pollRef.current = setInterval(() => pollJob(id), 2500);
+          void pollJob(id);
+        }
+      };
+    } catch {
+      if (!pollRef.current) {
+        pollRef.current = setInterval(() => pollJob(id), 2500);
+        void pollJob(id);
+      }
+    }
+  }, [pollJob, stopWatchingJob]);
+
+  useEffect(() => {
+    return () => { stopWatchingJob(); };
+  }, [stopWatchingJob]);
 
   useEffect(() => {
     if (showLogs) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -246,8 +290,7 @@ export function DirectoryScraperTab() {
           exportTarget,
           googleSheetId: sheetId,
           googleSheetTab: sheetTab,
-          mockMode,
-          scrapeFetchMode: mockMode ? 'playwright' : scrapeFetchMode,
+          scrapeFetchMode,
         }),
       });
       if (!res.ok) {
@@ -263,7 +306,7 @@ export function DirectoryScraperTab() {
       setExpandedRowId(null);
       setExportError(null);
       setExportInfo(null);
-      pollRef.current = setInterval(() => pollJob(data.id), 1500);
+      startWatchingJob(data.id);
     } catch (err: any) {
       alert(err?.message || 'Network error');
     } finally {
@@ -274,15 +317,12 @@ export function DirectoryScraperTab() {
   const cancelJob = async () => {
     if (!job) return;
     await fetch(`${API}/jobs/${job.id}/cancel`, { method: 'POST' });
-    pollJob(job.id);
+    void pollJob(job.id);
   };
 
   const clearResults = async () => {
     if (!job) return;
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
+    stopWatchingJob();
     await fetch(`${API}/jobs/${job.id}`, { method: 'DELETE' });
     setJob(null);
     setExpandedRowId(null);
@@ -304,8 +344,7 @@ export function DirectoryScraperTab() {
       alert(e.error || 'Retry failed');
       return;
     }
-    pollJob(job.id);
-    if (!pollRef.current) pollRef.current = setInterval(() => pollJob(job.id), 1500);
+    startWatchingJob(job.id);
   };
 
   const exportCsv = async () => {
@@ -435,7 +474,7 @@ export function DirectoryScraperTab() {
         skipDuplicates: true,
       });
       setLeadGenSuccess(
-        `Imported ${out.created} new, updated ${out.updated ?? 0} existing${out.skipped ? `, skipped ${out.skipped}` : ''}. Open Lead Generation → a market to review.`,
+        `Imported ${out.created} new, updated ${out.updated ?? 0} existing${out.skipped ? `, skipped ${out.skipped}` : ''}${out.conflicts ? `, flagged ${out.conflicts} conflict${out.conflicts === 1 ? '' : 's'} for review` : ''}. Open Lead Generation → a market to review.`,
       );
       if (out.errors?.length) setLeadGenError(out.errors.slice(0, 5).join('; '));
     } catch (e) {
@@ -550,7 +589,7 @@ export function DirectoryScraperTab() {
               )}
             </div>
 
-            {/* Fetch mode: Playwright vs Firecrawl vs Mock */}
+            {/* Fetch mode: Playwright vs Firecrawl */}
             <div className="lg:col-span-3 border border-neutral-100 rounded-md p-3 bg-neutral-50/50">
               <span className="block text-xs font-medium text-neutral-600 mb-2">How to load the page</span>
               <div className="flex flex-col gap-2 text-sm text-neutral-800">
@@ -558,11 +597,8 @@ export function DirectoryScraperTab() {
                   <input
                     type="radio"
                     name="fetchMode"
-                    checked={!mockMode && scrapeFetchMode === 'playwright'}
-                    onChange={() => {
-                      setMockMode(false);
-                      setScrapeFetchMode('playwright');
-                    }}
+                    checked={scrapeFetchMode === 'playwright'}
+                    onChange={() => setScrapeFetchMode('playwright')}
                     disabled={isRunning}
                     className="mt-0.5 accent-brand"
                   />
@@ -577,11 +613,8 @@ export function DirectoryScraperTab() {
                   <input
                     type="radio"
                     name="fetchMode"
-                    checked={!mockMode && scrapeFetchMode === 'firecrawl'}
-                    onChange={() => {
-                      setMockMode(false);
-                      setScrapeFetchMode('firecrawl');
-                    }}
+                    checked={scrapeFetchMode === 'firecrawl'}
+                    onChange={() => setScrapeFetchMode('firecrawl')}
                     disabled={isRunning || !firecrawlConfigured}
                     className="mt-0.5 accent-brand"
                   />
@@ -595,20 +628,6 @@ export function DirectoryScraperTab() {
                 {!firecrawlConfigured && firecrawlHint && (
                   <p className="text-2xs text-neutral-500 ml-6">{firecrawlHint}</p>
                 )}
-                <label className="flex items-start gap-2 cursor-pointer select-none">
-                  <input
-                    type="radio"
-                    name="fetchMode"
-                    checked={mockMode}
-                    onChange={() => setMockMode(true)}
-                    disabled={isRunning}
-                    className="mt-0.5 accent-brand"
-                  />
-                  <span>
-                    <span className="font-medium">Mock mode</span>
-                    <span className="text-neutral-600 text-2xs block">Demo rows only — no URL or API required.</span>
-                  </span>
-                </label>
               </div>
             </div>
 
@@ -667,7 +686,7 @@ export function DirectoryScraperTab() {
               <button
                 type="button"
                 onClick={startJob}
-                disabled={isStarting || (!mockMode && !url.trim())}
+                disabled={isStarting || !url.trim()}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
@@ -730,6 +749,16 @@ export function DirectoryScraperTab() {
           </div>
         </div>
 
+        {!job && (
+          <div className="bg-white rounded-lg border border-dashed border-neutral-300 p-8 text-center">
+            <Building2 className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-neutral-900">No jobs yet</p>
+            <p className="text-xs text-neutral-500 mt-1">
+              Start a scrape to queue a background worker job and stream progress here.
+            </p>
+          </div>
+        )}
+
         {/* Progress panel */}
         {job && (
           <div className="bg-white rounded-lg border border-hub-border p-5 shadow-sm">
@@ -758,6 +787,56 @@ export function DirectoryScraperTab() {
                     <> — Duration {(job.meta.durationMs / 1000).toFixed(1)}s</>
                   )}
                 </span>
+              )}
+            </div>
+
+            <div className="mb-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-700 mb-2">
+                <span className="font-medium capitalize">Phase: {job.phase.replace(/_/g, ' ')}</span>
+                <span className="text-neutral-400">•</span>
+                <span>Attempt {job.attemptCount} / {job.maxAttempts}</span>
+                {job.heartbeatAt && (
+                  <>
+                    <span className="text-neutral-400">•</span>
+                    <span>Heartbeat {new Date(job.heartbeatAt).toLocaleTimeString()}</span>
+                  </>
+                )}
+                {job.nextRetryAt && (
+                  <>
+                    <span className="text-neutral-400">•</span>
+                    <span>Retry at {new Date(job.nextRetryAt).toLocaleTimeString()}</span>
+                  </>
+                )}
+                {job.errorCode && (
+                  <>
+                    <span className="text-neutral-400">•</span>
+                    <span className="font-mono text-2xs text-red-700">{job.errorCode}</span>
+                  </>
+                )}
+              </div>
+              <div className="h-2 rounded-full bg-neutral-200 overflow-hidden">
+                <div
+                  className="h-full bg-brand transition-all"
+                  style={{ width: `${Math.max(4, job.progress?.percentage ?? 0)}%` }}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-2xs text-neutral-600">
+                <span>{job.progress?.message ?? 'Waiting for worker progress...'}</span>
+                <span>
+                  {job.progress?.current ?? 0}/{job.progress?.total ?? 0} phase steps
+                  {' • '}
+                  {job.summary.companiesProcessed}/{job.summary.companiesFound} companies processed
+                </span>
+              </div>
+              {job.progress?.currentCompanyName && (
+                <p className="mt-1 text-2xs text-neutral-500">
+                  Working on <span className="font-medium text-neutral-700">{job.progress.currentCompanyName}</span>
+                </p>
+              )}
+              {job.errorMessage && (
+                <p className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-2xs text-red-800">
+                  {job.errorMessage}
+                </p>
               )}
             </div>
 
@@ -1059,7 +1138,7 @@ export function DirectoryScraperTab() {
               Send to Lead Generation
             </h2>
             <p className="text-2xs text-neutral-500 mt-1 mb-4">
-              Create company accounts in a market database from this job&apos;s results. Duplicates (same job + row) are skipped by default.
+              Create or update company accounts in a market database from this job&apos;s results. Existing records keep populated fields, blank fields can be filled, and conflicts are flagged for review.
             </p>
 
             {leadGenError && (
@@ -1188,7 +1267,10 @@ function LogLine({ log }: { log: LogEntry }) {
   return (
     <div className={cn('leading-snug', colors[log.level])}>
       <span className="text-neutral-400">{new Date(log.timestamp).toLocaleTimeString()}</span>{' '}
-      <span className="font-medium uppercase">[{log.level}]</span> {log.message}
+      <span className="font-medium uppercase">[{log.level}]</span>
+      {log.phase && <span className="ml-1 font-mono text-[10px] uppercase text-neutral-400">{log.phase}</span>}
+      {log.eventCode && <span className="ml-1 font-mono text-[10px] uppercase text-neutral-400">{log.eventCode}</span>}{' '}
+      {log.message}
     </div>
   );
 }

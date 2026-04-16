@@ -176,7 +176,7 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
               { label: 'Prisma markets + accounts (SQLite)', status: 'done' },
               { label: 'Market CRUD + Directory Scraper → Lead Gen import', status: 'done' },
               { label: 'Typed data model (TypeScript)', status: 'done' },
-              { label: 'Auto-seed demo data on empty DB', status: 'done' },
+              { label: 'Manual imports + empty-state-first database behavior', status: 'done' },
               { label: 'Scoring framework scaffold', status: 'done' },
               { label: 'Review queue UI (read from DB)', status: 'done' },
             ].map((item) => (
@@ -223,12 +223,12 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
           This system is built from the internal lead-gen research pack. Key source documents:
         </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {[
-            { name: 'Executive Summary & Architecture', file: '01-executive-summary-and-architecture.md' },
-            { name: 'Arrow Systems Audit & Countries', file: '02-arrsys-audit-and-countries.md' },
-            { name: 'Data Model & AI Workflow', file: '03-data-model-and-ai-workflow.md' },
-            { name: 'Synthetic Lead Examples', file: '04-synthetic-lead-examples.md' },
-          ].map((doc) => (
+            {[
+              { name: 'Executive Summary & Architecture', file: '01-executive-summary-and-architecture.md' },
+              { name: 'Arrow Systems Audit & Countries', file: '02-arrsys-audit-and-countries.md' },
+              { name: 'Data Model & AI Workflow', file: '03-data-model-and-ai-workflow.md' },
+              { name: 'Lead Example Scenarios', file: '04-synthetic-lead-examples.md' },
+            ].map((doc) => (
             <div key={doc.file} className="rounded-md bg-neutral-50 border border-neutral-200 px-3 py-2">
               <p className="text-2xs font-medium text-neutral-700">{doc.name}</p>
               <p className="text-2xs text-neutral-400 font-mono mt-0.5">{doc.file}</p>

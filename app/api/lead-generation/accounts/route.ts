@@ -2,20 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { prismaAccountToDomain } from '@/lib/lead-generation/db-mappers';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
+import { buildLeadGenIdentity } from '@/lib/lead-generation/identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** GET ?marketId=&country=&reviewState=&leadPipelineStage=&sourceType=&q= */
 export async function GET(request: NextRequest) {
-  await seedLeadGenIfEmpty();
   const { searchParams } = new URL(request.url);
   const marketId = searchParams.get('marketId') ?? undefined;
   const country = searchParams.get('country') ?? undefined;
   const reviewState = searchParams.get('reviewState') ?? undefined;
   const leadPipelineStage = searchParams.get('leadPipelineStage') ?? undefined;
   const sourceType = searchParams.get('sourceType') ?? undefined;
+  const cursor = searchParams.get('cursor') ?? undefined;
+  const limit = Math.min(500, Math.max(1, Number(searchParams.get('limit') ?? '200')));
   const q = searchParams.get('q')?.trim().toLowerCase();
 
   const where: Prisma.LeadGenAccountWhereInput = {};
@@ -34,18 +35,28 @@ export async function GET(request: NextRequest) {
     ];
   }
 
+  const paginate = Boolean(cursor) || searchParams.has('limit');
   const rows = await prisma.leadGenAccount.findMany({
     where,
-    orderBy: { updatedAt: 'desc' },
-    take: 2000,
+    orderBy: { id: 'asc' },
+    take: paginate ? limit + 1 : 2000,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
 
-  return NextResponse.json(rows.map(prismaAccountToDomain));
+  if (!paginate) {
+    return NextResponse.json(rows.map(prismaAccountToDomain));
+  }
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  return NextResponse.json({
+    items: page.map(prismaAccountToDomain),
+    nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
+  });
 }
 
 /** POST single account { marketId, name, ... } */
 export async function POST(request: NextRequest) {
-  await seedLeadGenIfEmpty();
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -61,13 +72,18 @@ export async function POST(request: NextRequest) {
 
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
+  const domain = typeof body.domain === 'string' ? body.domain : '';
+  const website = typeof body.website === 'string' ? body.website : '';
+  const identity = buildLeadGenIdentity({ name, domain, website });
 
   const a = await prisma.leadGenAccount.create({
     data: {
       marketId,
       name,
-      domain: typeof body.domain === 'string' ? body.domain : '',
-      website: typeof body.website === 'string' ? body.website : '',
+      normalizedName: identity.normalizedName,
+      domain,
+      normalizedDomain: identity.normalizedDomain,
+      website,
       email: typeof body.email === 'string' ? body.email : '',
       phone: typeof body.phone === 'string' ? body.phone : '',
       country: typeof body.country === 'string' ? body.country : 'Unknown',
@@ -86,7 +102,7 @@ export async function POST(request: NextRequest) {
       assignedOwner: typeof body.assignedOwner === 'string' ? body.assignedOwner : '',
       reviewState: typeof body.reviewState === 'string' ? body.reviewState : 'new',
       lastSeenAt: new Date(),
-    },
+    } as any,
   });
 
   return NextResponse.json(prismaAccountToDomain(a), { status: 201 });

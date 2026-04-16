@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { prismaMarketToDomain } from '@/lib/lead-generation/db-mappers';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
-  await seedLeadGenIfEmpty();
   const { marketId } = await context.params;
   const m = await prisma.leadGenMarket.findUnique({ where: { id: marketId } });
   if (!m) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -17,7 +15,6 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ ma
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
-  await seedLeadGenIfEmpty();
   const { marketId } = await context.params;
   const existing = await prisma.leadGenMarket.findUnique({ where: { id: marketId } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });

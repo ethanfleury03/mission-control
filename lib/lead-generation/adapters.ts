@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Account, SourceType, ReviewState, CompanySizeBand, IngestionItem } from './types';
+import { normalizeLeadGenDomain } from './identity';
 
 // ── Scraped Company Candidate ───────────────────────────────────────────────
 
@@ -37,12 +38,7 @@ export interface LeadSourceAdapter {
 // ── Domain Normalization ────────────────────────────────────────────────────
 
 export function normalizeDomain(input: string | null | undefined): string {
-  if (!input) return '';
-  let domain = input.trim().toLowerCase();
-  domain = domain.replace(/^https?:\/\//, '');
-  domain = domain.replace(/^www\./, '');
-  domain = domain.replace(/\/.*$/, '');
-  return domain;
+  return normalizeLeadGenDomain(input);
 }
 
 // ── Country Normalization ───────────────────────────────────────────────────

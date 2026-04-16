@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { prismaAccountToDomain } from '@/lib/lead-generation/db-mappers';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
+import { buildLeadGenIdentity } from '@/lib/lead-generation/identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
-  await seedLeadGenIfEmpty();
   const { accountId } = await context.params;
   const a = await prisma.leadGenAccount.findUnique({ where: { id: accountId } });
   if (!a) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -16,7 +14,6 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ ac
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
-  await seedLeadGenIfEmpty();
   const { accountId } = await context.params;
   const existing = await prisma.leadGenAccount.findUnique({ where: { id: accountId } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -28,12 +25,19 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ a
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const data: Prisma.LeadGenAccountUpdateInput = {};
+  const data: Record<string, unknown> = {};
   const str = (k: string) => (typeof body[k] === 'string' ? body[k] : undefined);
   const num = (k: string) => (typeof body[k] === 'number' ? body[k] : undefined);
 
+  const nextName = str('name') ?? existing.name;
+  const nextDomain = str('domain') !== undefined ? str('domain') ?? '' : existing.domain;
+  const nextWebsite = str('website') !== undefined ? str('website') ?? '' : existing.website;
+  const identity = buildLeadGenIdentity({ name: nextName, domain: nextDomain, website: nextWebsite });
+
   if (str('name')) data.name = str('name');
+  data.normalizedName = identity.normalizedName;
   if (str('domain') !== undefined) data.domain = str('domain');
+  data.normalizedDomain = identity.normalizedDomain;
   if (str('website') !== undefined) data.website = str('website');
   if (str('email') !== undefined) data.email = str('email');
   if (str('phone') !== undefined) data.phone = str('phone');
@@ -62,7 +66,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ a
     data.market = { connect: { id: m.id } };
   }
 
-  const a = await prisma.leadGenAccount.update({ where: { id: accountId }, data });
+  const a = await prisma.leadGenAccount.update({ where: { id: accountId }, data: data as any });
   return NextResponse.json(prismaAccountToDomain(a));
 }
 

@@ -136,8 +136,8 @@ export function MarketDatabases({ onSelectMarket }: MarketDatabasesProps) {
         <div>
           <h1 className="text-xl font-bold text-neutral-900 mb-1">Market Databases</h1>
           <p className="text-sm text-neutral-500">
-            Industry-specific company databases. Data lives in your local <code className="text-2xs bg-neutral-100 px-1 rounded">DATABASE_URL</code> (not in git).
-            Opening Lead Gen usually seeds demo markets; if you see none, run <code className="text-2xs bg-neutral-100 px-1 rounded">npm run db:push &amp;&amp; npm run db:seed</code> in the repo.
+            Industry-specific company databases backed by your configured <code className="text-2xs bg-neutral-100 px-1 rounded">DATABASE_URL</code>.
+            This view stays empty until you create a market or import data.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -168,14 +168,10 @@ export function MarketDatabases({ onSelectMarket }: MarketDatabasesProps) {
             <div className="md:col-span-2 card p-6 border border-amber-200 bg-amber-50/50">
               <p className="text-sm font-medium text-neutral-900 mb-2">No markets in this database yet</p>
               <p className="text-xs text-neutral-600 mb-3">
-                Your SQLite file is not copied when you <code className="font-mono bg-white px-1 rounded border">git pull</code>. From the project folder run:
+                Create your first market here, or import scraper results into a market after one exists.
               </p>
-              <pre className="text-2xs bg-neutral-900 text-neutral-100 p-3 rounded-md overflow-x-auto mb-3">
-                npm run db:push{'\n'}
-                npm run db:seed
-              </pre>
               <p className="text-2xs text-neutral-500">
-                Ensure <code className="font-mono">.env</code> has <code className="font-mono">DATABASE_URL</code> (see <code className="font-mono">.env.example</code>), then refresh this page or use <strong>Add market</strong>.
+                If you expect existing records and do not see them, verify that <code className="font-mono">DATABASE_URL</code> points at the right database.
               </p>
             </div>
           )}

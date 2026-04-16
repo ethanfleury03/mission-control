@@ -101,9 +101,21 @@ model OrgSnapshot {
 model DirectoryScrapeJob {
   id         String    @id @default(uuid())
   status     String    // queued | running | cancelled | completed | failed
+  phase      String    @default("queued") // queued | extracting_names | discovering_websites | enriching | exporting_optional | completed | failed | cancelled
   inputJson  String    // ScrapeJobInput JSON
+  progressJson String  @default("{}") // JobProgress JSON
+  attemptCount Int     @default(0)
+  maxAttempts Int      @default(3)
+  queuedAt   DateTime  @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
+  heartbeatAt DateTime?
+  leaseOwner String?
+  leaseExpiresAt DateTime?
+  nextRetryAt DateTime?
+  cancelRequestedAt DateTime?
+  errorCode  String?
+  errorMessage String?
   summaryJson String   // JobSummary JSON
   metaJson   String    @default("{}") // JobMeta JSON (duration, last company, export counts)
   createdAt  DateTime  @default(now())
@@ -114,6 +126,9 @@ model DirectoryScrapeJob {
 
   @@index([createdAt])
   @@index([status])
+  @@index([status, leaseExpiresAt])
+  @@index([nextRetryAt])
+  @@index([phase])
   @@map("directory_scrape_jobs")
 }
 
@@ -151,9 +166,12 @@ model DirectoryScrapeLog {
   job       DirectoryScrapeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   timestamp DateTime @default(now())
   level     String   // info | warn | error
+  phase     String?
+  eventCode String?
   message   String
 
   @@index([jobId])
+  @@index([jobId, timestamp])
   @@map("directory_scrape_logs")
 }
 
@@ -184,7 +202,9 @@ model LeadGenAccount {
   market              LeadGenMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
 
   name                String
+  normalizedName      String    @default("")
   domain              String    @default("")
+  normalizedDomain    String    @default("")
   website             String    @default("")
   email               String    @default("")
   phone               String    @default("")
@@ -221,6 +241,25 @@ model LeadGenAccount {
 
   @@index([marketId])
   @@index([marketId, reviewState])
+  @@index([marketId, normalizedDomain])
+  @@index([marketId, normalizedName, country])
   @@index([directoryJobId, directoryResultId])
   @@map("lead_gen_accounts")
+}
+
+model LeadGenIngestionEvent {
+  id                 String   @id @default(cuid())
+  marketId           String
+  accountId          String?
+  directoryJobId     String
+  directoryResultId  String
+  mergeOutcome       String   // created | updated | skipped_duplicate | conflict | error
+  conflictFieldsJson String   @default("[]")
+  detailsJson        String   @default("{}")
+  createdAt          DateTime @default(now())
+
+  @@index([marketId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([directoryJobId, directoryResultId])
+  @@map("lead_gen_ingestion_events")
 }

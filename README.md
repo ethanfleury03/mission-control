@@ -47,18 +47,18 @@ For **future schema changes**, generate SQL locally with `npm run db:migrate` (o
 ### Lead Generation database
 
 - **With Turso:** markets and companies live in the **hosted** database; everyone shares the same data when using the same `TURSO_*` credentials.
-- **Without Turso:** data lives in your local **`DATABASE_URL`** file (e.g. `prisma/dev.db`), which is not in git — a fresh clone starts empty until `db:push` and seed.
-- **Demo data** is defined in code (`lib/lead-generation/mock-data.ts`) and written by **`npm run db:seed`** (or automatically on first API hit to Lead Gen if the app can reach the DB).
-- If Market Databases shows **0 markets**, run `npm run db:seed` (Turso) or `npm run db:push && npm run db:seed` (local only), then refresh.
+- **Without Turso:** data lives in your local **`DATABASE_URL`** file (e.g. `prisma/dev.db`), which is not in git — a fresh clone starts empty until `db:push` and explicit imports or local seeding.
+- **Local demo data** is defined in code (`lib/lead-generation/mock-data.ts`) and written only by **`npm run db:seed`** when you want fixture data locally.
+- If Market Databases shows **0 markets**, either create one in the UI or run `npm run db:push && npm run db:seed` for a local fixture dataset.
 
 ### Directory Scraper — how to try it
 
-1. **Mock mode:** under **How to load the page**, choose **Mock mode** — demo rows, no URL or APIs.
-2. **Playwright (default live):** choose **Playwright**, install Chromium with `npx playwright install chromium`, enter a public `https://` URL. Localhost/private IPs are rejected (`URL_BLOCKED`). Name extraction uses JSON-LD / deterministic heuristics, or **two-pass OpenRouter** (locate roster → extract names) when **AI extraction** is enabled and `OPENROUTER_API_KEY` is set.
-3. **Firecrawl:** set `FIRECRAWL_API_KEY`, choose **Firecrawl** — Phase 1 uses Firecrawl `/scrape` (markdown + `onlyMainContent`). AI locate/extract and optional **visit company websites** (Playwright) behave the same. Optional `FIRECRAWL_BASE_URL` for self-hosted API.
-4. **Serper (company websites):** set `SERPER_API_KEY` from [serper.dev](https://serper.dev), enable **Find company websites (Serper search)**. After names are extracted, each row without a website gets free domain guesses (HTTP check) then one Google search via Serper (about one US dollar per 1,000 searches on typical pricing). Optional `SERPER_BASE_URL` if you self-host the API.
+1. **Playwright (default live):** choose **Playwright**, install Chromium with `npx playwright install chromium`, enter a public `https://` URL. Localhost/private IPs are rejected (`URL_BLOCKED`). Name extraction uses JSON-LD / deterministic heuristics, or **two-pass OpenRouter** (locate roster → extract names) when **AI extraction** is enabled and `OPENROUTER_API_KEY` is set.
+2. **Firecrawl:** set `FIRECRAWL_API_KEY`, choose **Firecrawl** — Phase 1 uses Firecrawl `/scrape` (markdown + `onlyMainContent`). AI locate/extract and optional **visit company websites** (Playwright) behave the same. Optional `FIRECRAWL_BASE_URL` for self-hosted API.
+3. **Serper (company websites):** set `SERPER_API_KEY` from [serper.dev](https://serper.dev), enable **Find company websites (Serper search)**. After names are extracted, each row without a website gets free domain guesses (HTTP check) then one Google search via Serper (about one US dollar per 1,000 searches on typical pricing). Optional `SERPER_BASE_URL` if you self-host the API.
+4. **Worker:** run `npm run worker:directory-scraper` so queued jobs are picked up and processed in the background.
 5. **Tests:** `DATABASE_URL="file:./prisma/vitest-directory-scraper.db" npm test`
-6. **API:** `POST /api/directory-scraper/jobs` with JSON body (`scrapeFetchMode`: `playwright` | `firecrawl`, `enableAiNameFallback`, `enableSerperWebsiteDiscovery`, etc.); poll `GET /api/directory-scraper/jobs/:id` or `GET ...?full=1`.
+6. **API:** `POST /api/directory-scraper/jobs` with JSON body (`scrapeFetchMode`: `playwright` | `firecrawl`, `enableAiNameFallback`, `enableSerperWebsiteDiscovery`, etc.); stream progress from `GET /api/directory-scraper/jobs/:id/events` or poll `GET /api/directory-scraper/jobs/:id`.
 
 **Migrations:** The first directory-scraper migration file creates **only** `directory_scrape_*` tables (org chart tables live in the same Prisma schema but are not recreated by that migration). If your dev DB was created from an older migration that mixed org + scraper DDL, you may see a Prisma checksum warning — use `prisma migrate resolve` or reset the dev database. Job metadata uses `metaJson` on `directory_scrape_jobs` (see migration `20260414120000_directory_job_meta` if present, or `prisma db push`). Per-row name-extraction debug is stored in `nameExtractionMetaJson` on `directory_scrape_results` (migration `20260413170000_name_extraction_meta`). Website discovery audit uses `websiteDiscoveryMetaJson` (migration `20260414190000_website_discovery_meta`).
 

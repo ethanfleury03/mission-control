@@ -10,6 +10,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
   const full = searchParams.get('full') === '1';
   const offset = Number(searchParams.get('resultsOffset') ?? '0');
   const limit = Number(searchParams.get('resultsLimit') ?? '0');
+  const logsLimit = Number(searchParams.get('logsLimit') ?? '0');
 
   if (full) {
     const job = await getJob(jobId);
@@ -22,8 +23,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
       ? await getJobSnapshot(jobId, {
           resultsOffset: Number.isFinite(offset) ? offset : 0,
           resultsLimit: Number.isFinite(limit) ? limit : 150,
+          logsLimit: Number.isFinite(logsLimit) && logsLimit > 0 ? logsLimit : undefined,
         })
-      : await getJobSnapshot(jobId);
+      : await getJobSnapshot(jobId, {
+          logsLimit: Number.isFinite(logsLimit) && logsLimit > 0 ? logsLimit : undefined,
+        });
 
   if (!snap) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   return NextResponse.json(snap);

@@ -1,5 +1,4 @@
 import { prismaAccountToDomain, prismaMarketToDomain } from '@/lib/lead-generation/db-mappers';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
 import { isEligibleForHubSpotPush, hubspotEligibilityReason } from '@/lib/lead-generation/push-eligibility';
 import { mapAccountToHubSpotProperties } from '@/lib/hubspot/map-lead-to-contact';
 import { hubspotPushDisabled } from '@/lib/hubspot/config';
@@ -16,8 +15,6 @@ export type PushLeadGenAccountResult =
  * Create/update HubSpot contact for a DB row. Idempotent via stored hubspotContactId, then email search, then phone search.
  */
 export async function pushLeadGenAccountById(accountId: string): Promise<PushLeadGenAccountResult> {
-  await seedLeadGenIfEmpty();
-
   if (hubspotPushDisabled()) {
     return { ok: false, status: 503, message: 'HubSpot push is disabled (DISABLE_HUBSPOT_PUSH)' };
   }

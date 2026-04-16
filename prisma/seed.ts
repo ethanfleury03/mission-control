@@ -1,14 +1,14 @@
 /**
- * Prisma seed — Lead Gen demo markets + accounts (idempotent).
+ * Prisma seed — explicit local demo data for Lead Gen.
  * Run: `npm run db:seed` (after `npm run db:push` and `.env` with DATABASE_URL).
  */
-import { seedLeadGenIfEmpty } from '../lib/lead-generation/seed-db';
+import { seedLeadGenDemoDataIfEmpty } from '../lib/lead-generation/seed-db';
 
 async function main() {
-  const r = await seedLeadGenIfEmpty();
+  const r = await seedLeadGenDemoDataIfEmpty();
   // eslint-disable-next-line no-console
   console.log(
-    `Lead Gen: upserted ${r.seededMarkets} demo market(s); created ${r.seededAccounts} demo account(s) (accounts only if table was empty).`,
+    `Lead Gen demo seed: upserted ${r.seededMarkets} market(s); created ${r.seededAccounts} demo account(s).`,
   );
 }
 

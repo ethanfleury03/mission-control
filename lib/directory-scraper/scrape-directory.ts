@@ -1,588 +1,297 @@
-import type { Browser } from 'playwright';
-import type {
-  CompanyResult,
-  DirectoryEntry,
-  WebsiteDiscoveryJobSummary,
-  WebsiteDiscoveryMeta,
-} from './types';
 import * as store from './job-store';
-import { enrichCompany } from './enrich-company';
-import { sleep } from './utils';
-import { launchChromiumForScraper } from './playwright-launch';
-import { validateScrapeUrl } from './validate-scrape-url';
-import { v4 as uuid } from 'uuid';
-import { extractCompanyNamesFromPage, extractCompanyNamesFromFirecrawl } from './extract-company-names';
-import { candidateToCompanyResult } from './name-result-mapper';
-import type { CancelSignal } from './extract-directory-entries';
-import { firecrawlScrape, isFirecrawlConfigured } from './firecrawl-client';
-import { discoverCompanyWebsite, findDominantPlaceholderDomain } from './discover-company-website';
-import { isSerperConfigured } from './serper-client';
-import { normalizeDomain } from './utils';
-import { runWithEnrichmentBudget } from './enrichment-timeout';
+import { classifyDirectoryScraperError } from './errors';
+import { runEnrichmentService } from './services/enrichment-service';
+import { runNameExtractionService } from './services/name-extraction-service';
+import { persistInitialCandidates, persistResultPatches } from './services/result-persistence-service';
+import { runWebsiteDiscoveryService } from './services/website-discovery-service';
+import type { JobPhase, JobProgress, ScrapeJob } from './types';
 
-const CONCURRENCY = 2;
-const DELAY_BETWEEN_COMPANIES_MS = 1200;
-const SERPER_BATCH = 2;
-const DELAY_BETWEEN_SERPER_MS = 700;
-/** Wall-clock cap per company so a hung TCP/DNS or stuck script cannot block the batch for minutes. */
-const ENRICHMENT_ROW_BUDGET_MS = 90_000;
-const ENRICHMENT_NAVIGATION_TIMEOUT_MS = 22_000;
+function makeProgress(
+  phase: JobPhase,
+  current: number,
+  total: number,
+  options?: {
+    totalCompanies?: number;
+    completedCompanies?: number;
+    currentCompanyName?: string;
+    message?: string;
+  },
+): JobProgress {
+  return {
+    phase,
+    current,
+    total,
+    percentage: total > 0 ? Math.round((current / total) * 100) : phase === 'queued' ? 0 : 100,
+    completedCompanies: options?.completedCompanies ?? 0,
+    totalCompanies: options?.totalCompanies ?? 0,
+    currentCompanyName: options?.currentCompanyName,
+    message: options?.message,
+  };
+}
 
-function mockResults(): CompanyResult[] {
-  const companies = [
-    { name: 'Acme Corp', website: 'https://acme.example.com', email: 'sales@acme.example.com', phone: '+1-555-0100' },
-    { name: 'Globex Inc', website: 'https://globex.example.com', email: 'info@globex.example.com', phone: '+1-555-0200' },
-    { name: 'Initech', website: 'https://initech.example.com', email: '', phone: '+1-555-0300' },
-    { name: 'Umbrella Corp', website: 'https://umbrella.example.com', email: 'contact@umbrella.example.com', phone: '' },
-    { name: 'Soylent Corp', website: '', email: '', phone: '' },
-    { name: 'Wayne Enterprises', website: 'https://wayne.example.com', email: 'bruce@wayne.example.com', phone: '+1-555-0600' },
-    { name: 'Stark Industries', website: 'https://stark.example.com', email: 'tony@stark.example.com', phone: '+1-555-0700' },
-    { name: 'Oscorp', website: 'https://oscorp.example.com', email: '', phone: '' },
-  ];
+async function logJob(
+  jobId: string,
+  phase: JobPhase,
+  level: 'info' | 'warn' | 'error',
+  eventCode: string,
+  message: string,
+) {
+  await store.addLog(jobId, level, message, { phase, eventCode });
+}
 
-  return companies.map((c, i) => ({
-    id: uuid(),
-    companyName: c.name,
-    directoryListingUrl: `https://directory.example.com/company/${c.name.toLowerCase().replace(/\s+/g, '-')}`,
-    companyWebsite: c.website,
-    contactName: '',
-    email: c.email,
-    phone: c.phone,
-    address: c.email ? '123 Business Ave, Anytown, CA 90210' : '',
-    contactPageUrl: c.website ? `${c.website}/contact` : '',
-    socialLinks: c.website ? `https://linkedin.com/company/${c.name.toLowerCase().replace(/\s+/g, '-')}` : '',
-    notes: c.email ? 'Email found on company domain' : c.phone ? 'Phone found' : 'Minimal contact info',
-    confidence: c.email && c.phone ? 'high' : c.email || c.phone ? 'medium' : 'low',
-    status: 'done',
-    needsReview: !(c.email && c.phone),
-    sortOrder: i,
-    nameExtractionMeta: {
-      normalizedName: c.name.toLowerCase(),
-      extractionMethod: 'jsonld',
-      confidenceScore: 90,
-      confidenceLabel: 'high',
-      reasons: ['mock data'],
-      sourceText: c.name,
-    },
-  }));
+async function updatePhaseProgress(
+  jobId: string,
+  phase: JobPhase,
+  current: number,
+  total: number,
+  options?: {
+    totalCompanies?: number;
+    completedCompanies?: number;
+    currentCompanyName?: string;
+    message?: string;
+  },
+) {
+  await store.updateJobStatus(jobId, 'running', {
+    phase,
+    progress: makeProgress(phase, current, total, options),
+    heartbeatAt: new Date(),
+  });
+}
+
+function determineNextPhase(job: ScrapeJob): JobPhase {
+  if (job.cancelRequestedAt) return 'cancelled';
+  if (job.status === 'completed' || job.phase === 'completed') return 'completed';
+  if (job.status === 'cancelled' || job.phase === 'cancelled') return 'cancelled';
+  if (job.results.length === 0) return 'extracting_names';
+
+  const hasPending = job.results.some((row) => row.status === 'pending');
+  if (
+    job.input.enableSerperWebsiteDiscovery &&
+    (job.phase === 'queued' || job.phase === 'extracting_names' || job.phase === 'discovering_websites')
+  ) {
+    return 'discovering_websites';
+  }
+
+  if (
+    job.input.visitCompanyWebsites &&
+    hasPending &&
+    (job.phase === 'queued' ||
+      job.phase === 'extracting_names' ||
+      job.phase === 'discovering_websites' ||
+      job.phase === 'enriching')
+  ) {
+    return 'enriching';
+  }
+
+  return 'exporting_optional';
+}
+
+async function finalizeCancelled(jobId: string, message: string) {
+  const job = await store.getJob(jobId);
+  const progress = makeProgress('cancelled', 0, 0, {
+    totalCompanies: job?.summary.companiesFound ?? 0,
+    completedCompanies: job?.summary.companiesProcessed ?? 0,
+    message,
+  });
+  await logJob(jobId, 'cancelled', 'warn', 'JOB_CANCELLED', message);
+  await store.updateJobStatus(jobId, 'cancelled', {
+    phase: 'cancelled',
+    finishedAt: new Date(),
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    progress,
+  });
 }
 
 export async function runScrapeJob(jobId: string): Promise<void> {
-  const job = await store.getJob(jobId);
-  if (!job) return;
+  const startingJob = await store.getJob(jobId);
+  if (!startingJob) return;
 
-  await store.updateJobStatus(jobId, 'running');
-  await store.addLog(jobId, 'info', `Starting scrape job for: ${job.input.url || 'MOCK MODE'}`);
-
-  if (job.input.mockMode || !job.input.url) {
-    await store.addLog(jobId, 'info', 'Running in mock mode');
-    const results = mockResults();
-    await store.setResults(jobId, results);
-    await store.recalcSummary(jobId);
-    await store.addLog(jobId, 'info', `Mock data loaded: ${results.length} companies`);
-    await store.updateJobStatus(jobId, 'completed');
-    await store.patchJobMeta(jobId, { lastError: undefined });
-    return;
-  }
-
-  const seedCheck = validateScrapeUrl(job.input.url);
-  if (!seedCheck.ok) {
-    await store.addLog(jobId, 'error', `Blocked URL: ${seedCheck.error}`);
-    await store.patchJobMeta(jobId, {
-      lastError: seedCheck.error,
-      nameExtractionDebug: {
-        sourceUrl: job.input.url,
-        finalUrl: job.input.url,
-        zeroResultExplanation: `URL blocked: ${seedCheck.error}`,
-        topContainers: [],
-        strategyCounts: {},
-        aiFallbackUsed: false,
-      },
-    });
-    await store.updateJobStatus(jobId, 'failed');
-    return;
-  }
-
-  const fetchMode = job.input.scrapeFetchMode ?? 'playwright';
-  const useFirecrawl = fetchMode === 'firecrawl';
-
-  if (useFirecrawl && !isFirecrawlConfigured()) {
-    await store.addLog(jobId, 'error', 'Firecrawl mode selected but FIRECRAWL_API_KEY is not set.');
-    await store.patchJobMeta(jobId, {
-      lastError: 'FIRECRAWL_API_KEY missing',
-      nameExtractionDebug: {
-        sourceUrl: job.input.url,
-        finalUrl: job.input.url,
-        zeroResultExplanation: 'Set FIRECRAWL_API_KEY in .env or choose Playwright fetch mode.',
-        topContainers: [],
-        strategyCounts: {},
-        aiFallbackUsed: false,
-        fetchEngine: 'firecrawl',
-      },
-    });
-    await store.updateJobStatus(jobId, 'failed');
-    return;
-  }
-
-  let browser: Browser | null = null;
-
-  try {
-    const cancelled: CancelSignal = () => store.isJobCancelled(jobId);
-
-    const pendingRows = job.results.filter((r) => r.status === 'pending');
-    const isResume = pendingRows.length > 0 && job.results.length > 0;
-
-    if (isResume) {
-      if (useFirecrawl) {
-        await store.addLog(jobId, 'warn', 'Resume with Firecrawl mode is not supported; start a new job.');
-        await store.updateJobStatus(jobId, 'failed');
-        return;
-      }
-      const launch = await launchChromiumForScraper();
-      browser = launch.browser;
-      const context = await browser.newContext({
-        userAgent:
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 720 },
-      });
-      const page = await context.newPage();
-      await store.addLog(jobId, 'info', `Resuming job: ${pendingRows.length} pending rows`);
-      await runEnrichmentPhase(jobId, page, cancelled);
-      if (!(await Promise.resolve(cancelled()))) {
-        await store.updateJobStatus(jobId, 'completed');
-        await store.addLog(jobId, 'info', 'Scrape job completed');
-        await store.patchJobMeta(jobId, { lastError: undefined });
-      }
-      return;
-    }
-
-    let candidates: Awaited<ReturnType<typeof extractCompanyNamesFromPage>>['candidates'];
-    let debug: Awaited<ReturnType<typeof extractCompanyNamesFromPage>>['debug'];
-
-    if (useFirecrawl) {
-      await store.addLog(jobId, 'info', 'Phase 1: Fetching page via Firecrawl (markdown + main content)…');
-      const fc = await firecrawlScrape(job.input.url);
-      if (!fc.ok) {
-        await store.addLog(jobId, 'error', fc.error);
-        await store.patchJobMeta(jobId, {
-          lastError: fc.error,
-          nameExtractionDebug: {
-            sourceUrl: job.input.url,
-            finalUrl: job.input.url,
-            zeroResultExplanation: fc.error,
-            topContainers: [],
-            strategyCounts: {},
-            aiFallbackUsed: false,
-            fetchEngine: 'firecrawl',
-          },
-        });
-        await store.updateJobStatus(jobId, 'failed');
-        return;
-      }
-
-      await store.addLog(jobId, 'info', `Firecrawl OK: ${fc.finalUrl.slice(0, 80)}…`);
-      const out = await extractCompanyNamesFromFirecrawl(fc, job.input.url, {
-        sourceUrl: job.input.url,
-        maxCompanies: job.input.maxCompanies,
-        enableAiFallback: job.input.enableAiNameFallback ?? false,
-        cancelled,
-        onLog: (msg) => store.addLog(jobId, 'info', msg),
-      });
-      candidates = out.candidates;
-      debug = { ...out.debug, fetchEngine: 'firecrawl' };
-
-      if (await Promise.resolve(cancelled())) {
-        await store.addLog(jobId, 'warn', 'Job cancelled after name extraction');
-        return;
-      }
-    } else {
-      const launch = await launchChromiumForScraper();
-      browser = launch.browser;
-      const context = await browser.newContext({
-        userAgent:
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 720 },
-      });
-      const page = await context.newPage();
-
-      await store.addLog(jobId, 'info', 'Phase 1: Hybrid company-name extraction (Playwright)…');
-      const out = await extractCompanyNamesFromPage(page, {
-        sourceUrl: job.input.url,
-        maxCompanies: job.input.maxCompanies,
-        enableAiFallback: job.input.enableAiNameFallback ?? false,
-        cancelled,
-        onLog: (msg) => store.addLog(jobId, 'info', msg),
-      });
-      candidates = out.candidates;
-      debug = { ...out.debug, fetchEngine: 'playwright' };
-
-      if (await Promise.resolve(cancelled())) {
-        await store.addLog(jobId, 'warn', 'Job cancelled during name extraction');
-        return;
-      }
-
-      await store.patchJobMeta(jobId, { nameExtractionDebug: debug });
-
-      if (debug.zeroResultExplanation) {
-        await store.addLog(jobId, 'warn', debug.zeroResultExplanation);
-      }
-
-      const strategyLog = Object.entries(debug.strategyCounts)
-        .map(([k, v]) => `${k}:${v}`)
-        .join(', ');
-      await store.addLog(
-        jobId,
-        'info',
-        `Extracted ${candidates.length} company name(s). Strategies: ${strategyLog || 'none'}. AI: ${debug.aiFallbackUsed ? 'yes' : 'no'}`,
-      );
-
-      const visitWebsites = job.input.visitCompanyWebsites ?? false;
-      const initialResults: CompanyResult[] = candidates.map((c, i) =>
-        candidateToCompanyResult(c, i, { visitWebsites }),
-      );
-
-      await store.updateSummary(jobId, { companiesFound: initialResults.length });
-      await store.setResults(jobId, initialResults);
-
-      if (candidates.length === 0) {
-        await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
-      }
-
-      await runWebsiteDiscoveryPhase(jobId, cancelled);
-      await runEnrichmentPhase(jobId, page, cancelled);
-
-      if (!(await Promise.resolve(cancelled()))) {
-        await store.updateJobStatus(jobId, 'completed');
-        await store.addLog(jobId, 'info', 'Scrape job completed');
-        await store.patchJobMeta(jobId, { lastError: undefined });
-      }
-      return;
-    }
-
-    // Firecrawl path: meta + results + optional enrichment (needs browser)
-    await store.patchJobMeta(jobId, { nameExtractionDebug: debug });
-
-    if (debug.zeroResultExplanation) {
-      await store.addLog(jobId, 'warn', debug.zeroResultExplanation);
-    }
-
-    const strategyLog = Object.entries(debug.strategyCounts)
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    await store.addLog(
-      jobId,
-      'info',
-      `Extracted ${candidates.length} company name(s). Strategies: ${strategyLog || 'none'}. AI: ${debug.aiFallbackUsed ? 'yes' : 'no'}`,
-    );
-
-    const visitWebsites = job.input.visitCompanyWebsites ?? false;
-    const initialResults: CompanyResult[] = candidates.map((c, i) =>
-      candidateToCompanyResult(c, i, { visitWebsites }),
-    );
-
-    await store.updateSummary(jobId, { companiesFound: initialResults.length });
-    await store.setResults(jobId, initialResults);
-
-    if (candidates.length === 0) {
-      await store.addLog(jobId, 'info', 'Name extraction finished with zero rows (see debug panel / logs).');
-    }
-
-    await runWebsiteDiscoveryPhase(jobId, cancelled);
-
-    if (visitWebsites && initialResults.some((r) => r.status === 'pending')) {
-      const launch = await launchChromiumForScraper();
-      browser = launch.browser;
-      const context = await browser.newContext({
-        userAgent:
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 720 },
-      });
-      const page = await context.newPage();
-      await runEnrichmentPhase(jobId, page, cancelled);
-    }
-
-    if (!(await Promise.resolve(cancelled()))) {
-      await store.updateJobStatus(jobId, 'completed');
-      await store.addLog(jobId, 'info', 'Scrape job completed');
-      await store.patchJobMeta(jobId, { lastError: undefined });
-    }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    await store.patchJobMeta(jobId, { lastError: message });
-    await store.addLog(jobId, 'error', `Job failed: ${message}`);
-    await store.updateJobStatus(jobId, 'failed');
-  } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
-  }
-}
-
-async function runWebsiteDiscoveryPhase(jobId: string, cancelled: CancelSignal) {
-  const job = await store.getJob(jobId);
-  if (!job?.input.enableSerperWebsiteDiscovery) {
-    await store.addLog(jobId, 'info', 'Phase Serper: skipped (website discovery not enabled for this job).');
-    return;
-  }
-  if (!isSerperConfigured()) {
-    await store.addLog(jobId, 'warn', 'Serper website discovery was enabled but SERPER_API_KEY is not set; skipping.');
-    return;
-  }
-
-  const refreshed = await store.getJob(jobId);
-  const allResults = refreshed?.results ?? [];
-  const dominant = findDominantPlaceholderDomain(allResults);
-  const rejectHosts = dominant ? [dominant] : undefined;
-
-  const rows = allResults.filter((r) => {
-    const w = r.companyWebsite?.trim();
-    if (!w) return true;
-    if (!dominant) return false;
-    try {
-      return normalizeDomain(w) === dominant;
-    } catch {
-      return false;
-    }
-  });
-
-  if (rows.length === 0) {
-    await store.addLog(
-      jobId,
-      'info',
-      `Serper discovery: nothing to resolve (${allResults.length} row(s) already have distinct websites).`,
-    );
-    await store.patchJobMeta(jobId, {
-      websiteDiscoverySummary: {
-        attempted: 0,
-        resolvedDomainGuess: 0,
-        resolvedSerper: 0,
-        unresolved: 0,
-        skippedAlreadyHadUrl: allResults.length,
-      },
-    });
-    return;
-  }
-
-  const summary: WebsiteDiscoveryJobSummary = {
-    attempted: rows.length,
-    resolvedDomainGuess: 0,
-    resolvedSerper: 0,
-    unresolved: 0,
-    skippedAlreadyHadUrl: allResults.length - rows.length,
-  };
-
-  if (dominant) {
-    await store.addLog(
-      jobId,
-      'info',
-      `Serper discovery: ${rows.length} row(s) — including ${summary.skippedAlreadyHadUrl} re-scan(s) for shared domain "${dominant}" (listing placeholder)`,
-    );
-  } else {
-    await store.addLog(jobId, 'info', `Serper discovery: resolving websites for ${rows.length} row(s) (top-5 Serper scoring + domain guess)…`);
-  }
-
-  const serperPhaseStarted = Date.now();
-  let serperBatchIndex = 0;
-
-  for (let i = 0; i < rows.length; i += SERPER_BATCH) {
-    if (await Promise.resolve(cancelled())) {
-      await store.addLog(jobId, 'warn', 'Job cancelled during Serper website discovery');
-      break;
-    }
-
-    const batch = rows.slice(i, i + SERPER_BATCH);
-    serperBatchIndex += 1;
-    const batchLabel = batch.map((r) => r.companyName.slice(0, 40)).join(' | ');
-    await store.addLog(
-      jobId,
-      'info',
-      `Serper batch ${serperBatchIndex}/${Math.ceil(rows.length / SERPER_BATCH)} (${i + 1}-${i + batch.length}/${rows.length}): ${batchLabel}`,
-    );
-    const batchStarted = Date.now();
-    const outcomes = await Promise.all(
-      batch.map(async (row) => {
-        const found = await discoverCompanyWebsite(row.companyName, {
-          directoryListingUrl: row.directoryListingUrl,
-          rejectHosts,
-        });
-        return { row, found };
-      }),
-    );
-    await store.addLog(
-      jobId,
-      'info',
-      `Serper batch ${serperBatchIndex} finished in ${Math.round((Date.now() - batchStarted) / 1000)}s`,
-    );
-
-    for (const { row, found } of outcomes) {
-      const meta: WebsiteDiscoveryMeta = {
-        method: found.method,
-        detail: found.detail,
-        serperQuery: found.serperQuery,
-      };
-      if (found.method === 'domain-guess') summary.resolvedDomainGuess += 1;
-      else if (found.method === 'serper') summary.resolvedSerper += 1;
-      else summary.unresolved += 1;
-
-      const website = found.website.trim();
-      const patch: Partial<CompanyResult> = { websiteDiscoveryMeta: meta };
-      if (website) {
-        patch.companyWebsite = website;
-        const noteLine = `Website (${found.method}): ${found.detail}`;
-        patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
-      } else {
-        const hadPlaceholder =
-          dominant &&
-          row.companyWebsite?.trim() &&
-          (() => {
-            try {
-              return normalizeDomain(row.companyWebsite) === dominant;
-            } catch {
-              return false;
-            }
-          })();
-        if (hadPlaceholder) {
-          patch.companyWebsite = '';
-          const noteLine = `Website cleared: was shared listing domain (${dominant}); ${found.detail}`;
-          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
-        } else if (found.detail) {
-          const noteLine = `Website lookup: ${found.detail}`;
-          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
-        }
-      }
-
-      await store.updateResult(jobId, row.id, patch);
-    }
-
-    await store.recalcSummary(jobId);
-    const last = batch[batch.length - 1];
-    if (last) await store.patchJobMeta(jobId, { lastProcessedCompanyName: last.companyName });
-
-    if (i + SERPER_BATCH < rows.length) {
-      await sleep(DELAY_BETWEEN_SERPER_MS);
-    }
-  }
-
-  await store.patchJobMeta(jobId, { websiteDiscoverySummary: summary });
-  await store.addLog(
+  await logJob(
     jobId,
+    startingJob.phase,
     'info',
-    `Serper discovery done in ${Math.round((Date.now() - serperPhaseStarted) / 1000)}s: domain guess ${summary.resolvedDomainGuess}, Serper ${summary.resolvedSerper}, unresolved ${summary.unresolved}`,
+    'JOB_ATTEMPT_STARTED',
+    `Worker started scrape attempt ${startingJob.attemptCount} for ${startingJob.input.url}.`,
   );
+
+  let phase = determineNextPhase(startingJob);
+  while (phase !== 'completed') {
+    if (phase === 'cancelled') {
+      await finalizeCancelled(jobId, 'Cancellation requested; stopping at the next safe checkpoint.');
+      return;
+    }
+
+    if (phase === 'extracting_names') {
+      await updatePhaseProgress(jobId, phase, 0, 1, {
+        message: 'Extracting company names from the directory page.',
+      });
+      await logJob(jobId, phase, 'info', 'PHASE_STARTED', 'Starting company name extraction.');
+
+      const extraction = await runNameExtractionService(startingJob.input, {
+        cancelled: () => store.isJobCancelled(jobId),
+        onLog: (message) => logJob(jobId, phase, 'info', 'EXTRACTION_EVENT', message),
+      });
+
+      await store.patchJobMeta(jobId, {
+        nameExtractionDebug: extraction.debug,
+        lastError: undefined,
+      });
+
+      if (extraction.debug.zeroResultExplanation) {
+        await logJob(jobId, phase, 'warn', 'EXTRACTION_ZERO_RESULTS', extraction.debug.zeroResultExplanation);
+      }
+
+      const results = await persistInitialCandidates(jobId, extraction.candidates, {
+        visitWebsites: startingJob.input.visitCompanyWebsites ?? false,
+      });
+
+      await updatePhaseProgress(jobId, phase, 1, 1, {
+        totalCompanies: results.length,
+        completedCompanies: results.filter((row) => row.status === 'done' || row.status === 'failed').length,
+        message: `Extracted ${results.length} company name(s).`,
+      });
+      await logJob(jobId, phase, 'info', 'PHASE_COMPLETED', `Name extraction completed with ${results.length} row(s).`);
+    }
+
+    const jobAfterExtraction = await store.getJob(jobId);
+    if (!jobAfterExtraction) return;
+    if (jobAfterExtraction.cancelRequestedAt) {
+      await finalizeCancelled(jobId, 'Cancellation requested after extraction.');
+      return;
+    }
+
+    phase = determineNextPhase(jobAfterExtraction);
+    if (phase === 'discovering_websites') {
+      const results = jobAfterExtraction.results;
+      const total = results.filter((row) => !row.companyWebsite?.trim()).length || results.length;
+      await updatePhaseProgress(jobId, phase, 0, total, {
+        totalCompanies: jobAfterExtraction.summary.companiesFound,
+        completedCompanies: jobAfterExtraction.summary.companiesProcessed,
+        message: 'Resolving company websites for extracted rows.',
+      });
+      await logJob(jobId, phase, 'info', 'PHASE_STARTED', 'Starting website discovery.');
+
+      const discovery = await runWebsiteDiscoveryService(results, {
+        enabled: jobAfterExtraction.input.enableSerperWebsiteDiscovery ?? false,
+        cancelled: () => store.isJobCancelled(jobId),
+        onLog: (level, message, eventCode) => logJob(jobId, phase, level, eventCode ?? 'DISCOVERY_EVENT', message),
+        onProgress: (current, totalRows, currentCompanyName) =>
+          updatePhaseProgress(jobId, phase, current, totalRows, {
+            totalCompanies: jobAfterExtraction.summary.companiesFound,
+            completedCompanies: jobAfterExtraction.summary.companiesProcessed,
+            currentCompanyName,
+            message: 'Resolving company websites.',
+          }),
+      });
+
+      await persistResultPatches(jobId, discovery.patches);
+      await store.patchJobMeta(jobId, { websiteDiscoverySummary: discovery.summary, lastError: undefined });
+      await updatePhaseProgress(jobId, phase, total, total, {
+        totalCompanies: jobAfterExtraction.summary.companiesFound,
+        completedCompanies: jobAfterExtraction.summary.companiesProcessed,
+        message: 'Website discovery finished.',
+      });
+      await logJob(jobId, phase, 'info', 'PHASE_COMPLETED', 'Website discovery completed.');
+    }
+
+    const jobAfterDiscovery = await store.getJob(jobId);
+    if (!jobAfterDiscovery) return;
+    if (jobAfterDiscovery.cancelRequestedAt) {
+      await finalizeCancelled(jobId, 'Cancellation requested after website discovery.');
+      return;
+    }
+
+    phase = determineNextPhase(jobAfterDiscovery);
+    if (phase === 'enriching') {
+      const rows = jobAfterDiscovery.results.filter((row) => row.status === 'pending');
+      await updatePhaseProgress(jobId, phase, 0, rows.length, {
+        totalCompanies: jobAfterDiscovery.summary.companiesFound,
+        completedCompanies: jobAfterDiscovery.summary.companiesProcessed,
+        message: 'Visiting company websites and extracting contact data.',
+      });
+      await logJob(jobId, phase, 'info', 'PHASE_STARTED', `Starting enrichment for ${rows.length} row(s).`);
+
+      const enrichment = await runEnrichmentService(rows, {
+        visitWebsites: jobAfterDiscovery.input.visitCompanyWebsites ?? false,
+        cancelled: () => store.isJobCancelled(jobId),
+        onLog: (level, message, eventCode) => logJob(jobId, phase, level, eventCode ?? 'ENRICHMENT_EVENT', message),
+        onProgress: (current, totalRows, currentCompanyName) =>
+          updatePhaseProgress(jobId, phase, current, totalRows, {
+            totalCompanies: jobAfterDiscovery.summary.companiesFound,
+            completedCompanies: current,
+            currentCompanyName,
+            message: 'Extracting contact data from company sites.',
+          }),
+      });
+
+      await persistResultPatches(jobId, enrichment.patches);
+      const lastPatch = enrichment.patches[enrichment.patches.length - 1];
+      if (lastPatch) {
+        const lastRow = jobAfterDiscovery.results.find((row) => row.id === lastPatch.resultId);
+        if (lastRow) {
+          await store.patchJobMeta(jobId, {
+            lastProcessedCompanyName: lastRow.companyName,
+            lastError: undefined,
+          });
+        }
+      }
+      await updatePhaseProgress(jobId, phase, rows.length, rows.length, {
+        totalCompanies: jobAfterDiscovery.summary.companiesFound,
+        completedCompanies: rows.length,
+        message: 'Enrichment finished.',
+      });
+      await logJob(jobId, phase, 'info', 'PHASE_COMPLETED', 'Enrichment completed.');
+    }
+
+    const jobAfterEnrichment = await store.getJob(jobId);
+    if (!jobAfterEnrichment) return;
+    if (jobAfterEnrichment.cancelRequestedAt) {
+      await finalizeCancelled(jobId, 'Cancellation requested after enrichment.');
+      return;
+    }
+
+    phase = determineNextPhase(jobAfterEnrichment);
+    if (phase === 'exporting_optional') {
+      await updatePhaseProgress(jobId, phase, 1, 1, {
+        totalCompanies: jobAfterEnrichment.summary.companiesFound,
+        completedCompanies: jobAfterEnrichment.summary.companiesProcessed,
+        message: 'Scrape is complete. Results are ready for export or import.',
+      });
+      await logJob(jobId, phase, 'info', 'EXPORT_READY', 'Results are ready for optional export/import.');
+      await store.updateJobStatus(jobId, 'completed', {
+        phase: 'completed',
+        finishedAt: new Date(),
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        errorCode: null,
+        errorMessage: null,
+        progress: makeProgress('completed', 1, 1, {
+          totalCompanies: jobAfterEnrichment.summary.companiesFound,
+          completedCompanies: jobAfterEnrichment.summary.companiesProcessed,
+          message: 'Job completed.',
+        }),
+      });
+      await store.patchJobMeta(jobId, { lastError: undefined });
+      await logJob(jobId, 'completed', 'info', 'JOB_COMPLETED', 'Scrape job completed successfully.');
+      return;
+    }
+
+    if (phase === 'completed') {
+      return;
+    }
+  }
 }
 
-async function runEnrichmentPhase(jobId: string, page: import('playwright').Page, cancelled: CancelSignal) {
-  const job = await store.getJob(jobId);
-  if (!job) return;
-  const visitWebsites = job.input.visitCompanyWebsites ?? false;
-  const refreshed = await store.getJob(jobId);
-  const rowsToProcess = visitWebsites ? (refreshed?.results ?? []).filter((r) => r.status === 'pending') : [];
-
-  if (!visitWebsites) {
-    await store.addLog(
-      jobId,
-      'info',
-      'Phase 2 enrichment: skipped (Visit company websites is off). Rows stay at Phase 1 contact only; no per-company site crawl.',
-    );
-    return;
-  }
-
-  if (rowsToProcess.length > 0) {
-    await store.addLog(
-      jobId,
-      'info',
-      `Phase 2 enrichment: ${rowsToProcess.length} pending row(s), concurrency ${CONCURRENCY}, ~${Math.round(ENRICHMENT_ROW_BUDGET_MS / 1000)}s budget per row`,
-    );
-  }
-
-  const enrichPhaseStarted = Date.now();
-
-  for (let i = 0; i < rowsToProcess.length; i += CONCURRENCY) {
-    if (await Promise.resolve(cancelled())) {
-      await store.addLog(jobId, 'warn', 'Job cancelled during enrichment');
-      break;
-    }
-
-    const batch = rowsToProcess.slice(i, i + CONCURRENCY);
-    await store.addLog(
-      jobId,
-      'info',
-      `Enrichment batch: rows ${i + 1}-${i + batch.length} of ${rowsToProcess.length} — ${batch.map((r) => r.companyName.slice(0, 35)).join(' | ')}`,
-    );
-    const enrichPromises = batch.map(async (row) => {
-      const detailFromMeta = row.nameExtractionMeta?.detailUrl?.trim();
-      const entry: DirectoryEntry = {
-        name: row.companyName,
-        url: row.directoryListingUrl,
-        ...(detailFromMeta ? { detailUrl: detailFromMeta } : {}),
-        existingCompanyWebsite: row.companyWebsite?.trim() || undefined,
-        websiteDiscoveryMethod: row.websiteDiscoveryMeta?.method,
-      };
-      // Skip the cosmetic "scraping" status write — each write costs a Turso
-      // HTTP round-trip, and firing one per row exceeded the free-tier rate limit
-      // on large jobs (~150+ rows), causing subsequent updateResult writes to be
-      // silently dropped. recalcSummary is also moved to per-batch only.
-      const rowLog = async (msg: string) => {
-        await store.addLog(jobId, 'info', `[${row.companyName.slice(0, 48)}] ${msg}`);
-      };
-      await rowLog('Enrichment started');
-
-      try {
-        const enrichPage = await page.context().newPage();
-        enrichPage.setDefaultNavigationTimeout(ENRICHMENT_NAVIGATION_TIMEOUT_MS);
-        enrichPage.setDefaultTimeout(Math.min(ENRICHMENT_NAVIGATION_TIMEOUT_MS, 25_000));
-        try {
-          const rowStarted = Date.now();
-          const result = await runWithEnrichmentBudget(ENRICHMENT_ROW_BUDGET_MS, () =>
-            enrichCompany(enrichPage, entry, visitWebsites, cancelled, row.id, rowLog),
-          );
-          await store.updateResult(jobId, row.id, {
-            ...result,
-            id: row.id,
-            nameExtractionMeta: row.nameExtractionMeta,
-          });
-          await rowLog(`Enrichment finished in ${Math.round((Date.now() - rowStarted) / 1000)}s (status ${result.status})`);
-        } finally {
-          await enrichPage.close().catch(() => {});
-        }
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        await store.patchJobMeta(jobId, { lastError: `${row.companyName}: ${message}` });
-        await store.updateResult(jobId, row.id, {
-          status: 'failed',
-          error: message,
-          notes: `Enrichment failed: ${message}`,
-          needsReview: true,
-          nameExtractionMeta: row.nameExtractionMeta,
-        });
-      }
-    });
-
-    await Promise.all(enrichPromises);
-    await store.recalcSummary(jobId);
-    const lastInBatch = batch[batch.length - 1];
-    if (lastInBatch) {
-      await store.patchJobMeta(jobId, {
-        lastProcessedCompanyName: lastInBatch.companyName,
-      });
-    }
-    await store.addLog(
-      jobId,
-      'info',
-      `Enrichment progress: ${Math.min(i + CONCURRENCY, rowsToProcess.length)}/${rowsToProcess.length} (elapsed ${Math.round((Date.now() - enrichPhaseStarted) / 1000)}s)`,
-    );
-
-    if (i + CONCURRENCY < rowsToProcess.length) {
-      await sleep(DELAY_BETWEEN_COMPANIES_MS);
-    }
-  }
-
-  await store.recalcSummary(jobId);
-  if (rowsToProcess.length > 0) {
-    await store.addLog(
-      jobId,
-      'info',
-      `Phase 2 enrichment complete: ${rowsToProcess.length} row(s) in ${Math.round((Date.now() - enrichPhaseStarted) / 1000)}s total`,
-    );
+export async function runScrapeJobSafely(jobId: string): Promise<void> {
+  try {
+    await runScrapeJob(jobId);
+  } catch (error) {
+    const job = await store.getJob(jobId);
+    const phase = job?.phase ?? 'queued';
+    const classified = classifyDirectoryScraperError(error, phase);
+    await store.patchJobMeta(jobId, { lastError: classified.message });
+    await logJob(jobId, classified.phase, 'error', classified.code, classified.message);
+    throw classified;
   }
 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { prismaMarketToDomain } from '@/lib/lead-generation/db-mappers';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,8 +15,6 @@ function slugify(name: string): string {
 
 /** GET: list markets with company counts. Seeds demo data on first empty DB. */
 export async function GET() {
-  await seedLeadGenIfEmpty();
-
   const markets = await prisma.leadGenMarket.findMany({ orderBy: { name: 'asc' } });
   const counts = await prisma.leadGenAccount.groupBy({
     by: ['marketId'],
@@ -31,8 +28,6 @@ export async function GET() {
 
 /** POST: create market { name, description?, countries?, targetPersonas?, solutionAreas?, status?, notes?, slug? } */
 export async function POST(request: NextRequest) {
-  await seedLeadGenIfEmpty();
-
   let payload: Record<string, unknown>;
   try {
     payload = await request.json();

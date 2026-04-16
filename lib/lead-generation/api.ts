@@ -2,6 +2,8 @@ import type { Account, Market } from './types';
 
 const BASE = '/api/lead-generation';
 
+type AccountPage = { items: Account[]; nextCursor: string | null };
+
 export async function fetchMarkets(): Promise<Market[]> {
   const res = await fetch(`${BASE}/markets`, { cache: 'no-store' });
   if (!res.ok) throw new Error(await res.text());
@@ -22,11 +24,30 @@ export async function fetchMarketById(id: string): Promise<Market | null> {
   return res.json();
 }
 
-export async function fetchAccounts(params?: Record<string, string>): Promise<Account[]> {
+async function fetchAccountsPage(params?: Record<string, string>): Promise<AccountPage> {
   const q = new URLSearchParams(params ?? {}).toString();
   const res = await fetch(`${BASE}/accounts${q ? `?${q}` : ''}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const data = await res.json();
+  if (Array.isArray(data)) return { items: data as Account[], nextCursor: null };
+  return data as AccountPage;
+}
+
+export async function fetchAccounts(params?: Record<string, string>): Promise<Account[]> {
+  const items: Account[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const page = await fetchAccountsPage({
+      ...(params ?? {}),
+      limit: '250',
+      ...(cursor ? { cursor } : {}),
+    });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  return items;
 }
 
 export async function fetchAccount(id: string): Promise<Account | null> {
@@ -152,7 +173,7 @@ export async function importScraperToMarket(body: {
   resultIds?: string[];
   defaultCountry?: string;
   skipDuplicates?: boolean;
-}): Promise<{ created: number; updated?: number; skipped: number; errors: string[] }> {
+}): Promise<{ created: number; updated?: number; skipped: number; conflicts?: number; errors: string[] }> {
   const res = await fetch(`${BASE}/accounts/import-from-scraper`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -160,5 +181,5 @@ export async function importScraperToMarket(body: {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
-  return data as { created: number; updated?: number; skipped: number; errors: string[] };
+  return data as { created: number; updated?: number; skipped: number; conflicts?: number; errors: string[] };
 }

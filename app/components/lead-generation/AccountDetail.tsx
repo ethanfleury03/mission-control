@@ -357,7 +357,7 @@ export function AccountDetail({ accountId, onBack, onNavigateMarket }: AccountDe
               ))}
             </div>
           ) : (
-            <p className="text-2xs text-neutral-400 italic">No product fit rows (demo seed only for legacy IDs).</p>
+            <p className="text-2xs text-neutral-400 italic">No product fit rows yet.</p>
           )}
         </div>
 

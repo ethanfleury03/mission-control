@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
 import { normalizeDomain } from '@/lib/lead-generation/adapters';
 import { inferColumnMap, parseCsvLine, rowValue, type CsvColumnMap } from '@/lib/lead-generation/csv-import';
+import { buildLeadGenIdentity } from '@/lib/lead-generation/identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,8 +10,6 @@ export const dynamic = 'force-dynamic';
 const MAX_ROWS = 500;
 
 export async function POST(request: NextRequest) {
-  await seedLeadGenIfEmpty();
-
   const form = await request.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'Expected multipart form' }, { status: 400 });
 
@@ -58,11 +55,14 @@ export async function POST(request: NextRequest) {
     const website = rowValue(cells, colMap.website).trim();
     const domainRaw = rowValue(cells, colMap.domain).trim();
     const domain = normalizeDomain(domainRaw || website || null);
+    const identity = buildLeadGenIdentity({ name, domain, website });
 
-    const data: Prisma.LeadGenAccountCreateInput = {
+    const data = {
       market: { connect: { id: marketId } },
       name,
+      normalizedName: identity.normalizedName,
       domain,
+      normalizedDomain: identity.normalizedDomain,
       website: website || (domain ? `https://${domain}` : ''),
       email: rowValue(cells, colMap.email).trim(),
       phone: rowValue(cells, colMap.phone).trim(),
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      await prisma.leadGenAccount.create({ data });
+      await prisma.leadGenAccount.create({ data: data as any });
       created++;
     } catch (e) {
       errors.push(`Row ${i + 1}: ${e instanceof Error ? e.message : String(e)}`);

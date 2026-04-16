@@ -1,10 +1,10 @@
 /**
- * Idempotent seed of Lead Gen markets + demo accounts.
- * Uses findUnique + create/update on markets (Turso + driver adapter can 400 on upsert)
- * and a promise chain lock so concurrent API requests don't race.
+ * Explicit dev/demo seed of Lead Gen markets + demo accounts.
+ * This must only run from local setup/scripts/tests, never from normal API traffic.
  */
 import { prisma } from '@/lib/prisma';
 import { SEED_MARKETS, SEED_ACCOUNTS } from './mock-data';
+import { buildLeadGenIdentity } from './identity';
 
 type SeedResult = { seededMarkets: number; seededAccounts: number };
 
@@ -52,11 +52,14 @@ async function performSeed(): Promise<SeedResult> {
   for (const a of SEED_ACCOUNTS) {
     const marketId = idByLegacyId.get(a.marketId);
     if (!marketId) continue;
+    const identity = buildLeadGenIdentity({ name: a.name, domain: a.domain, website: a.website });
     await prisma.leadGenAccount.create({
       data: {
         marketId,
         name: a.name,
+        normalizedName: identity.normalizedName,
         domain: a.domain,
+        normalizedDomain: identity.normalizedDomain,
         website: a.website,
         email: a.email ?? '',
         phone: a.phone ?? '',
@@ -77,7 +80,7 @@ async function performSeed(): Promise<SeedResult> {
         reviewState: a.reviewState,
         leadPipelineStage: 'discovered',
         lastSeenAt: new Date(a.lastSeenAt),
-      },
+      } as any,
     });
     accounts += 1;
   }
@@ -85,7 +88,7 @@ async function performSeed(): Promise<SeedResult> {
   return { seededMarkets: marketsTouched, seededAccounts: accounts };
 }
 
-export async function seedLeadGenIfEmpty(): Promise<SeedResult> {
+export async function seedLeadGenDemoDataIfEmpty(): Promise<SeedResult> {
   const result = seedLock.then(() => performSeed());
   seedLock = result.then(
     () => {},
@@ -93,3 +96,6 @@ export async function seedLeadGenIfEmpty(): Promise<SeedResult> {
   );
   return result;
 }
+
+/** Backward-compatible alias for local scripts/tests. Do not call from live API routes. */
+export const seedLeadGenIfEmpty = seedLeadGenDemoDataIfEmpty;

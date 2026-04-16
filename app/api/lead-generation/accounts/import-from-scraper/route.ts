@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJob } from '@/lib/directory-scraper/job-store';
 import { prisma } from '@/lib/prisma';
-import { buildAccountCreateData } from '@/lib/lead-generation/scraper-import';
 import { prismaAccountToDomain } from '@/lib/lead-generation/db-mappers';
-import { normalizeDomain } from '@/lib/lead-generation/adapters';
-import { seedLeadGenIfEmpty } from '@/lib/lead-generation/seed-db';
+import {
+  buildAccountCreateData,
+  buildManualWinsMerge,
+  buildScraperImportLookupKey,
+  type ExistingAccountForImport,
+} from '@/lib/lead-generation/scraper-import';
+import { normalizeLeadGenCountryKey } from '@/lib/lead-generation/identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,12 +21,51 @@ type ImportBody = {
   skipDuplicates?: boolean;
 };
 
+type MergeOutcome = 'created' | 'updated' | 'skipped_duplicate' | 'conflict' | 'error';
+
+function nameCountryKey(name: string | null | undefined, country: string | null | undefined) {
+  const normalized = buildScraperImportLookupKey({ name, country });
+  return `${normalized.normalizedName}|${normalized.countryKey}`;
+}
+
+function pushMapValue<T>(map: Map<string, T[]>, key: string, value: T) {
+  const list = map.get(key) ?? [];
+  list.push(value);
+  map.set(key, list);
+}
+
+async function createIngestionEvent(data: {
+  marketId: string;
+  accountId?: string | null;
+  directoryJobId: string;
+  directoryResultId: string;
+  mergeOutcome: MergeOutcome;
+  conflictFields?: string[];
+  details?: Record<string, unknown>;
+}) {
+  const prismaAny = prisma as any;
+  await prismaAny.leadGenIngestionEvent.create({
+    data: {
+      marketId: data.marketId,
+      accountId: data.accountId ?? null,
+      directoryJobId: data.directoryJobId,
+      directoryResultId: data.directoryResultId,
+      mergeOutcome: data.mergeOutcome,
+      conflictFieldsJson: JSON.stringify(data.conflictFields ?? []),
+      detailsJson: JSON.stringify(data.details ?? {}),
+    },
+  });
+}
+
 /**
  * Import directory scrape results into Lead Gen accounts for a market.
+ * Match order inside a market:
+ * 1. directoryResultId
+ * 2. normalizedDomain
+ * 3. normalizedName + country (only when domain missing)
+ * 4. create new
  */
 export async function POST(request: NextRequest) {
-  await seedLeadGenIfEmpty();
-
   let body: ImportBody;
   try {
     body = await request.json();
@@ -44,97 +87,172 @@ export async function POST(request: NextRequest) {
   const job = await getJob(jobId);
   if (!job) return NextResponse.json({ error: 'scrape job not found' }, { status: 404 });
 
-  const skipDuplicates = body.skipDuplicates !== false;
   const defaultCountry = typeof body.defaultCountry === 'string' ? body.defaultCountry : undefined;
   const idFilter = Array.isArray(body.resultIds) && body.resultIds.length > 0 ? new Set(body.resultIds) : null;
-
   let results = job.results ?? [];
-  if (idFilter) results = results.filter((r) => idFilter.has(r.id));
-  results = results.filter((r) => r.status !== 'failed');
+  if (idFilter) results = results.filter((result) => idFilter.has(result.id));
+  results = results.filter((result) => result.status !== 'failed');
 
-  const resultIds = [...new Set(results.map((r) => r.id).filter(Boolean))] as string[];
-
-  /** Accounts in this market already tied to these scrape rows — refresh on re-import (email/phone/website). */
-  const existingByResultId = new Map<string, { id: string }>();
-  if (skipDuplicates && resultIds.length > 0) {
-    const rows = await prisma.leadGenAccount.findMany({
-      where: { marketId, directoryResultId: { in: resultIds } },
-      select: { id: true, directoryResultId: true },
+  const candidates = results.map((result) => {
+    const incoming = buildAccountCreateData({ marketId, jobId, result, defaultCountry });
+    const lookup = buildScraperImportLookupKey({
+      name: incoming.name,
+      domain: incoming.domain,
+      website: incoming.website,
+      country: incoming.country,
     });
-    for (const row of rows) {
-      if (row.directoryResultId) existingByResultId.set(row.directoryResultId, { id: row.id });
-    }
+    return { result, incoming, lookup };
+  });
+
+  if (candidates.length === 0) {
+    return NextResponse.json({
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      conflicts: 0,
+      errors: [],
+      accounts: [],
+    });
   }
 
-  /** Same job+market already imported this domain+result combo (legacy dedupe when directoryResultId missing). */
-  const domainResultKeys = new Set<string>();
-  if (skipDuplicates) {
-    const legacy = await prisma.leadGenAccount.findMany({
-      where: { marketId, directoryJobId: jobId },
-      select: { directoryResultId: true, domain: true },
-    });
-    for (const e of legacy) {
-      domainResultKeys.add(`${e.directoryResultId ?? ''}:${normalizeDomain(e.domain)}`);
-    }
+  const resultIds = candidates.map((candidate) => candidate.result.id);
+  const domains = [...new Set(candidates.map((candidate) => candidate.lookup.normalizedDomain).filter(Boolean))];
+  const normalizedNames = [
+    ...new Set(candidates.map((candidate) => candidate.lookup.normalizedName).filter(Boolean)),
+  ];
+  const countries = [...new Set(candidates.map((candidate) => candidate.incoming.country).filter(Boolean))];
+
+  const existingRows = await prisma.leadGenAccount.findMany({
+    where: {
+      marketId,
+      OR: [
+        resultIds.length > 0 ? { directoryResultId: { in: resultIds } } : undefined,
+        domains.length > 0 ? { normalizedDomain: { in: domains } } : undefined,
+        normalizedNames.length > 0
+          ? { normalizedName: { in: normalizedNames }, country: { in: countries } }
+          : undefined,
+      ].filter(Boolean) as any,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const existingByResultId = new Map<string, ExistingAccountForImport>();
+  const existingByDomain = new Map<string, ExistingAccountForImport[]>();
+  const existingByNameCountry = new Map<string, ExistingAccountForImport[]>();
+
+  for (const row of existingRows as unknown as ExistingAccountForImport[]) {
+    if (row.directoryResultId) existingByResultId.set(row.directoryResultId, row);
+    if (row.normalizedDomain) pushMapValue(existingByDomain, row.normalizedDomain, row);
+    pushMapValue(existingByNameCountry, nameCountryKey(row.normalizedName ?? row.name, row.country), row);
   }
 
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let conflicts = 0;
   const errors: string[] = [];
   const sampleAccounts: ReturnType<typeof prismaAccountToDomain>[] = [];
 
-  const pushSample = (a: ReturnType<typeof prismaAccountToDomain>) => {
-    if (sampleAccounts.length < 50) sampleAccounts.push(a);
+  const pushSample = (account: ReturnType<typeof prismaAccountToDomain>) => {
+    if (sampleAccounts.length < 50) sampleAccounts.push(account);
   };
 
-  for (const r of results) {
-    const domain = normalizeDomain(r.companyWebsite || null);
-    const dedupeKey = `${r.id ?? ''}:${domain}`;
-    if (skipDuplicates && domainResultKeys.has(dedupeKey) && !existingByResultId.has(r.id)) {
-      skipped += 1;
-      continue;
-    }
+  for (const candidate of candidates) {
+    const { result, incoming, lookup } = candidate;
+
+    const byResult = existingByResultId.get(result.id);
+    const byDomain = lookup.normalizedDomain ? existingByDomain.get(lookup.normalizedDomain)?.[0] : undefined;
+    const byNameCountry =
+      !lookup.normalizedDomain
+        ? existingByNameCountry.get(`${lookup.normalizedName}|${lookup.countryKey}`)?.[0]
+        : undefined;
+
+    const existing = byResult ?? byDomain ?? byNameCountry;
+    const matchStrategy = byResult
+      ? 'directoryResultId'
+      : byDomain
+        ? 'normalizedDomain'
+        : byNameCountry
+          ? 'normalizedNameCountry'
+          : 'created';
 
     try {
-      const data = buildAccountCreateData({ marketId, jobId, result: r, defaultCountry });
-      const existingId = r.id ? existingByResultId.get(r.id)?.id : undefined;
-
-      if (existingId) {
-        const a = await prisma.leadGenAccount.update({
-          where: { id: existingId },
-          data: {
-            directoryJobId: jobId,
-            name: data.name,
-            domain: data.domain,
-            website: data.website,
-            email: data.email,
-            phone: data.phone,
-            country: data.country,
-            region: data.region,
-            industry: data.industry,
-            subindustry: data.subindustry,
-            companySizeBand: data.companySizeBand,
-            description: data.description,
-            sourceUrl: data.sourceUrl,
-            reviewState: data.reviewState,
-            fitSummary: data.fitSummary,
-            lastSeenAt: data.lastSeenAt,
-          },
+      if (!existing) {
+        const createdRow = await prisma.leadGenAccount.create({ data: incoming as any });
+        created += 1;
+        const domain = incoming.normalizedDomain;
+        const createdAccount = createdRow as unknown as ExistingAccountForImport;
+        existingByResultId.set(result.id, createdAccount);
+        if (domain) pushMapValue(existingByDomain, domain, createdAccount);
+        pushMapValue(
+          existingByNameCountry,
+          `${incoming.normalizedName}|${normalizeLeadGenCountryKey(incoming.country)}`,
+          createdAccount,
+        );
+        await createIngestionEvent({
+          marketId,
+          accountId: createdRow.id,
+          directoryJobId: jobId,
+          directoryResultId: result.id,
+          mergeOutcome: 'created',
+          details: { matchStrategy },
         });
-        updated += 1;
-        domainResultKeys.add(dedupeKey);
-        pushSample(prismaAccountToDomain(a));
+        pushSample(prismaAccountToDomain(createdRow));
         continue;
       }
 
-      const a = await prisma.leadGenAccount.create({ data });
-      created += 1;
-      if (r.id) existingByResultId.set(r.id, { id: a.id });
-      domainResultKeys.add(dedupeKey);
-      pushSample(prismaAccountToDomain(a));
-    } catch (e) {
-      errors.push(`${r.companyName}: ${e instanceof Error ? e.message : String(e)}`);
+      const merge = buildManualWinsMerge(existing, incoming);
+      const didFillFields = merge.filledFields.length > 0;
+      const hasConflicts = merge.conflicts.length > 0;
+      const mergeOutcome: MergeOutcome = hasConflicts
+        ? 'conflict'
+        : didFillFields || existing.directoryResultId !== incoming.directoryResultId
+          ? 'updated'
+          : 'skipped_duplicate';
+
+      const updatedRow = await prisma.leadGenAccount.update({
+        where: { id: existing.id },
+        data: merge.data as any,
+      });
+
+      if (mergeOutcome === 'conflict') conflicts += 1;
+      else if (mergeOutcome === 'updated') updated += 1;
+      else skipped += 1;
+
+      await createIngestionEvent({
+        marketId,
+        accountId: existing.id,
+        directoryJobId: jobId,
+        directoryResultId: result.id,
+        mergeOutcome,
+        conflictFields: merge.conflicts,
+        details: {
+          matchStrategy,
+          filledFields: merge.filledFields,
+        },
+      });
+
+      existingByResultId.set(result.id, updatedRow as unknown as ExistingAccountForImport);
+      if (lookup.normalizedDomain) {
+        pushMapValue(existingByDomain, lookup.normalizedDomain, updatedRow as unknown as ExistingAccountForImport);
+      }
+      pushMapValue(
+        existingByNameCountry,
+        `${incoming.normalizedName}|${normalizeLeadGenCountryKey(incoming.country)}`,
+        updatedRow as unknown as ExistingAccountForImport,
+      );
+      pushSample(prismaAccountToDomain(updatedRow));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${result.companyName}: ${message}`);
+      await createIngestionEvent({
+        marketId,
+        accountId: undefined,
+        directoryJobId: jobId,
+        directoryResultId: result.id,
+        mergeOutcome: 'error',
+        details: { error: message, matchStrategy },
+      });
     }
   }
 
@@ -142,6 +260,7 @@ export async function POST(request: NextRequest) {
     created,
     updated,
     skipped,
+    conflicts,
     errors: errors.slice(0, 20),
     accounts: sampleAccounts,
   });
