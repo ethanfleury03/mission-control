@@ -43,11 +43,13 @@ pause()  { read -r -p "$(printf '\033[1;35m?>\033[0m %s ' "$*")" _; }
 
 # Load repo-root .env — bash does not read .env by itself; `source` exports vars
 # for this script only (set -a = auto-export every assignment while sourcing).
+# Strip CR (\r) so Windows-style CRLF files work (otherwise bash sees `$'\r'`
+# as a stray command and variables never set correctly).
 if [[ -f "$REPO_ROOT/.env" ]]; then
   info "Loading variables from $REPO_ROOT/.env"
   set -a
-  # shellcheck disable=SC1091
-  source "$REPO_ROOT/.env"
+  # shellcheck disable=SC1090
+  source <(tr -d '\r' < "$REPO_ROOT/.env")
   set +a
 fi
 

@@ -27,7 +27,9 @@ Browser --(Google OAuth, hd=arrsys.com)--> mc-web
 
 ## One-shot deploy
 
-Put `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the **repo root** `.env` file, or export them in the shell. The bootstrap script **automatically sources** `$REPO_ROOT/.env` if it exists (bash never reads `.env` on its own).
+Put `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the **repo root** `.env` file, or export them in the shell. The bootstrap script **automatically sources** `$REPO_ROOT/.env` if it exists (bash never reads `.env` on its own). The loader strips carriage returns, so **Windows CRLF** `.env` files work.
+
+If you still see `$'\r': command not found` when sourcing `.env` manually, convert to Unix line endings once: `sed -i 's/\r$//' .env` (GNU sed) or open the file in your editor and save with **LF** line endings.
 
 ```bash
 # 1. Authenticate and pick the project
