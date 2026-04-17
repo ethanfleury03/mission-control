@@ -114,10 +114,14 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${CLOUDBUILD_AGENT_SA}" \
   --role=roles/cloudbuild.serviceAgent --condition=None >/dev/null 2>&1 || true
 
-# gcloud builds submit uploads sources to gs://PROJECT_ID_cloudbuild/ — if that bucket
-# does not exist yet, submit fails with NOT_FOUND. Create it and grant Cloud Build access.
-CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
-info "Ensuring Cloud Build source bucket gs://${CLOUDBUILD_BUCKET}"
+# Regional Cloud Build stages source at gs://PROJECT_ID_<region>_cloudbuild/source (hyphens
+# in region, e.g. us-central1 → ..._us-central1_cloudbuild). The legacy bucket
+# gs://PROJECT_ID_cloudbuild is used only when builds/region is global. We set
+# builds/region to $REGION, so we MUST create the regional bucket and pass
+# --gcs-source-staging-dir or the API looks for the tarball in the wrong bucket → NOT_FOUND.
+CLOUDBUILD_BUCKET="${PROJECT_ID}_${REGION}_cloudbuild"
+GCS_SOURCE_STAGING="gs://${CLOUDBUILD_BUCKET}/source"
+info "Ensuring Cloud Build staging bucket gs://${CLOUDBUILD_BUCKET} (for builds/region=${REGION})"
 if ! gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
   gcloud storage buckets create "gs://${CLOUDBUILD_BUCKET}" \
     --project="$PROJECT_ID" \
@@ -330,6 +334,7 @@ bash "$SCRIPT_DIR/apply-pg-schema.sh" \
 info "Building and deploying mc-api"
 gcloud builds submit "$REPO_ROOT" \
   --region="$REGION" \
+  --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.api.yaml" \
   --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN"
 
@@ -351,6 +356,7 @@ gcloud run services add-iam-policy-binding mc-api --region="$REGION" \
 info "Building and deploying mc-web"
 gcloud builds submit "$REPO_ROOT" \
   --region="$REGION" \
+  --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.web.yaml" \
   --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL"
 
@@ -368,6 +374,7 @@ gcloud run services update mc-web --region="$REGION" \
 info "Building and deploying mc-scraper (Cloud Run Job)"
 gcloud builds submit "$REPO_ROOT" \
   --region="$REGION" \
+  --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.scraper.yaml" \
   --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO"
 
