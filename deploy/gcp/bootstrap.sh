@@ -8,6 +8,9 @@
 #   TURSO_DATABASE_URL
 #   TURSO_AUTH_TOKEN
 #
+# If these are only in the repo-root .env (not exported in the shell), the
+# script loads .env automatically before checking.
+#
 # Optional env (any you skip simply don't get wired to Cloud Run):
 #   OPENROUTER_API_KEY, FIRECRAWL_API_KEY, SERPER_API_KEY,
 #   HUBSPOT_ACCESS_TOKEN, HUBSPOT_PORTAL_ID,
@@ -37,6 +40,16 @@ info()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn()   { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 die()    { printf '\033[1;31mFATAL:\033[0m %s\n' "$*" >&2; exit 1; }
 pause()  { read -r -p "$(printf '\033[1;35m?>\033[0m %s ' "$*")" _; }
+
+# Load repo-root .env — bash does not read .env by itself; `source` exports vars
+# for this script only (set -a = auto-export every assignment while sourcing).
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  info "Loading variables from $REPO_ROOT/.env"
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
 
 command -v gcloud >/dev/null 2>&1 || die "gcloud not installed. See https://cloud.google.com/sdk/docs/install"
 command -v openssl >/dev/null 2>&1 || die "openssl required"

@@ -27,12 +27,14 @@ Browser --(Google OAuth, hd=arrsys.com)--> mc-web
 
 ## One-shot deploy
 
+Put `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the **repo root** `.env` file, or export them in the shell. The bootstrap script **automatically sources** `$REPO_ROOT/.env` if it exists (bash never reads `.env` on its own).
+
 ```bash
 # 1. Authenticate and pick the project
 gcloud auth login
 gcloud config set project YOUR_PROJECT_ID
 
-# 2. Export secrets (skip optional ones you do not have yet)
+# 2a. Either: put Turso vars in ./.env (recommended), or 2b. export them:
 export TURSO_DATABASE_URL="libsql://..."
 export TURSO_AUTH_TOKEN="..."
 
