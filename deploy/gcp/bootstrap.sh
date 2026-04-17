@@ -63,6 +63,25 @@ gcloud config set run/region "$REGION" >/dev/null
 [ -n "${TURSO_DATABASE_URL:-}" ] || die "TURSO_DATABASE_URL not set in env"
 [ -n "${TURSO_AUTH_TOKEN:-}" ]   || die "TURSO_AUTH_TOKEN not set in env"
 
+# Cloud SQL Auth Proxy (used by apply-pg-schema.sh) needs Application Default Credentials,
+# not only 'gcloud auth login'. Fail fast with a clear message.
+ensure_application_default_credentials() {
+  if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" && -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]]; then
+    return 0
+  fi
+  if gcloud auth application-default print-access-token >/dev/null 2>&1; then
+    return 0
+  fi
+  die "Application Default Credentials (ADC) are missing. The Cloud SQL proxy needs them for the schema step.
+
+Run this once in this terminal (browser login), then re-run bootstrap:
+  gcloud auth application-default login
+
+This is separate from: gcloud auth login
+Docs: https://cloud.google.com/docs/authentication/external/set-up-adc"
+}
+ensure_application_default_credentials
+
 # -------------------------------------------------------------------------------------------------
 # 1. Enable APIs
 # -------------------------------------------------------------------------------------------------

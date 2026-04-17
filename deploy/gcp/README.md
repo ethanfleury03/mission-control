@@ -21,6 +21,7 @@ Browser --(Google OAuth, hd=arrsys.com)--> mc-web
 ## Prerequisites
 
 - `gcloud` CLI authenticated as a user with Owner/Editor on the empty target project.
+- **Application Default Credentials** for the Cloud SQL proxy (schema step). After `gcloud auth login`, run once: `gcloud auth application-default login` (same machine / workspace as bootstrap).
 - `openssl` and `psql`. The bootstrap script installs the **Cloud SQL proxy** on demand; on **Debian/Ubuntu** it also tries `apt-get install postgresql-client` if `psql` is missing (no `sudo` needed if you run as root). On **macOS**, install manually: `brew install libpq && brew link --force libpq`.
 - For the schema step, the proxy uses **Application Default Credentials**. If the proxy log says permission denied or invalid credentials, run: `gcloud auth application-default login` (in the same environment where you run bootstrap).
 - A Turso database + auth token (free tier is fine). The dashboard continues to use Turso; only the Express API uses Cloud SQL.
