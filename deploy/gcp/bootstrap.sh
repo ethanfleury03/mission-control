@@ -59,6 +59,9 @@ command -v openssl >/dev/null 2>&1 || die "openssl required"
 info "Using project: $PROJECT_ID in region $REGION"
 gcloud config set project "$PROJECT_ID" >/dev/null
 gcloud config set run/region "$REGION" >/dev/null
+# Regional Cloud Build: if builds/region is unset, gcloud defaults to global and
+# builds submit can fail with NOT_FOUND when talking to the regional API.
+gcloud config set builds/region "$REGION" >/dev/null
 
 [ -n "${TURSO_DATABASE_URL:-}" ] || die "TURSO_DATABASE_URL not set in env"
 [ -n "${TURSO_AUTH_TOKEN:-}" ]   || die "TURSO_AUTH_TOKEN not set in env"
@@ -89,6 +92,7 @@ info "Enabling required GCP APIs"
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
+  serviceusage.googleapis.com \
   storage.googleapis.com \
   artifactregistry.googleapis.com \
   sqladmin.googleapis.com \
@@ -115,6 +119,18 @@ fi
 gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
   --member="serviceAccount:${CLOUDBUILD_SA}" \
   --role=roles/storage.objectAdmin >/dev/null 2>&1 || true
+# Human (or SA) running bootstrap uploads source; ensure they can write objects to staging.
+SUBMITTER_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
+if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
+  if [[ "$SUBMITTER_ACCOUNT" == *.iam.gserviceaccount.com ]]; then
+    SUBMITTER_MEMBER="serviceAccount:${SUBMITTER_ACCOUNT}"
+  else
+    SUBMITTER_MEMBER="user:${SUBMITTER_ACCOUNT}"
+  fi
+  gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
+    --member="$SUBMITTER_MEMBER" \
+    --role=roles/storage.objectAdmin >/dev/null 2>&1 || true
+fi
 
 # -------------------------------------------------------------------------------------------------
 # 2. Artifact Registry
@@ -302,6 +318,7 @@ bash "$SCRIPT_DIR/apply-pg-schema.sh" \
 # -------------------------------------------------------------------------------------------------
 info "Building and deploying mc-api"
 gcloud builds submit "$REPO_ROOT" \
+  --region="$REGION" \
   --config="$SCRIPT_DIR/cloudbuild.api.yaml" \
   --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN"
 
@@ -322,6 +339,7 @@ gcloud run services add-iam-policy-binding mc-api --region="$REGION" \
 # -------------------------------------------------------------------------------------------------
 info "Building and deploying mc-web"
 gcloud builds submit "$REPO_ROOT" \
+  --region="$REGION" \
   --config="$SCRIPT_DIR/cloudbuild.web.yaml" \
   --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL"
 
@@ -338,6 +356,7 @@ gcloud run services update mc-web --region="$REGION" \
 # -------------------------------------------------------------------------------------------------
 info "Building and deploying mc-scraper (Cloud Run Job)"
 gcloud builds submit "$REPO_ROOT" \
+  --region="$REGION" \
   --config="$SCRIPT_DIR/cloudbuild.scraper.yaml" \
   --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO"
 
