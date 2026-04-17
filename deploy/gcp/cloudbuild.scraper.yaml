@@ -17,7 +17,7 @@ steps:
       - '-f'
       - Dockerfile.scraper
       - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$BUILD_ID'
       - '-t'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
       - .
@@ -51,7 +51,7 @@ steps:
           VERB=create
         fi
         gcloud run jobs "$VERB" "${_JOB}" \
-          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA" \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$BUILD_ID" \
           --region "${_REGION}" \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
           --set-env-vars "NODE_ENV=production,RUN_ONCE=1" \
@@ -62,7 +62,7 @@ steps:
           --memory 2Gi
 
 images:
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$BUILD_ID'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
 
 options:
