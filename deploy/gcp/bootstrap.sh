@@ -219,7 +219,11 @@ else
 fi
 
 CLOUD_SQL_CONN="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
-DATABASE_URL="postgresql://${SQL_USER}:${SQL_PASS}@/${SQL_DATABASE}?host=/cloudsql/${CLOUD_SQL_CONN}"
+# libpq allows "postgresql://...@/db?host=/cloudsql/..." (empty authority) but Node's URL cannot
+# parse it, which crashes mc-api at startup. Use a discardable TCP host; pg uses ?host= unix path.
+SQL_USER_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$SQL_USER")"
+SQL_PASS_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$SQL_PASS")"
+DATABASE_URL="postgresql://${SQL_USER_ENC}:${SQL_PASS_ENC}@127.0.0.1/${SQL_DATABASE}?host=/cloudsql/${CLOUD_SQL_CONN}"
 
 # -------------------------------------------------------------------------------------------------
 # 4. Service accounts

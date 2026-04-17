@@ -6,6 +6,23 @@ dotenv.config();
 
 let pool: Pool | null = null;
 
+/**
+ * WHATWG URL rejects libpq-style URLs with an empty host:
+ *   postgresql://user:pass@/dbname?host=/cloudsql/...
+ * Rewrite for parsing only; unix socket still comes from ?host= when present.
+ */
+function parsePostgresDatabaseUrl(dbUrl: string): URL {
+  try {
+    return new URL(dbUrl);
+  } catch {
+    const patched = dbUrl.replace(/^(postgres(?:ql)?:\/\/[^/]+)@\//, '$1@127.0.0.1/');
+    if (patched !== dbUrl) {
+      return new URL(patched);
+    }
+    throw new Error('DATABASE_URL is not a valid URL.');
+  }
+}
+
 function ensurePool(): Pool {
   if (pool) return pool;
 
@@ -17,12 +34,7 @@ function ensurePool(): Pool {
     throw new Error('DATABASE_URL must start with postgres:// or postgresql://');
   }
 
-  let url: URL;
-  try {
-    url = new URL(dbUrl);
-  } catch {
-    throw new Error('DATABASE_URL is not a valid URL.');
-  }
+  const url = parsePostgresDatabaseUrl(dbUrl);
 
   const sslmode =
     url.searchParams.get('sslmode') || process.env.PGSSLMODE || '';

@@ -3,7 +3,7 @@
 # Requires:
 #   - _CLOUD_SQL_INSTANCE: "project:region:instance" for --add-cloudsql-instances
 #   - Secret Manager secret "mc-api-db-url" containing the full DATABASE_URL
-#     (postgresql://user:pw@/missioncontrol?host=/cloudsql/<INSTANCE>).
+#     (postgresql://user:pw@127.0.0.1/missioncontrol?host=/cloudsql/<INSTANCE>).
 #
 # The service is deployed with --no-allow-unauthenticated; only principals with
 # roles/run.invoker (mc-web-sa, mc-scraper-sa) can reach it.
