@@ -4,6 +4,9 @@ import { getDb } from '../database';
 
 const ADVISORY_LOCK_KEY = 0x7265676973747279; // 'registry' in hex
 
+/** Postgres duplicate DDL — safe to skip only if we ROLLBACK TO SAVEPOINT (catching alone aborts the txn). */
+const IGNORABLE_DDL_ERROR_CODES = new Set(['42P07', '42710']);
+
 /**
  * Split SQL file into statements, respecting $$...$$ blocks
  */
@@ -76,6 +79,7 @@ export async function runRegistryMigrations(): Promise<void> {
     }
     const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
+    let savepointId = 0;
     for (const file of files) {
       const applied = await isMigrationApplied(client, file);
       if (applied) continue;
@@ -86,11 +90,16 @@ export async function runRegistryMigrations(): Promise<void> {
 
       for (const stmt of statements) {
         if (!stmt.trim()) continue;
+        const sp = `mreg_${++savepointId}`;
         try {
+          await client.query(`SAVEPOINT ${sp}`);
           await client.query(stmt);
+          await client.query(`RELEASE SAVEPOINT ${sp}`);
         } catch (err: any) {
-          if (err.code === '42P07') continue;
-          if (err.code === '42710') continue;
+          await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+          if (IGNORABLE_DDL_ERROR_CODES.has(err.code)) {
+            continue;
+          }
           console.error(`Migration error in ${file}:`, err.message);
           await client.query('ROLLBACK');
           throw err;
