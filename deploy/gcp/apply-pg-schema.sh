@@ -45,10 +45,47 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-if ! command -v psql >/dev/null 2>&1; then
-  echo "FATAL: psql is required on PATH (sudo apt-get install postgresql-client)" >&2
+ensure_psql() {
+  if command -v psql >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "==> psql not found; attempting to install PostgreSQL client..." >&2
+  if command -v apt-get >/dev/null 2>&1; then
+    APT_UPDATE="apt-get update -qq"
+    APT_INSTALL="apt-get install -y postgresql-client"
+    if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" != "0" ]; then
+      APT_UPDATE="sudo DEBIAN_FRONTEND=noninteractive $APT_UPDATE"
+      APT_INSTALL="sudo DEBIAN_FRONTEND=noninteractive $APT_INSTALL"
+    else
+      APT_UPDATE="DEBIAN_FRONTEND=noninteractive $APT_UPDATE"
+      APT_INSTALL="DEBIAN_FRONTEND=noninteractive $APT_INSTALL"
+    fi
+    if eval "$APT_UPDATE" && eval "$APT_INSTALL"; then
+      return 0
+    fi
+  fi
+  if command -v apk >/dev/null 2>&1; then
+    APK="apk add --no-cache"
+    if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" != "0" ]; then APK="sudo $APK"; fi
+    if eval "$APK postgresql16-client" 2>/dev/null || eval "$APK postgresql15-client" 2>/dev/null || eval "$APK postgresql-client"; then
+      return 0
+    fi
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    echo "On macOS, run: brew install libpq && brew link --force libpq" >&2
+    echo "Then re-run this script (or re-run deploy/gcp/bootstrap.sh)." >&2
+  else
+    echo "Install the PostgreSQL client, then re-run:" >&2
+    echo "  Debian/Ubuntu: sudo apt-get install -y postgresql-client" >&2
+    echo "  RHEL/Fedora:   sudo dnf install -y postgresql" >&2
+  fi
+  return 1
+}
+
+ensure_psql || {
+  echo "FATAL: psql is required to apply SQL migrations." >&2
   exit 1
-fi
+}
 
 export PGPASSWORD="$DB_PASS"
 
