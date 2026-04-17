@@ -6,7 +6,6 @@ substitutions:
   _AR_REPO: mission-control
   _JOB: mc-scraper
   _SERVICE_ACCOUNT: mc-scraper-sa
-  _LOGS_BUCKET: ''
 
 steps:
   - id: build
@@ -63,7 +62,3 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
-
-logsBucket: '${_LOGS_BUCKET}'
-options:
-  logging: GCS_ONLY

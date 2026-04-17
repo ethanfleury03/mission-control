@@ -123,8 +123,6 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 # the default log / worker paths.
 CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
 GCS_SOURCE_STAGING="gs://${CLOUDBUILD_BUCKET}/source"
-# logsBucket must be the bucket root (gs://BUCKET), not gs://BUCKET/logs — see Cloud Build schema.
-GCS_LOGS_BUCKET="gs://${CLOUDBUILD_BUCKET}"
 info "Ensuring Cloud Build bucket gs://${CLOUDBUILD_BUCKET} (location=US, global Cloud Build)"
 if gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
   EXISTING_LOC="$(gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --format='value(location)' 2>/dev/null || true)"
@@ -160,6 +158,24 @@ if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
   else
     grant_staging_bucket_access "user:${SUBMITTER_ACCOUNT}"
   fi
+fi
+
+# Cloud Build's default worker SA must exist or builds.create returns NOT_FOUND after source upload.
+if ! gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  die "Cloud Build service account is missing: ${CLOUDBUILD_SA}
+
+This usually means the Cloud Build API was enabled before Google finished provisioning the SA.
+
+Fix (Console, ~2 minutes):
+  1. https://console.cloud.google.com/apis/library/cloudbuild.googleapis.com?project=${PROJECT_ID}
+  2. Click **Manage** → **Disable API** → confirm.
+  3. Click **Enable** again and wait until enabled.
+  4. Re-run this bootstrap script.
+
+Or run once:
+  gcloud services disable cloudbuild.googleapis.com --project=${PROJECT_ID} --quiet
+  gcloud services enable cloudbuild.googleapis.com --project=${PROJECT_ID} --quiet
+"
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -350,7 +366,7 @@ info "Building and deploying mc-api"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.api.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN,_LOGS_BUCKET=$GCS_LOGS_BUCKET"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN"
 
 API_URL="$(gcloud run services describe mc-api --region="$REGION" --format='value(status.url)')"
 [ -n "$API_URL" ] || die "Could not read mc-api URL"
@@ -371,7 +387,7 @@ info "Building and deploying mc-web"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.web.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL,_LOGS_BUCKET=$GCS_LOGS_BUCKET"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL"
 
 WEB_URL="$(gcloud run services describe mc-web --region="$REGION" --format='value(status.url)')"
 [ -n "$WEB_URL" ] || die "Could not read mc-web URL"
@@ -388,7 +404,7 @@ info "Building and deploying mc-scraper (Cloud Run Job)"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.scraper.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_LOGS_BUCKET=$GCS_LOGS_BUCKET"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO"
 
 # -------------------------------------------------------------------------------------------------
 # 12. Cloud Scheduler -> Cloud Run Job (every 5 minutes)

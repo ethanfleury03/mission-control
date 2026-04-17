@@ -14,8 +14,6 @@ substitutions:
   _SERVICE: mc-api
   _SERVICE_ACCOUNT: mc-api-sa
   _CLOUD_SQL_INSTANCE: ''
-  # Bucket root only (gs://PROJECT_cloudbuild); bootstrap sets this — not gs://.../logs
-  _LOGS_BUCKET: ''
 
 steps:
   - id: build
@@ -62,7 +60,3 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
-
-logsBucket: '${_LOGS_BUCKET}'
-options:
-  logging: GCS_ONLY

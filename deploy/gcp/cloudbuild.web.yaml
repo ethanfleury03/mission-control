@@ -14,7 +14,6 @@ substitutions:
   _SERVICE: mc-web
   _SERVICE_ACCOUNT: mc-web-sa
   _API_URL: ''
-  _LOGS_BUCKET: ''
 
 steps:
   - id: build
@@ -69,7 +68,3 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
-
-logsBucket: '${_LOGS_BUCKET}'
-options:
-  logging: GCS_ONLY
