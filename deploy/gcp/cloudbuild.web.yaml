@@ -3,8 +3,9 @@
 # Substitutions (all have defaults that match bootstrap.sh):
 #   _REGION, _AR_REPO, _SERVICE, _SERVICE_ACCOUNT, _API_URL
 #
-# Invoked by bootstrap.sh via:
-#   gcloud builds submit --config=deploy/gcp/cloudbuild.web.yaml \
+# Invoked by bootstrap.sh via (global Cloud Build — do not pass --region on submit):
+#   gcloud builds submit . --gcs-source-staging-dir=gs://PROJECT_ID_cloudbuild/source \
+#     --config=deploy/gcp/cloudbuild.web.yaml \
 #     --substitutions=_REGION=us-central1,_API_URL=https://mc-api-xxx.run.app
 
 substitutions:

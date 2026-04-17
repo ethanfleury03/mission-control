@@ -17,7 +17,6 @@ steps:
     args:
       - builds
       - submit
-      - '--region=${_REGION}'
       - '--config=deploy/gcp/cloudbuild.web.yaml'
       - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO},_API_URL=${_API_URL}'
       - .
@@ -29,7 +28,6 @@ steps:
     args:
       - builds
       - submit
-      - '--region=${_REGION}'
       - '--config=deploy/gcp/cloudbuild.api.yaml'
       - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO},_CLOUD_SQL_INSTANCE=${_CLOUD_SQL_INSTANCE}'
       - .
@@ -41,7 +39,6 @@ steps:
     args:
       - builds
       - submit
-      - '--region=${_REGION}'
       - '--config=deploy/gcp/cloudbuild.scraper.yaml'
       - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO}'
       - .
