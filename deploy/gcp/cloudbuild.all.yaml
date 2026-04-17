@@ -46,5 +46,3 @@ steps:
       - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO}'
       - .
 
-options:
-  logging: CLOUD_LOGGING_ONLY

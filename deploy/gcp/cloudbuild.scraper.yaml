@@ -62,6 +62,3 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
-
-options:
-  logging: CLOUD_LOGGING_ONLY

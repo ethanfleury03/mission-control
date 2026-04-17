@@ -92,6 +92,7 @@ info "Enabling required GCP APIs"
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
+  logging.googleapis.com \
   serviceusage.googleapis.com \
   storage.googleapis.com \
   artifactregistry.googleapis.com \
