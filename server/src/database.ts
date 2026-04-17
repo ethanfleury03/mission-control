@@ -11,7 +11,7 @@ let pool: Pool | null = null;
  *   postgresql://user:pass@/dbname?host=/cloudsql/...
  * Rewrite for parsing only; unix socket still comes from ?host= when present.
  */
-function parsePostgresDatabaseUrl(dbUrl: string): URL {
+export function parsePostgresDatabaseUrl(dbUrl: string): URL {
   try {
     return new URL(dbUrl);
   } catch {

@@ -4,7 +4,13 @@ import http from 'http';
 import path from 'path';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import { initDatabaseAndConnect, createTables, seedInitialData, getDb } from './database';
+import {
+  initDatabaseAndConnect,
+  createTables,
+  seedInitialData,
+  getDb,
+  parsePostgresDatabaseUrl,
+} from './database';
 import { runRegistryMigrations } from './db/migrateRegistry';
 import { seedRegistryFromJsonIfEmpty } from './registry/seedFromJson';
 import { seedOrgFromStaticIfEmpty } from './org/seedFromStatic';
@@ -20,6 +26,9 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
+
+/** True after DB init, migrations, seeds, and dispatcher are ready; API routes return 503 until then. */
+let apiReady = false;
 
 // === Data Source Report State ===
 let dataSourceReport: DataSourceReport | null = null;
@@ -75,8 +84,10 @@ interface DataSourceReport {
 
 function maskDatabaseUrl(url: string): string {
   try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.username}:****@${parsed.hostname}:${parsed.port}${parsed.pathname}`;
+    const parsed = parsePostgresDatabaseUrl(url);
+    const sock = parsed.searchParams.get('host');
+    const hostLabel = sock && sock.startsWith('/') ? `(unix:${sock})` : `${parsed.hostname}:${parsed.port || ''}`;
+    return `${parsed.protocol}//${parsed.username}:****@${hostLabel}${parsed.pathname}`;
   } catch {
     return 'invalid-url';
   }
@@ -84,10 +95,11 @@ function maskDatabaseUrl(url: string): string {
 
 function parseDatabaseUrl(url: string): { host: string | null; database: string | null } {
   try {
-    const parsed = new URL(url);
+    const parsed = parsePostgresDatabaseUrl(url);
+    const sock = parsed.searchParams.get('host');
     return {
-      host: parsed.hostname,
-      database: parsed.pathname.replace(/^\//, '') || null
+      host: sock && sock.startsWith('/') ? sock : parsed.hostname || null,
+      database: parsed.pathname.replace(/^\//, '') || null,
     };
   } catch {
     return { host: null, database: null };
@@ -324,8 +336,46 @@ app.use(cors());
 app.use(express.json());
 
 // === Health Endpoints ===
+// Cloud Run / Docker: bind HTTP before DB so the revision passes the port check; probes use /health/live.
 
-app.get('/health', async (req, res) => {
+app.get('/health/live', (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: 'mc-api',
+    kService: process.env.K_SERVICE || null,
+    kRevision: process.env.K_REVISION || null,
+    apiReady,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/health/startup', (_req, res) => {
+  if (apiReady) {
+    return res.status(200).json({ ready: true, service: 'mc-api', timestamp: new Date().toISOString() });
+  }
+  return res.status(503).json({ ready: false, service: 'mc-api', timestamp: new Date().toISOString() });
+});
+
+app.use((req, res, next) => {
+  if (apiReady) return next();
+  const p = req.path || '';
+  if (p === '/health/live' || p === '/health/startup' || p === '/health') return next();
+  return res.status(503).json({
+    error: 'starting',
+    message: 'Server is initializing database and migrations; retry shortly.',
+    path: req.path,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/health', async (_req, res) => {
+  if (!apiReady) {
+    return res.status(503).json({
+      status: 'starting',
+      database: 'initializing',
+      timestamp: new Date().toISOString(),
+    });
+  }
   try {
     const db = getDb();
     await db.query('SELECT 1');
@@ -395,6 +445,91 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 const server = http.createServer(app);
 
 // === Startup ===
+async function runBackgroundInit(): Promise<void> {
+  console.log('==> Background init: connecting to PostgreSQL...');
+
+  try {
+    await initDatabaseAndConnect();
+    console.log('✓ Database pool initialized and connected');
+  } catch (err: any) {
+    console.error('FATAL: Failed to initialize database:', err?.message || err);
+    throw err;
+  }
+
+  const connectionStatus = await checkDatabaseConnection();
+  if (!connectionStatus.reachable) {
+    console.error('FATAL: PostgreSQL connection failed:', connectionStatus.error);
+    if (process.env.REQUIRE_POSTGRES === 'true') {
+      console.error('REQUIRE_POSTGRES=true, exiting.');
+      throw new Error(connectionStatus.error || 'PostgreSQL unreachable');
+    }
+  }
+
+  try {
+    await createTables();
+    console.log('✓ Base tables created/verified');
+  } catch (err: any) {
+    console.error('FATAL: Failed to create base tables:', err.message);
+    throw err;
+  }
+
+  let migrationsOk = true;
+  try {
+    await runRegistryMigrations();
+    console.log('✓ Registry migrations completed');
+  } catch (err: any) {
+    console.error('FATAL: Registry migrations failed:', err.message);
+    migrationsOk = false;
+    throw err;
+  }
+
+  try {
+    await seedRegistryFromJsonIfEmpty();
+    console.log('✓ Seed check completed');
+  } catch (err: any) {
+    console.warn('⚠ Seed from JSON failed:', err.message);
+  }
+
+  try {
+    await seedOrgFromStaticIfEmpty();
+    console.log('✓ Org seed check completed');
+  } catch (err: any) {
+    console.warn('⚠ Org seed failed:', err.message);
+  }
+
+  try {
+    await seedPoliciesIfEmpty();
+    console.log('✓ Policy seed check completed');
+  } catch (err: any) {
+    console.warn('⚠ Policy seed failed:', err.message);
+  }
+
+  try {
+    await seedInitialData();
+    console.log('✓ Initial data seeded');
+  } catch (err: any) {
+    console.warn('⚠ Initial data seed failed:', err.message);
+  }
+
+  dataSourceReport = await generateDataSourceReport();
+  printDataSourceReport(dataSourceReport);
+
+  if (migrationsOk && dataSourceReport.registry.tablesPresent === false) {
+    console.error('FATAL: Registry tables not found after migrations');
+    throw new Error('Registry tables not found after migrations');
+  }
+
+  wsManager.initialize(server);
+  app.locals.wss = wsManager;
+
+  console.log('Starting work dispatcher...');
+  startDispatcher({ pollIntervalMs: 2000, claimBatchSize: 3 });
+  console.log('✓ Work dispatcher started');
+
+  apiReady = true;
+  console.log('✓ API ready (full traffic enabled)');
+}
+
 async function start() {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  MISSION CONTROL SERVER STARTING');
@@ -402,10 +537,10 @@ async function start() {
   console.log(`  PORT: ${PORT}`);
   console.log(`  HOST: ${HOST}`);
   console.log(`  NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`  K_REVISION: ${process.env.K_REVISION || '(not set)'}`);
   console.log(`  DATABASE_URL: ${maskDatabaseUrl(process.env.DATABASE_URL || 'postgresql://localhost:5432/missioncontrol')}`);
   console.log('═══════════════════════════════════════════════════════════════\n');
 
-  // Fail fast: DATABASE_URL required and must be Postgres
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl || dbUrl.trim() === '') {
     console.error('FATAL: DATABASE_URL is required. No silent fallback to SQLite or JSON.');
@@ -416,97 +551,7 @@ async function start() {
     process.exit(1);
   }
 
-  // Initialize PostgreSQL and verify connectivity
-  try {
-    await initDatabaseAndConnect();
-    console.log('✓ Database pool initialized and connected');
-  } catch (err: any) {
-    console.error('FATAL: Failed to initialize database:', err.message);
-    process.exit(1);
-  }
-
-  const connectionStatus = await checkDatabaseConnection();
-  if (!connectionStatus.reachable) {
-    console.error('FATAL: PostgreSQL connection failed:', connectionStatus.error);
-    if (process.env.REQUIRE_POSTGRES === 'true') {
-      console.error('REQUIRE_POSTGRES=true, exiting.');
-      process.exit(1);
-    }
-  }
-
-  // Create base tables (tasks, progress, etc.)
-  try {
-    await createTables();
-    console.log('✓ Base tables created/verified');
-  } catch (err: any) {
-    console.error('FATAL: Failed to create base tables:', err.message);
-    process.exit(1);
-  }
-
-  // Run registry migrations
-  let migrationsOk = true;
-  try {
-    await runRegistryMigrations();
-    console.log('✓ Registry migrations completed');
-  } catch (err: any) {
-    console.error('FATAL: Registry migrations failed:', err.message);
-    migrationsOk = false;
-    process.exit(1);
-  }
-
-  // Seed from JSON if registry empty (gated in seedFromJson: dev only or REGISTRY_SEED_FROM_JSON=true)
-  try {
-    await seedRegistryFromJsonIfEmpty();
-    console.log('✓ Seed check completed');
-  } catch (err: any) {
-    console.warn('⚠ Seed from JSON failed:', err.message);
-  }
-
-  // Seed org chart from static data if empty
-  try {
-    await seedOrgFromStaticIfEmpty();
-    console.log('✓ Org seed check completed');
-  } catch (err: any) {
-    console.warn('⚠ Org seed failed:', err.message);
-  }
-
-  // Seed policies if empty
-  try {
-    await seedPoliciesIfEmpty();
-    console.log('✓ Policy seed check completed');
-  } catch (err: any) {
-    console.warn('⚠ Policy seed failed:', err.message);
-  }
-
-  // Seed initial data
-  try {
-    await seedInitialData();
-    console.log('✓ Initial data seeded');
-  } catch (err: any) {
-    console.warn('⚠ Initial data seed failed:', err.message);
-  }
-
-  // Generate and print Data Source Report
-  dataSourceReport = await generateDataSourceReport();
-  printDataSourceReport(dataSourceReport);
-
-  // Verify registry tables exist
-  if (migrationsOk && dataSourceReport.registry.tablesPresent === false) {
-    console.error('FATAL: Registry tables not found after migrations');
-    process.exit(1);
-  }
-
-  // Initialize WebSocket
-  wsManager.initialize(server);
-  app.locals.wss = wsManager;
-
-  // Start work dispatcher (MVP: runs in-process)
-  console.log('Starting work dispatcher...');
-  startDispatcher({ pollIntervalMs: 2000, claimBatchSize: 3 });
-  console.log('✓ Work dispatcher started');
-
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
+  process.once('SIGTERM', () => {
     console.log('\nSIGTERM received, shutting down gracefully...');
     stopDispatcher();
     server.close(() => {
@@ -515,16 +560,22 @@ async function start() {
     });
   });
 
-  // Start server
   server.listen(PORT, HOST, () => {
-    console.log(`✓ Mission Control Server running at http://${HOST}:${PORT}`);
+    console.log(`✓ HTTP listening on http://${HOST}:${PORT} (DB init continues in background)`);
+    console.log(`  Live probe: http://${HOST}:${PORT}/health/live`);
     console.log(`  Health:     http://${HOST}:${PORT}/health`);
     console.log(`  Details:    http://${HOST}:${PORT}/health/details`);
     console.log(`  Dispatcher: http://${HOST}:${PORT}/dispatcher/status`);
     console.log(`  API Base:   http://${HOST}:${PORT}/api`);
     console.log(`  WebSocket:  ws://${HOST}:${PORT}/ws`);
     console.log('\n═══════════════════════════════════════════════════════════════');
+
+    runBackgroundInit().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('FATAL: Background initialization failed:', msg);
+      process.exit(1);
+    });
   });
 }
 
-start();
+void start();

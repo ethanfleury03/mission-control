@@ -478,7 +478,7 @@ else
 fi
 
 info "Smoke-check: mc-api must refuse unauthenticated requests"
-CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/health" || true)
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/health/live" || true)
 if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
   echo "  OK: mc-api correctly refused public access (HTTP $CODE)"
 else

@@ -90,6 +90,8 @@ At the end the script prints:
 - `app/api/_lib/backend.ts` fetches a Google-signed ID token from the Cloud Run metadata server for any outbound request to a `*.run.app` host and sets it as `Authorization: Bearer ...`. Locally this no-ops so `npm run dev` still works.
 - `mc-api` is deployed with `--no-allow-unauthenticated`. Even someone with the API URL cannot hit it.
 
+`mc-api` listens on `PORT` **before** Postgres finishes connecting. **Cloud Run startup probe** hits `GET /health/live` (always 200 once HTTP is up). **`GET /health/startup`** returns 503 until migrations and seeds finish, then 200. **`GET /health`** returns 503 with `database: "initializing"` until the API is fully ready, then behaves as before (DB ping). Other routes return 503 with `error: "starting"` until ready so callers do not hit half-initialized state.
+
 ## Re-deploying a single service
 
 ```bash

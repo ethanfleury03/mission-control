@@ -56,6 +56,8 @@ steps:
           --platform managed \
           --no-allow-unauthenticated \
           --port 8080 \
+          --cpu-boost \
+          --startup-probe="initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=60,httpGet.port=8080,httpGet.path=/health/live" \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
           --add-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
           --set-env-vars "NODE_ENV=production,PGSSLMODE=disable" \
