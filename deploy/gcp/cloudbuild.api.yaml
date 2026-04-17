@@ -15,6 +15,10 @@ substitutions:
   _SERVICE_ACCOUNT: mc-api-sa
   _CLOUD_SQL_INSTANCE: ''
 
+# User-managed worker (bootstrap creates mc-build-runner). Required when org policy blocks
+# PROJECT_NUMBER@cloudbuild.gserviceaccount.com. With a custom SA, logs MUST be CLOUD_LOGGING_ONLY.
+serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
+
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
@@ -60,3 +64,6 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

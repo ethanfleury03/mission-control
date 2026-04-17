@@ -15,6 +15,8 @@ substitutions:
   _SERVICE_ACCOUNT: mc-web-sa
   _API_URL: ''
 
+serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
+
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
@@ -68,3 +70,6 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

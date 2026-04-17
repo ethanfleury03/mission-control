@@ -32,6 +32,8 @@ WEB_SA="mc-web-sa"
 API_SA="mc-api-sa"
 SCRAPER_SA="mc-scraper-sa"
 SCHEDULER_SA="mc-scheduler-sa"
+# User-managed SA for Cloud Build when Google default @cloudbuild / compute SAs are blocked by org policy.
+BUILD_RUNNER_SA="mc-build-runner"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -157,9 +159,6 @@ grant_staging_bucket_access() {
 grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_AGENT_SA}"
 if gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
   grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_SA}"
-elif gcloud iam service-accounts describe "${COMPUTE_DEFAULT_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
-  warn "Granting staging bucket to Compute default SA (legacy @cloudbuild not provisioned yet): ${COMPUTE_DEFAULT_SA}"
-  grant_staging_bucket_access "serviceAccount:${COMPUTE_DEFAULT_SA}"
 fi
 SUBMITTER_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
 if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
@@ -168,27 +167,6 @@ if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
   else
     grant_staging_bucket_access "user:${SUBMITTER_ACCOUNT}"
   fi
-fi
-
-# Legacy Cloud Build SA can take minutes to appear after enabling the API; do not hard-fail.
-info "Waiting for Cloud Build service account (up to ~3 minutes)…"
-for _ in $(seq 1 36); do
-  if gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    info "Cloud Build SA ready: ${CLOUDBUILD_SA}"
-    grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_SA}"
-    break
-  fi
-  sleep 5
-done
-if ! gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
-  warn "Legacy Cloud Build SA still missing after wait: ${CLOUDBUILD_SA}"
-  if gcloud iam service-accounts describe "${COMPUTE_DEFAULT_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    warn "Granting staging bucket to Compute default SA: ${COMPUTE_DEFAULT_SA}"
-    grant_staging_bucket_access "serviceAccount:${COMPUTE_DEFAULT_SA}"
-  else
-    warn "Compute default SA also missing. Ensure an org admin has not blocked default SAs."
-  fi
-  warn "If builds fail with NOT_FOUND, open IAM and confirm Google-managed service accounts are allowed for this project."
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -257,6 +235,26 @@ ensure_sa "$WEB_SA"      "Mission Control web (Cloud Run)"
 ensure_sa "$API_SA"      "Mission Control api (Cloud Run)"
 ensure_sa "$SCRAPER_SA"  "Mission Control scraper (Cloud Run Job)"
 ensure_sa "$SCHEDULER_SA" "Mission Control scheduler invoker"
+ensure_sa "$BUILD_RUNNER_SA" "Mission Control Cloud Build worker"
+
+# User-managed Cloud Build worker (required when org policy blocks @cloudbuild / compute default SAs).
+# cloudbuild.yaml sets serviceAccount + CLOUD_LOGGING_ONLY per Google docs.
+RUNNER_EMAIL="${BUILD_RUNNER_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+info "Configuring Cloud Build worker SA ${RUNNER_EMAIL}"
+for ROLE in roles/logging.logWriter roles/artifactregistry.writer roles/run.admin roles/cloudsql.client roles/secretmanager.secretAccessor roles/serviceusage.serviceUsageConsumer; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${RUNNER_EMAIL}" \
+    --role="$ROLE" --condition=None >/dev/null 2>&1 || true
+done
+for S in "$API_SA" "$WEB_SA" "$SCRAPER_SA"; do
+  gcloud iam service-accounts add-iam-policy-binding "${S}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --member="serviceAccount:${RUNNER_EMAIL}" \
+    --role=roles/iam.serviceAccountUser --condition=None >/dev/null 2>&1 || true
+done
+gcloud iam service-accounts add-iam-policy-binding "${RUNNER_EMAIL}" \
+  --member="serviceAccount:${CLOUDBUILD_AGENT_SA}" \
+  --role=roles/iam.serviceAccountTokenCreator --condition=None >/dev/null 2>&1 || true
+grant_staging_bucket_access "serviceAccount:${RUNNER_EMAIL}"
 
 # -------------------------------------------------------------------------------------------------
 # 5. Secret Manager
