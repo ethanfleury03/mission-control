@@ -105,8 +105,13 @@ gcloud services enable \
   iamcredentials.googleapis.com \
   compute.googleapis.com
 
+# Compute Engine API creates the default SA some orgs use for Cloud Build when @cloudbuild is delayed.
+gcloud services enable compute.googleapis.com --project="$PROJECT_ID" >/dev/null 2>&1 || true
+
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+# Some orgs use the Compute Engine default SA for Cloud Build workers instead of @cloudbuild.gserviceaccount.com.
+COMPUTE_DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 # Google-managed agent used by the Cloud Build API (distinct from @cloudbuild.gserviceaccount.com).
 CLOUDBUILD_AGENT_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 
@@ -149,8 +154,13 @@ grant_staging_bucket_access() {
     --member="$MEMBER" \
     --role=roles/storage.admin >/dev/null 2>&1 || true
 }
-grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_SA}"
 grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_AGENT_SA}"
+if gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_SA}"
+elif gcloud iam service-accounts describe "${COMPUTE_DEFAULT_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  warn "Granting staging bucket to Compute default SA (legacy @cloudbuild not provisioned yet): ${COMPUTE_DEFAULT_SA}"
+  grant_staging_bucket_access "serviceAccount:${COMPUTE_DEFAULT_SA}"
+fi
 SUBMITTER_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
 if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
   if [[ "$SUBMITTER_ACCOUNT" == *.iam.gserviceaccount.com ]]; then
@@ -160,22 +170,21 @@ if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
   fi
 fi
 
-# Cloud Build's default worker SA must exist or builds.create returns NOT_FOUND after source upload.
+# Legacy Cloud Build SA can take minutes to appear after enabling the API; do not hard-fail.
+info "Waiting for Cloud Build service account (up to ~3 minutes)…"
+for _ in $(seq 1 36); do
+  if gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    info "Cloud Build SA ready: ${CLOUDBUILD_SA}"
+    grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_SA}"
+    break
+  fi
+  sleep 5
+done
 if ! gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
-  die "Cloud Build service account is missing: ${CLOUDBUILD_SA}
-
-This usually means the Cloud Build API was enabled before Google finished provisioning the SA.
-
-Fix (Console, ~2 minutes):
-  1. https://console.cloud.google.com/apis/library/cloudbuild.googleapis.com?project=${PROJECT_ID}
-  2. Click **Manage** → **Disable API** → confirm.
-  3. Click **Enable** again and wait until enabled.
-  4. Re-run this bootstrap script.
-
-Or run once:
-  gcloud services disable cloudbuild.googleapis.com --project=${PROJECT_ID} --quiet
-  gcloud services enable cloudbuild.googleapis.com --project=${PROJECT_ID} --quiet
-"
+  warn "Legacy Cloud Build SA still missing: ${CLOUDBUILD_SA}"
+  warn "Granted staging bucket access to ${COMPUTE_DEFAULT_SA} (common fallback). If builds still fail with NOT_FOUND,"
+  warn "enable the Compute Engine API once: gcloud services enable compute.googleapis.com --project=${PROJECT_ID}"
+  warn "Or ask an org admin to restore the Cloud Build service account in IAM."
 fi
 
 # -------------------------------------------------------------------------------------------------
