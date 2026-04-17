@@ -4,6 +4,8 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
+  // bookworm-slim (Cloud Run image) uses OpenSSL 3; include engine for Linux prod builds.
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
