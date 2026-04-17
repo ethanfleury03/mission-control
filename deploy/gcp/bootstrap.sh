@@ -104,6 +104,15 @@ gcloud services enable \
 
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+# Google-managed agent used by the Cloud Build API (distinct from @cloudbuild.gserviceaccount.com).
+CLOUDBUILD_AGENT_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+
+# Ensure the Cloud Build service identity exists (first-time project setup).
+gcloud beta services identity create --service=cloudbuild.googleapis.com --project="$PROJECT_ID" >/dev/null 2>&1 || true
+info "Ensuring Cloud Build service agent has roles/cloudbuild.serviceAgent on project"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${CLOUDBUILD_AGENT_SA}" \
+  --role=roles/cloudbuild.serviceAgent --condition=None >/dev/null 2>&1 || true
 
 # gcloud builds submit uploads sources to gs://PROJECT_ID_cloudbuild/ — if that bucket
 # does not exist yet, submit fails with NOT_FOUND. Create it and grant Cloud Build access.
@@ -115,21 +124,23 @@ if ! gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PRO
     --location="$REGION" \
     --uniform-bucket-level-access
 fi
-# Cloud Build SA must read uploaded source and write build artifacts to this bucket.
-gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
-  --member="serviceAccount:${CLOUDBUILD_SA}" \
-  --role=roles/storage.objectAdmin >/dev/null 2>&1 || true
-# Human (or SA) running bootstrap uploads source; ensure they can write objects to staging.
+# Cloud Build needs buckets.get + object read/write on staging. objectAdmin alone can miss
+# bucket metadata APIs and yields NOT_FOUND after upload. Use storage.admin scoped to this bucket only.
+grant_staging_bucket_access() {
+  local MEMBER="$1"
+  gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
+    --member="$MEMBER" \
+    --role=roles/storage.admin >/dev/null 2>&1 || true
+}
+grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_SA}"
+grant_staging_bucket_access "serviceAccount:${CLOUDBUILD_AGENT_SA}"
 SUBMITTER_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
 if [[ -n "$SUBMITTER_ACCOUNT" && "$SUBMITTER_ACCOUNT" != "(unset)" ]]; then
   if [[ "$SUBMITTER_ACCOUNT" == *.iam.gserviceaccount.com ]]; then
-    SUBMITTER_MEMBER="serviceAccount:${SUBMITTER_ACCOUNT}"
+    grant_staging_bucket_access "serviceAccount:${SUBMITTER_ACCOUNT}"
   else
-    SUBMITTER_MEMBER="user:${SUBMITTER_ACCOUNT}"
+    grant_staging_bucket_access "user:${SUBMITTER_ACCOUNT}"
   fi
-  gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
-    --member="$SUBMITTER_MEMBER" \
-    --role=roles/storage.objectAdmin >/dev/null 2>&1 || true
 fi
 
 # -------------------------------------------------------------------------------------------------
