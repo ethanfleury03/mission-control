@@ -14,6 +14,8 @@ substitutions:
   _SERVICE: mc-api
   _SERVICE_ACCOUNT: mc-api-sa
   _CLOUD_SQL_INSTANCE: ''
+  # Full URI; bootstrap passes gs://PROJECT_cloudbuild/logs (cannot use $PROJECT_ID_suffix in YAML)
+  _LOGS_BUCKET: ''
 
 steps:
   - id: build
@@ -61,7 +63,6 @@ images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
 
-# Bucket gs://$PROJECT_ID_cloudbuild must exist with location=US (bootstrap creates it).
-logsBucket: 'gs://$PROJECT_ID_cloudbuild/logs'
+logsBucket: '${_LOGS_BUCKET}'
 options:
   logging: GCS_ONLY

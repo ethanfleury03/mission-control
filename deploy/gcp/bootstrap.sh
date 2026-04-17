@@ -123,6 +123,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 # the default log / worker paths.
 CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
 GCS_SOURCE_STAGING="gs://${CLOUDBUILD_BUCKET}/source"
+GCS_LOGS_BUCKET="gs://${CLOUDBUILD_BUCKET}/logs"
 info "Ensuring Cloud Build bucket gs://${CLOUDBUILD_BUCKET} (location=US, global Cloud Build)"
 if gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
   EXISTING_LOC="$(gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --format='value(location)' 2>/dev/null || true)"
@@ -348,7 +349,7 @@ info "Building and deploying mc-api"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.api.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN,_LOGS_BUCKET=$GCS_LOGS_BUCKET"
 
 API_URL="$(gcloud run services describe mc-api --region="$REGION" --format='value(status.url)')"
 [ -n "$API_URL" ] || die "Could not read mc-api URL"
@@ -369,7 +370,7 @@ info "Building and deploying mc-web"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.web.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL,_LOGS_BUCKET=$GCS_LOGS_BUCKET"
 
 WEB_URL="$(gcloud run services describe mc-web --region="$REGION" --format='value(status.url)')"
 [ -n "$WEB_URL" ] || die "Could not read mc-web URL"
@@ -386,7 +387,7 @@ info "Building and deploying mc-scraper (Cloud Run Job)"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.scraper.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_LOGS_BUCKET=$GCS_LOGS_BUCKET"
 
 # -------------------------------------------------------------------------------------------------
 # 12. Cloud Scheduler -> Cloud Run Job (every 5 minutes)
