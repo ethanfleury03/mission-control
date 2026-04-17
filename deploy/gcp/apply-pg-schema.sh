@@ -19,31 +19,7 @@ DB_PASS="${6:?db password required}"
 MIG_DIR="$(cd "$(dirname "$0")/../../server/src/db/migrations" && pwd)"
 CONN_NAME="${PROJECT_ID}:${REGION}:${INSTANCE_NAME}"
 
-echo "==> Installing cloud-sql-proxy (if missing)"
-if ! command -v cloud-sql-proxy >/dev/null 2>&1; then
-  TMP=$(mktemp -d)
-  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64) ARCH=amd64 ;;
-    aarch64 | arm64) ARCH=arm64 ;;
-  esac
-  curl -fsSL -o "$TMP/cloud-sql-proxy" \
-    "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.4/cloud-sql-proxy.${OS}.${ARCH}"
-  chmod +x "$TMP/cloud-sql-proxy"
-  export PATH="$TMP:$PATH"
-fi
-
-PROXY_PORT=55432
-echo "==> Starting Cloud SQL proxy on 127.0.0.1:${PROXY_PORT} -> ${CONN_NAME}"
-cloud-sql-proxy --port "$PROXY_PORT" "$CONN_NAME" >/tmp/cloud-sql-proxy.log 2>&1 &
-PROXY_PID=$!
-trap 'kill "$PROXY_PID" >/dev/null 2>&1 || true' EXIT
-
-for _ in $(seq 1 30); do
-  if (echo > /dev/tcp/127.0.0.1/"$PROXY_PORT") >/dev/null 2>&1; then break; fi
-  sleep 1
-done
+die() { printf 'FATAL: %s\n' "$*" >&2; exit 1; }
 
 ensure_psql() {
   if command -v psql >/dev/null 2>&1; then
@@ -82,12 +58,53 @@ ensure_psql() {
   return 1
 }
 
-ensure_psql || {
-  echo "FATAL: psql is required to apply SQL migrations." >&2
-  exit 1
-}
+ensure_psql || die "psql is required to apply SQL migrations."
+
+echo "==> Installing cloud-sql-proxy (if missing)"
+if ! command -v cloud-sql-proxy >/dev/null 2>&1; then
+  TMP=$(mktemp -d)
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64) ARCH=amd64 ;;
+    aarch64 | arm64) ARCH=arm64 ;;
+  esac
+  curl -fsSL -o "$TMP/cloud-sql-proxy" \
+    "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.4/cloud-sql-proxy.${OS}.${ARCH}"
+  chmod +x "$TMP/cloud-sql-proxy"
+  export PATH="$TMP:$PATH"
+fi
+
+PROXY_PORT=55432
+PROXY_LOG="${TMPDIR:-/tmp}/cloud-sql-proxy-apply-schema.log"
+echo "==> Starting Cloud SQL proxy on 127.0.0.1:${PROXY_PORT} -> ${CONN_NAME}"
+# Bind explicitly; logs help when the proxy exits early (auth, network, wrong arch).
+cloud-sql-proxy --address 127.0.0.1 --port "$PROXY_PORT" "$CONN_NAME" >"$PROXY_LOG" 2>&1 &
+PROXY_PID=$!
+trap 'kill "$PROXY_PID" >/dev/null 2>&1 || true' EXIT
 
 export PGPASSWORD="$DB_PASS"
+
+echo "==> Waiting for Postgres via proxy (pg_isready, up to ~3 minutes)..."
+READY=0
+for i in $(seq 1 90); do
+  if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+    echo "Cloud SQL proxy process exited early. Last 40 lines of $PROXY_LOG:" >&2
+    tail -40 "$PROXY_LOG" >&2 || true
+    die "cloud-sql-proxy died (see log above). Check: gcloud auth application-default login"
+  fi
+  if pg_isready -h 127.0.0.1 -p "$PROXY_PORT" -U "$DB_USER" -d "$DB_NAME" -q 2>/dev/null; then
+    READY=1
+    break
+  fi
+  sleep 2
+done
+
+if [ "$READY" != "1" ]; then
+  echo "Timed out waiting for Postgres. Last 40 lines of $PROXY_LOG:" >&2
+  tail -40 "$PROXY_LOG" >&2 || true
+  die "Postgres did not become ready on 127.0.0.1:${PROXY_PORT}"
+fi
 
 TRACKER_SQL=$(cat <<'SQL'
 CREATE TABLE IF NOT EXISTS schema_migrations (
