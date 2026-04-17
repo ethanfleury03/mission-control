@@ -8,6 +8,7 @@ export default defineConfig({
     fileParallelism: false,
     pool: 'forks',
     include: [
+      'lib/auth/__tests__/**/*.test.ts',
       'lib/directory-scraper/__tests__/**/*.test.ts',
       'lib/lead-generation/__tests__/**/*.test.ts',
       'lib/hubspot/__tests__/**/*.test.ts',

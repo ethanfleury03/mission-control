@@ -1,0 +1,72 @@
+# Build and deploy mc-web (Next.js dashboard) to Cloud Run.
+#
+# Substitutions (all have defaults that match bootstrap.sh):
+#   _REGION, _AR_REPO, _SERVICE, _SERVICE_ACCOUNT, _API_URL
+#
+# Invoked by bootstrap.sh via:
+#   gcloud builds submit --config=deploy/gcp/cloudbuild.web.yaml \
+#     --substitutions=_REGION=us-central1,_API_URL=https://mc-api-xxx.run.app
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: mission-control
+  _SERVICE: mc-web
+  _SERVICE_ACCOUNT: mc-web-sa
+  _API_URL: ''
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-f'
+      - Dockerfile
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}'
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        EXTRA_ENV=""
+        if [ -n "${_API_URL}" ]; then
+          EXTRA_ENV="--update-env-vars API_URL=${_API_URL},NEXT_PUBLIC_API_URL=${_API_URL},MISSION_CONTROL_API_URL=${_API_URL},NEXT_PUBLIC_GATEWAY_URL=${_API_URL}"
+        fi
+        SECRET_FLAGS="--set-secrets=AUTH_SECRET=mc-auth-secret:latest,AUTH_GOOGLE_ID=mc-google-client-id:latest,AUTH_GOOGLE_SECRET=mc-google-client-secret:latest,TURSO_DATABASE_URL=mc-turso-url:latest,TURSO_AUTH_TOKEN=mc-turso-token:latest"
+        for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper HUBSPOT_ACCESS_TOKEN=mc-hubspot-token HUBSPOT_PORTAL_ID=mc-hubspot-portal GOOGLE_SERVICE_ACCOUNT_EMAIL=mc-google-sa-email GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=mc-google-sa-key; do
+          NAME="${OPTIONAL%%=*}"
+          SECRET="${OPTIONAL##*=}"
+          if gcloud secrets describe "$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            SECRET_FLAGS="$SECRET_FLAGS,$NAME=$SECRET:latest"
+          fi
+        done
+        gcloud run deploy "${_SERVICE}" \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA" \
+          --region "${_REGION}" \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
+          --set-env-vars "NODE_ENV=production,AUTH_TRUST_HOST=true" \
+          $SECRET_FLAGS \
+          $EXTRA_ENV
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

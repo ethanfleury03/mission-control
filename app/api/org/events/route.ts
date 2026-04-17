@@ -1,74 +1,41 @@
 /**
- * Org Chart Events API
- * Proxies to Mission Control API (Postgres) when API_URL is set.
+ * Org Chart Events API — proxies to mc-api with a Google ID token in production.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_URL = process.env.API_URL;
+import { backendFetch, backendUrl } from '../../_lib/backend';
 
-async function proxyToApi(request: NextRequest, path: string): Promise<NextResponse> {
-  if (!API_URL) return NextResponse.json({ error: 'API_URL not configured' }, { status: 503 });
-  const url = new URL(path, API_URL);
+const PATH = '/api/org/events';
+
+async function proxy(request: NextRequest): Promise<NextResponse> {
+  const url = new URL(backendUrl(PATH));
   url.search = request.nextUrl.searchParams.toString();
+
   const init: RequestInit = {
     method: request.method,
-    headers: request.headers,
+    headers: {
+      'content-type': request.headers.get('content-type') || 'application/json',
+    },
   };
-  if (request.method !== 'GET') {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = await request.text();
   }
-  const res = await fetch(url.toString(), init);
-  const data = await res.text();
-  const headers = new Headers();
-  res.headers.forEach((v, k) => headers.set(k, v));
-  return new NextResponse(data, { status: res.status, headers });
+
+  try {
+    const res = await backendFetch(url.toString(), init);
+    const body = await res.text();
+    return new NextResponse(body, {
+      status: res.status,
+      headers: { 'content-type': res.headers.get('content-type') || 'application/json' },
+    });
+  } catch (err) {
+    console.error('Proxy to mc-api failed:', err);
+    return NextResponse.json({ error: 'API unreachable' }, { status: 503 });
+  }
 }
 
-export async function GET(request: NextRequest) {
-  if (API_URL) {
-    try {
-      return await proxyToApi(request, `${API_URL.replace(/\/$/, '')}/api/org/events`);
-    } catch (err) {
-      console.error('Proxy to API failed:', err);
-      return NextResponse.json({ error: 'API unreachable' }, { status: 503 });
-    }
-  }
-  return NextResponse.json({ events: [], stats: { totalEvents: 0, returnedEvents: 0, byType: {} } });
-}
-
-export async function POST(request: NextRequest) {
-  if (API_URL) {
-    try {
-      return await proxyToApi(request, `${API_URL.replace(/\/$/, '')}/api/org/events`);
-    } catch (err) {
-      console.error('Proxy to API failed:', err);
-      return NextResponse.json({ error: 'API unreachable' }, { status: 503 });
-    }
-  }
-  return NextResponse.json({ error: 'API_URL not configured' }, { status: 503 });
-}
-
-export async function PATCH(request: NextRequest) {
-  if (API_URL) {
-    try {
-      return await proxyToApi(request, `${API_URL.replace(/\/$/, '')}/api/org/events`);
-    } catch (err) {
-      console.error('Proxy to API failed:', err);
-      return NextResponse.json({ error: 'API unreachable' }, { status: 503 });
-    }
-  }
-  return NextResponse.json({ error: 'API_URL not configured' }, { status: 503 });
-}
-
-export async function DELETE(request: NextRequest) {
-  if (API_URL) {
-    try {
-      return await proxyToApi(request, `${API_URL.replace(/\/$/, '')}/api/org/events`);
-    } catch (err) {
-      console.error('Proxy to API failed:', err);
-      return NextResponse.json({ error: 'API unreachable' }, { status: 503 });
-    }
-  }
-  return NextResponse.json({ error: 'API_URL not configured' }, { status: 503 });
-}
+export async function GET(request: NextRequest)    { return proxy(request); }
+export async function POST(request: NextRequest)   { return proxy(request); }
+export async function PATCH(request: NextRequest)  { return proxy(request); }
+export async function DELETE(request: NextRequest) { return proxy(request); }

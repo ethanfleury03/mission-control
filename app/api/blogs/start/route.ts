@@ -3,13 +3,9 @@ import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
+import { backendFetch } from '../../_lib/backend';
 
 const execFileAsync = promisify(execFile);
-
-const API_BASE =
-  process.env.API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://127.0.0.1:3001';
 
 const BLOG_CONTEXT = 'blog:content';
 
@@ -49,7 +45,7 @@ function dispatchWriterAsync(params: {
 }) {
   const { item, runId, inferred, targetWords } = params;
 
-  fetch(`${API_BASE}/work/items/${item.id}`, {
+  backendFetch(`/work/items/${item.id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -112,7 +108,7 @@ function dispatchWriterAsync(params: {
     const looksLikeHandoff = appliedHandoff || parsedHandoffs.length > 0 || out.includes('handoff.blog.v1') || out.includes('content_markdown') || out.includes('content_html');
 
     if (err && !looksLikeHandoff) {
-      await fetch(`${API_BASE}/work/items/${item.id}`, {
+      await backendFetch(`/work/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -131,7 +127,7 @@ function dispatchWriterAsync(params: {
       return;
     }
 
-    await fetch(`${API_BASE}/work/items/${item.id}`, {
+    await backendFetch(`/work/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -165,7 +161,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Missing required agents: ${missing.join(', ')}` }, { status: 400 });
     }
 
-    const createRes = await fetch(`${API_BASE}/work/items`, {
+    const createRes = await backendFetch(`/work/items`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

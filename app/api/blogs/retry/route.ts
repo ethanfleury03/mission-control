@@ -3,16 +3,16 @@ import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
+import { backendFetch } from '../../_lib/backend';
 
 const execFileAsync = promisify(execFile);
-const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
 export async function POST(request: NextRequest) {
   try {
     const { itemId } = await request.json();
     if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });
 
-    const getRes = await fetch(`${API_BASE}/work/items/${itemId}`, { cache: 'no-store' });
+    const getRes = await backendFetch(`/work/items/${itemId}`, { cache: 'no-store' });
     const item = await getRes.json();
     if (!getRes.ok) return NextResponse.json({ error: item?.error || 'Run not found' }, { status: getRes.status });
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       'requirements: generate/update metadata.content_markdown and advance to Human approval wait when preview is ready. Emit final JSON handoff schema=handoff.blog.v1.',
     ].filter(Boolean).join('\n');
 
-    await fetch(`${API_BASE}/work/items/${itemId}`, {
+    await backendFetch(`/work/items/${itemId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ok: true, itemId, dispatch: out, warning: 'non-zero exit but preview fallback used', handoffsApplied: 1, fallbackFromPreview: true });
         }
       }
-      await fetch(`${API_BASE}/work/items/${itemId}`, {
+      await backendFetch(`/work/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({

@@ -1,0 +1,65 @@
+# Build and deploy mc-api (Express + Postgres) to Cloud Run (private).
+#
+# Requires:
+#   - _CLOUD_SQL_INSTANCE: "project:region:instance" for --add-cloudsql-instances
+#   - Secret Manager secret "mc-api-db-url" containing the full DATABASE_URL
+#     (postgresql://user:pw@/missioncontrol?host=/cloudsql/<INSTANCE>).
+#
+# The service is deployed with --no-allow-unauthenticated; only principals with
+# roles/run.invoker (mc-web-sa, mc-scraper-sa) can reach it.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: mission-control
+  _SERVICE: mc-api
+  _SERVICE_ACCOUNT: mc-api-sa
+  _CLOUD_SQL_INSTANCE: ''
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-f'
+      - server/Dockerfile
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+      - server
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}'
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ -z "${_CLOUD_SQL_INSTANCE}" ]; then
+          echo "FATAL: _CLOUD_SQL_INSTANCE substitution is required" >&2
+          exit 1
+        fi
+        gcloud run deploy "${_SERVICE}" \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA" \
+          --region "${_REGION}" \
+          --platform managed \
+          --no-allow-unauthenticated \
+          --port 8080 \
+          --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
+          --add-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
+          --set-env-vars "NODE_ENV=production,PGSSLMODE=disable" \
+          --set-secrets "DATABASE_URL=mc-api-db-url:latest"
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

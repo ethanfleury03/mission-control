@@ -1,0 +1,67 @@
+# Build and deploy mc-scraper as a Cloud Run Job (Playwright-capable).
+# Invoked every 5 minutes by Cloud Scheduler; RUN_ONCE=1 drains the queue and exits.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: mission-control
+  _JOB: mc-scraper
+  _SERVICE_ACCOUNT: mc-scraper-sa
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-f'
+      - Dockerfile.scraper
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}'
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        SECRET_FLAGS="--set-secrets=TURSO_DATABASE_URL=mc-turso-url:latest,TURSO_AUTH_TOKEN=mc-turso-token:latest"
+        for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper; do
+          NAME="${OPTIONAL%%=*}"
+          SECRET="${OPTIONAL##*=}"
+          if gcloud secrets describe "$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            SECRET_FLAGS="$SECRET_FLAGS,$NAME=$SECRET:latest"
+          fi
+        done
+        # create-or-update
+        if gcloud run jobs describe "${_JOB}" --region="${_REGION}" >/dev/null 2>&1; then
+          VERB=update
+        else
+          VERB=create
+        fi
+        gcloud run jobs "$VERB" "${_JOB}" \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA" \
+          --region "${_REGION}" \
+          --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
+          --set-env-vars "NODE_ENV=production,RUN_ONCE=1" \
+          $SECRET_FLAGS \
+          --max-retries 1 \
+          --task-timeout 900s \
+          --cpu 1 \
+          --memory 2Gi
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

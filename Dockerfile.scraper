@@ -1,0 +1,27 @@
+# Mission Control directory-scraper worker — Playwright-capable image.
+# Built for the Cloud Run Job "mc-scraper"; RUN_ONCE=1 drains the queue and exits.
+
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV RUN_ONCE=1
+# Playwright base already has Chromium installed at a fixed path.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY tsconfig.json ./
+COPY lib ./lib
+COPY scripts ./scripts
+
+# Generate Prisma client; the worker only touches SQLite/Turso via lib/prisma.ts.
+ENV DATABASE_URL="file:./prisma/dev.db"
+RUN npx prisma generate
+
+CMD ["npx", "tsx", "scripts/directory-scraper-worker.ts"]

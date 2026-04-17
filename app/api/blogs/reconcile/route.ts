@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+import { backendFetch } from '../../_lib/backend';
 
-const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 const BLOG_CONTEXT = 'blog:content';
 
 type WorkItem = {
@@ -21,7 +21,7 @@ function hasPublishResult(item: WorkItem) {
 }
 
 async function patchItem(item: WorkItem, metadataPatch: Record<string, any>, status?: WorkItem['status']) {
-  await fetch(`${API_BASE}/work/items/${item.id}`, {
+  await backendFetch(`/work/items/${item.id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -36,7 +36,7 @@ async function patchItem(item: WorkItem, metadataPatch: Record<string, any>, sta
 
 export async function POST() {
   try {
-    const boardRes = await fetch(`${API_BASE}/work/board?contextKey=${encodeURIComponent(BLOG_CONTEXT)}`, { cache: 'no-store' });
+    const boardRes = await backendFetch(`/work/board?contextKey=${encodeURIComponent(BLOG_CONTEXT)}`, { cache: 'no-store' });
     const board = await boardRes.json();
     if (!boardRes.ok) return NextResponse.json({ error: board?.error || 'Failed to load board' }, { status: boardRes.status });
 

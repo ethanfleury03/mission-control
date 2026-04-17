@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applyBlogHandoff, extractBlogHandoffs, type BlogHandoff } from '../_lib/handoff';
-
-const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
+import { backendFetch } from '../../_lib/backend';
 
 async function findItemIdByRunId(runId: string): Promise<string | null> {
-  const boardRes = await fetch(`${API_BASE}/work/board?contextKey=${encodeURIComponent('blog:content')}`, { cache: 'no-store' });
+  const boardRes = await backendFetch(`/work/board?contextKey=${encodeURIComponent('blog:content')}`, { cache: 'no-store' });
   const board = await boardRes.json();
   if (!boardRes.ok) return null;
   for (const col of board.columns || []) {

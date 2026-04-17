@@ -1,36 +1,31 @@
-# Mission Control API Server Dockerfile
-FROM node:20-alpine AS builder
+# Mission Control API (Express + Postgres) — Cloud Run ready.
+# Honors $PORT; defaults to 8080 for Cloud Run.
 
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 RUN npm ci
-
-# Copy source code
 COPY . .
-
-# Build TypeScript
 RUN npm run build
 
-# Production image
-FROM node:20-alpine
-
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=8080
+ENV HOST=0.0.0.0
 
-# Copy built files
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nodeapp
+
+COPY --from=builder /app/package.json /app/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/db/migrations ./dist/db/migrations
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/data ./data
 
-# Expose the API port
-EXPOSE 3001
+USER nodeapp
+EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://127.0.0.1:' + (process.env.PORT || 8080) + '/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
 
-# Start the server
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]

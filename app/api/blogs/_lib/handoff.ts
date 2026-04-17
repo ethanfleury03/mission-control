@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { evaluateDraftQuality } from './quality';
-
-const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
+import { backendFetch } from '../../_lib/backend';
 
 export type BlogHandoff = {
   schema?: string;
@@ -129,7 +128,7 @@ function digestHandoff(h: BlogHandoff): string {
 }
 
 export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Promise<{ applied: boolean; deduped?: boolean; stage?: string }> {
-  const getRes = await fetch(`${API_BASE}/work/items/${itemId}`, { cache: 'no-store' });
+  const getRes = await backendFetch(`/work/items/${itemId}`);
   const item = (await getRes.json()) as WorkItem;
   if (!getRes.ok || !item?.id) throw new Error('Work item not found');
 
@@ -199,7 +198,7 @@ export async function applyBlogHandoff(itemId: string, handoff: BlogHandoff): Pr
     metadataPatch.next_action = handoff.next_action || item.metadata?.next_action || '';
   }
 
-  await fetch(`${API_BASE}/work/items/${itemId}`, {
+  await backendFetch(`/work/items/${itemId}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

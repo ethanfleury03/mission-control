@@ -3,16 +3,16 @@ import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_PUBLISHER_AGENT_ID } from '../_lib/agents';
 import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
+import { backendFetch } from '../../_lib/backend';
 
 const execFileAsync = promisify(execFile);
-const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
 export async function POST(request: NextRequest) {
   try {
     const { itemId } = await request.json();
     if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });
 
-    const getRes = await fetch(`${API_BASE}/work/items/${itemId}`, { cache: 'no-store' });
+    const getRes = await backendFetch(`/work/items/${itemId}`, { cache: 'no-store' });
     const item = await getRes.json();
     if (!getRes.ok) return NextResponse.json({ error: item?.error || 'Run not found' }, { status: getRes.status });
 
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     const manualHold = String(item?.metadata?.publish_mode || '') === 'manual_hold';
 
-    await fetch(`${API_BASE}/work/items/${itemId}`, {
+    await backendFetch(`/work/items/${itemId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       const handoffs = extractBlogHandoffs(String(stdout || ''));
       for (const h of handoffs) await applyBlogHandoff(itemId, h as any);
 
-      await fetch(`${API_BASE}/work/items/${itemId}`, {
+      await backendFetch(`/work/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true, itemId, warning: 'non-zero exit but handoff detected', handoffsApplied: handoffs.length });
       }
 
-      await fetch(`${API_BASE}/work/items/${itemId}`, {
+      await backendFetch(`/work/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({

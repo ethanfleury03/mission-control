@@ -1,0 +1,47 @@
+# Fan-out entry point: builds and deploys all three workloads.
+# bootstrap.sh prefers invoking the three pipelines directly so it can thread
+# substitutions per workload (e.g. _CLOUD_SQL_INSTANCE, _API_URL). This file
+# is a convenience for manual "deploy everything again" runs.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: mission-control
+  _CLOUD_SQL_INSTANCE: ''
+  _API_URL: ''
+
+steps:
+  - id: web
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    waitFor: ['-']
+    args:
+      - builds
+      - submit
+      - '--config=deploy/gcp/cloudbuild.web.yaml'
+      - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO},_API_URL=${_API_URL}'
+      - .
+
+  - id: api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    waitFor: ['-']
+    args:
+      - builds
+      - submit
+      - '--config=deploy/gcp/cloudbuild.api.yaml'
+      - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO},_CLOUD_SQL_INSTANCE=${_CLOUD_SQL_INSTANCE}'
+      - .
+
+  - id: scraper
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    waitFor: ['-']
+    args:
+      - builds
+      - submit
+      - '--config=deploy/gcp/cloudbuild.scraper.yaml'
+      - '--substitutions=_REGION=${_REGION},_AR_REPO=${_AR_REPO}'
+      - .
+
+options:
+  logging: CLOUD_LOGGING_ONLY
