@@ -737,7 +737,7 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
             },
           ],
         } as any,
-        orderBy: [{ queuedAt: 'asc' }, { updatedAt: 'asc' }],
+        orderBy: [{ queuedAt: 'asc' }, { updatedAt: 'asc' }, { id: 'asc' }],
         take: 20,
       });
 

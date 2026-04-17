@@ -246,7 +246,7 @@ export function buildManualWinsMerge(
 }
 
 export function buildScraperImportLookupKey(input: {
-  name: string;
+  name?: string | null;
   domain?: string | null;
   website?: string | null;
   country?: string | null;

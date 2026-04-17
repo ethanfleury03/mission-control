@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   claimNextJob,
   createJob,
@@ -19,10 +19,11 @@ import type { CompanyResult } from '../types';
 describe('job-store (Prisma)', () => {
   const createdIds: string[] = [];
 
-  afterAll(async () => {
+  afterEach(async () => {
     for (const id of createdIds) {
       await deleteJob(id);
     }
+    createdIds.length = 0;
   });
 
   it('creates and retrieves a job', async () => {
