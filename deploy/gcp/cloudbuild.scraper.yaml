@@ -38,10 +38,10 @@ steps:
         set -euo pipefail
         SECRET_FLAGS="--set-secrets=TURSO_DATABASE_URL=mc-turso-url:latest,TURSO_AUTH_TOKEN=mc-turso-token:latest"
         for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper; do
-          NAME="${OPTIONAL%%=*}"
-          SECRET="${OPTIONAL##*=}"
-          if gcloud secrets describe "$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
-            SECRET_FLAGS="$SECRET_FLAGS,$NAME=$SECRET:latest"
+          NAME="$${OPTIONAL%%=*}"
+          SECRET="$${OPTIONAL##*=}"
+          if gcloud secrets describe "$$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            SECRET_FLAGS="$$SECRET_FLAGS,$$NAME=$$SECRET:latest"
           fi
         done
         # create-or-update
@@ -55,7 +55,7 @@ steps:
           --region "${_REGION}" \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
           --set-env-vars "NODE_ENV=production,RUN_ONCE=1" \
-          $SECRET_FLAGS \
+          $$SECRET_FLAGS \
           --max-retries 1 \
           --task-timeout 900s \
           --cpu 1 \
