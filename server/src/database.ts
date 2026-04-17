@@ -24,18 +24,15 @@ function ensurePool(): Pool {
     throw new Error('DATABASE_URL is not a valid URL.');
   }
 
-  // sslmode from URL ?sslmode=... or env PGSSLMODE
   const sslmode =
     url.searchParams.get('sslmode') || process.env.PGSSLMODE || '';
   const sslParam = url.searchParams.get('ssl');
 
-  // wantsSSL: explicitly require SSL only when requested
   const sslModesRequiringSSL = ['require', 'verify-ca', 'verify-full'];
   let wantsSSL =
     sslModesRequiringSSL.includes(sslmode.toLowerCase()) ||
     sslParam === 'true';
 
-  // Local/docker postgres: default to NO SSL when hostname is postgres or localhost
   if (
     !sslmode &&
     !sslParam &&
@@ -50,10 +47,26 @@ function ensurePool(): Pool {
       }
     : false;
 
-  pool = new Pool({
-    connectionString: dbUrl,
-    ssl: sslConfig,
-  });
+  // Cloud SQL on Cloud Run: DATABASE_URL uses ?host=/cloudsql/PROJECT:REGION:INSTANCE
+  // which `pg`'s connectionString parser does not consistently translate into the unix
+  // socket path. Build an explicit config when we detect that shape.
+  const hostOverride = url.searchParams.get('host');
+  const isUnixSocket = !!hostOverride && hostOverride.startsWith('/');
+
+  if (isUnixSocket) {
+    pool = new Pool({
+      host: hostOverride,
+      database: decodeURIComponent(url.pathname.replace(/^\//, '')),
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      ssl: false,
+    });
+  } else {
+    pool = new Pool({
+      connectionString: dbUrl,
+      ssl: sslConfig,
+    });
+  }
 
   pool.on('error', (err) => {
     console.error('PostgreSQL pool error:', err);
