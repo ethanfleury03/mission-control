@@ -181,10 +181,14 @@ for _ in $(seq 1 36); do
   sleep 5
 done
 if ! gcloud iam service-accounts describe "${CLOUDBUILD_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
-  warn "Legacy Cloud Build SA still missing: ${CLOUDBUILD_SA}"
-  warn "Granted staging bucket access to ${COMPUTE_DEFAULT_SA} (common fallback). If builds still fail with NOT_FOUND,"
-  warn "enable the Compute Engine API once: gcloud services enable compute.googleapis.com --project=${PROJECT_ID}"
-  warn "Or ask an org admin to restore the Cloud Build service account in IAM."
+  warn "Legacy Cloud Build SA still missing after wait: ${CLOUDBUILD_SA}"
+  if gcloud iam service-accounts describe "${COMPUTE_DEFAULT_SA}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    warn "Granting staging bucket to Compute default SA: ${COMPUTE_DEFAULT_SA}"
+    grant_staging_bucket_access "serviceAccount:${COMPUTE_DEFAULT_SA}"
+  else
+    warn "Compute default SA also missing. Ensure an org admin has not blocked default SAs."
+  fi
+  warn "If builds fail with NOT_FOUND, open IAM and confirm Google-managed service accounts are allowed for this project."
 fi
 
 # -------------------------------------------------------------------------------------------------
