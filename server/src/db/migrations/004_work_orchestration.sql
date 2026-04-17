@@ -1,16 +1,35 @@
 -- Work Orchestration System Migration 004
 -- Adds work_items, work_events, approvals, exceptions with state machines and immutability
 
--- Enums (safe on rerun because runner ignores 42710 duplicate_object)
-CREATE TYPE work_status AS ENUM (
-  'queued', 'claimed', 'working', 'needs_review', 'blocked', 'done', 'failed', 'canceled'
-);
-CREATE TYPE approval_status AS ENUM ('requested', 'approved', 'denied', 'expired');
-CREATE TYPE exception_type AS ENUM (
-  'policy_violation', 'missing_info', 'low_confidence', 'tool_error', 'conflict', 'unknown'
-);
-CREATE TYPE exception_severity AS ENUM ('low', 'medium', 'high', 'critical');
-CREATE TYPE exception_status AS ENUM ('open', 'acknowledged', 'resolved', 'dismissed');
+-- Enums (idempotent: partial reruns after a failed migration must not error on duplicate types)
+DO $enum$ BEGIN
+  CREATE TYPE work_status AS ENUM (
+    'queued', 'claimed', 'working', 'needs_review', 'blocked', 'done', 'failed', 'canceled'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $enum$;
+
+DO $enum$ BEGIN
+  CREATE TYPE approval_status AS ENUM ('requested', 'approved', 'denied', 'expired');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $enum$;
+
+DO $enum$ BEGIN
+  CREATE TYPE exception_type AS ENUM (
+    'policy_violation', 'missing_info', 'low_confidence', 'tool_error', 'conflict', 'unknown'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $enum$;
+
+DO $enum$ BEGIN
+  CREATE TYPE exception_severity AS ENUM ('low', 'medium', 'high', 'critical');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $enum$;
+
+DO $enum$ BEGIN
+  CREATE TYPE exception_status AS ENUM ('open', 'acknowledged', 'resolved', 'dismissed');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $enum$;
 
 -- 1. work_items (durable work queue)
 CREATE TABLE IF NOT EXISTS work_items (
