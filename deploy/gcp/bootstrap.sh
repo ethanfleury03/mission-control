@@ -89,6 +89,7 @@ info "Enabling required GCP APIs"
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
+  storage.googleapis.com \
   artifactregistry.googleapis.com \
   sqladmin.googleapis.com \
   secretmanager.googleapis.com \
@@ -99,6 +100,21 @@ gcloud services enable \
 
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+# gcloud builds submit uploads sources to gs://PROJECT_ID_cloudbuild/ — if that bucket
+# does not exist yet, submit fails with NOT_FOUND. Create it and grant Cloud Build access.
+CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
+info "Ensuring Cloud Build source bucket gs://${CLOUDBUILD_BUCKET}"
+if ! gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud storage buckets create "gs://${CLOUDBUILD_BUCKET}" \
+    --project="$PROJECT_ID" \
+    --location="$REGION" \
+    --uniform-bucket-level-access
+fi
+# Cloud Build SA must read uploaded source and write build artifacts to this bucket.
+gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
+  --member="serviceAccount:${CLOUDBUILD_SA}" \
+  --role=roles/storage.objectAdmin >/dev/null 2>&1 || true
 
 # -------------------------------------------------------------------------------------------------
 # 2. Artifact Registry
