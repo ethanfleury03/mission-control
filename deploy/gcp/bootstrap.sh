@@ -117,14 +117,28 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${CLOUDBUILD_AGENT_SA}" \
   --role=roles/cloudbuild.serviceAgent --condition=None >/dev/null 2>&1 || true
 
-# Global Cloud Build stages source at gs://PROJECT_ID_cloudbuild/source (default).
+# Global Cloud Build uses gs://PROJECT_ID_cloudbuild — that bucket MUST be in the
+# **US** multi-region (same as Google's auto-created default). A regional bucket
+# (e.g. us-central1) causes NOT_FOUND after source upload when the API resolves
+# the default log / worker paths.
 CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
 GCS_SOURCE_STAGING="gs://${CLOUDBUILD_BUCKET}/source"
-info "Ensuring Cloud Build staging bucket gs://${CLOUDBUILD_BUCKET} (global Cloud Build API)"
-if ! gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+info "Ensuring Cloud Build bucket gs://${CLOUDBUILD_BUCKET} (location=US, global Cloud Build)"
+if gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  EXISTING_LOC="$(gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --format='value(location)' 2>/dev/null || true)"
+  if [[ -n "$EXISTING_LOC" && "$EXISTING_LOC" != "US" ]]; then
+    die "Bucket gs://${CLOUDBUILD_BUCKET} exists in region '${EXISTING_LOC}' but global Cloud Build requires multi-region **US**.
+
+Delete the bucket in Cloud Console (Storage) after emptying it, then re-run bootstrap:
+  https://console.cloud.google.com/storage/browser/${CLOUDBUILD_BUCKET}?project=${PROJECT_ID}
+
+Or: gcloud storage rm --recursive gs://${CLOUDBUILD_BUCKET}/ --project=${PROJECT_ID}
+"
+  fi
+else
   gcloud storage buckets create "gs://${CLOUDBUILD_BUCKET}" \
     --project="$PROJECT_ID" \
-    --location="$REGION" \
+    --location=US \
     --uniform-bucket-level-access
 fi
 # Cloud Build needs buckets.get + object read/write on staging. objectAdmin alone can miss

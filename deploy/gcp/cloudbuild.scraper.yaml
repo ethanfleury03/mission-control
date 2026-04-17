@@ -62,3 +62,7 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:latest'
+
+logsBucket: 'gs://$PROJECT_ID_cloudbuild/logs'
+options:
+  logging: GCS_ONLY

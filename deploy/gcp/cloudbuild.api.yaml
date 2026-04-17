@@ -60,3 +60,8 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest'
+
+# Bucket gs://$PROJECT_ID_cloudbuild must exist with location=US (bootstrap creates it).
+logsBucket: 'gs://$PROJECT_ID_cloudbuild/logs'
+options:
+  logging: GCS_ONLY
