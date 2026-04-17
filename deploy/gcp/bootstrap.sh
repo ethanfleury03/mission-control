@@ -123,7 +123,8 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 # the default log / worker paths.
 CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
 GCS_SOURCE_STAGING="gs://${CLOUDBUILD_BUCKET}/source"
-GCS_LOGS_BUCKET="gs://${CLOUDBUILD_BUCKET}/logs"
+# logsBucket must be the bucket root (gs://BUCKET), not gs://BUCKET/logs — see Cloud Build schema.
+GCS_LOGS_BUCKET="gs://${CLOUDBUILD_BUCKET}"
 info "Ensuring Cloud Build bucket gs://${CLOUDBUILD_BUCKET} (location=US, global Cloud Build)"
 if gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
   EXISTING_LOC="$(gcloud storage buckets describe "gs://${CLOUDBUILD_BUCKET}" --format='value(location)' 2>/dev/null || true)"

@@ -14,7 +14,7 @@ substitutions:
   _SERVICE: mc-api
   _SERVICE_ACCOUNT: mc-api-sa
   _CLOUD_SQL_INSTANCE: ''
-  # Full URI; bootstrap passes gs://PROJECT_cloudbuild/logs (cannot use $PROJECT_ID_suffix in YAML)
+  # Bucket root only (gs://PROJECT_cloudbuild); bootstrap sets this — not gs://.../logs
   _LOGS_BUCKET: ''
 
 steps:
