@@ -5,6 +5,7 @@ const PUBLIC_PATHS = [
   '/signin',
   '/healthz',
   '/favicon.ico',
+  '/api/healthz',
 ];
 
 function isPublic(pathname: string): boolean {
@@ -34,5 +35,5 @@ export default auth((req) => {
 export const config = {
   // Exclude /healthz from middleware so the route always serves (avoids 404 on
   // some hosts when auth edge runs first; bootstrap and probes use this path).
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|healthz).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|healthz|api/healthz).*)'],
 };

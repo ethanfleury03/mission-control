@@ -62,7 +62,7 @@ At the end the script prints:
 
 - The public `mc-web` URL (your dashboard).
 - The private `mc-api` URL.
-- A confirmation that `/healthz` responds publicly and `mc-api` refuses unauthenticated requests.
+- A confirmation that **`/api/healthz`** responds publicly (liveness) and `mc-api` refuses unauthenticated requests. The same JSON is at **`/healthz`**; prefer **`/api/healthz`** for scripts and Cloud Run.
 
 ### After deploy: verify and OAuth redirect
 
@@ -72,7 +72,7 @@ With `gcloud` authenticated to the same project:
 bash deploy/gcp/verify-deployment.sh YOUR_PROJECT_ID us-central1
 ```
 
-That prints **`mc-web`** / **`mc-api`** URLs, **`/healthz`** and **`/health/live`** HTTP codes, and the **exact OAuth redirect URI** to paste into the Google OAuth Web client (APIs & Services → Credentials).
+That prints **`mc-web`** / **`mc-api`** URLs, **`/api/healthz`** and **`/health/live`** HTTP codes, and the **exact OAuth redirect URI** to paste into the Google OAuth Web client (APIs & Services → Credentials).
 
 ## What the bootstrap does (summary)
 
@@ -96,7 +96,7 @@ That prints **`mc-web`** / **`mc-api`** URLs, **`/healthz`** and **`/health/live
   - `profile.email_verified === true`, and
   - `profile.hd === 'arrsys.com'`, and
   - `profile.email` ends in `@arrsys.com`.
-- `middleware.ts` rejects unauthenticated requests for every path except `/signin`, `/healthz`, `/api/auth/*`, and static assets.
+- `middleware.ts` rejects unauthenticated requests for every path except `/signin`, `/healthz`, `/api/healthz`, `/api/auth/*`, and static assets. Use **`/api/healthz`** for public probes; it always runs on the Node server.
 - `app/api/_lib/backend.ts` fetches a Google-signed ID token from the Cloud Run metadata server for any outbound request to a `*.run.app` host and sets it as `Authorization: Bearer ...`. Locally this no-ops so `npm run dev` still works.
 - `mc-api` is deployed with `--no-allow-unauthenticated`. Even someone with the API URL cannot hit it.
 

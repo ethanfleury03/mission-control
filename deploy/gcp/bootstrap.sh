@@ -490,11 +490,11 @@ pause "Press Enter once you have added the redirect URI..."
 # -------------------------------------------------------------------------------------------------
 # 14. Smoke checks
 # -------------------------------------------------------------------------------------------------
-info "Smoke-check: mc-web /healthz (public)"
-if curl -fsS "$WEB_URL/healthz" >/dev/null; then
-  echo "  OK: $WEB_URL/healthz responded 200"
+info "Smoke-check: mc-web /api/healthz (public; reliable on Cloud Run)"
+if curl -fsS "$WEB_URL/api/healthz" >/dev/null; then
+  echo "  OK: $WEB_URL/api/healthz responded 200"
 else
-  warn "mc-web /healthz did not respond 200 (could still be warming up)"
+  warn "mc-web /api/healthz did not respond 200 (redeploy with latest; old /healthz page can 404 on standalone)"
 fi
 
 info "Smoke-check: mc-api must refuse unauthenticated requests"
