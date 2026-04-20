@@ -72,9 +72,9 @@ export async function collectInnerTextForUrl(
 
     for (let s = 0; s < 2; s++) {
       if (options?.cancelled && (await Promise.resolve(options.cancelled()))) break;
-      await page.evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight * (s + 1) * 0.5);
-      });
+      await page.evaluate((step) => {
+        window.scrollTo(0, document.body.scrollHeight * (step + 1) * 0.5);
+      }, s);
       await sleep(400);
     }
     await page.evaluate(() => window.scrollTo(0, 0));

@@ -1,15 +1,16 @@
-import { discoverCompanyWebsite, findDominantPlaceholderDomain } from '../discover-company-website';
-import { validationError } from '../errors';
-import { isSerperConfigured } from '../serper-client';
-import { normalizeDomain, sleep } from '../utils';
-import { getDirectoryScraperWorkerConfig } from '../worker-config';
+import type { Browser, BrowserContext, Page } from 'playwright';
+import { findDominantPlaceholderDomain } from '../discover-company-website';
+import type { CancelSignal } from '../extract-directory-entries';
+import { extractCompanyWebsiteFromDetail } from '../extract-company-website-from-detail';
+import { launchChromiumForScraper } from '../playwright-launch';
 import type {
   CompanyResult,
   JobPhase,
   WebsiteDiscoveryJobSummary,
   WebsiteDiscoveryMeta,
 } from '../types';
-import type { CancelSignal } from '../extract-directory-entries';
+import { normalizeDomain, sleep } from '../utils';
+import { getDirectoryScraperWorkerConfig } from '../worker-config';
 
 export interface WebsiteDiscoveryPatch {
   resultId: string;
@@ -19,6 +20,21 @@ export interface WebsiteDiscoveryPatch {
 export interface WebsiteDiscoveryServiceResult {
   patches: WebsiteDiscoveryPatch[];
   summary: WebsiteDiscoveryJobSummary;
+}
+
+function emptySummary(skippedAlreadyHadUrl: number): WebsiteDiscoveryJobSummary {
+  return {
+    attempted: 0,
+    resolvedDetailPage: 0,
+    resolvedDomainGuess: 0,
+    resolvedSerper: 0,
+    unresolved: 0,
+    skippedAlreadyHadUrl,
+  };
+}
+
+function shouldAbortDiscoveryResource(resourceType: string): boolean {
+  return resourceType === 'image' || resourceType === 'media' || resourceType === 'font' || resourceType === 'stylesheet';
 }
 
 export async function runWebsiteDiscoveryService(
@@ -41,27 +57,11 @@ export async function runWebsiteDiscoveryService(
     await log('info', 'Website discovery skipped for this job.', 'DISCOVERY_SKIPPED');
     return {
       patches: [],
-      summary: {
-        attempted: 0,
-        resolvedDomainGuess: 0,
-        resolvedSerper: 0,
-        unresolved: 0,
-        skippedAlreadyHadUrl: results.length,
-      },
+      summary: emptySummary(results.length),
     };
   }
 
-  if (!isSerperConfigured()) {
-    throw validationError(
-      'SERPER_NOT_CONFIGURED',
-      phase,
-      'Serper website discovery requires SERPER_API_KEY in the server environment.',
-    );
-  }
-
-  const config = getDirectoryScraperWorkerConfig();
   const dominant = findDominantPlaceholderDomain(results);
-  const rejectHosts = dominant ? [dominant] : undefined;
   const rows = results.filter((row) => {
     const website = row.companyWebsite?.trim();
     if (!website) return true;
@@ -74,11 +74,8 @@ export async function runWebsiteDiscoveryService(
   });
 
   const summary: WebsiteDiscoveryJobSummary = {
+    ...emptySummary(results.length - rows.length),
     attempted: rows.length,
-    resolvedDomainGuess: 0,
-    resolvedSerper: 0,
-    unresolved: 0,
-    skippedAlreadyHadUrl: results.length - rows.length,
   };
 
   if (rows.length === 0) {
@@ -86,78 +83,153 @@ export async function runWebsiteDiscoveryService(
     return { patches: [], summary };
   }
 
+  const config = getDirectoryScraperWorkerConfig();
   const patches: WebsiteDiscoveryPatch[] = [];
-  for (let index = 0; index < rows.length; index += config.serperBatchSize) {
-    if (await Promise.resolve(options.cancelled())) {
-      await log('warn', 'Cancellation requested during website discovery.', 'DISCOVERY_CANCELLED');
-      break;
-    }
+  let browser: Browser | null = null;
+  let contexts: BrowserContext[] = [];
+  let pages: Page[] = [];
+  let completedCount = 0;
 
-    const batch = rows.slice(index, index + config.serperBatchSize);
-    const outcomes = await Promise.all(
-      batch.map(async (row) => {
-        const found = await discoverCompanyWebsite(row.companyName, {
-          directoryListingUrl: row.directoryListingUrl,
-          rejectHosts,
-        });
-        return { row, found };
+  try {
+    const launch = await launchChromiumForScraper();
+    browser = launch.browser;
+    const concurrency = Math.max(1, Math.min(config.websiteDiscoveryConcurrency, 12));
+    contexts = await Promise.all(
+      Array.from({ length: concurrency }, () =>
+        browser!.newContext({
+          userAgent:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          viewport: { width: 1280, height: 720 },
+        }),
+      ),
+    );
+    await Promise.all(
+      contexts.map((context) =>
+        context.route('**/*', (route) => {
+          if (shouldAbortDiscoveryResource(route.request().resourceType())) {
+            return route.abort();
+          }
+          return route.continue();
+        }),
+      ),
+    );
+    pages = await Promise.all(contexts.map((context) => context.newPage()));
+    await Promise.all(
+      pages.map((page) => {
+        page.setDefaultNavigationTimeout(config.websiteDiscoveryNavigationTimeoutMs);
+        page.setDefaultTimeout(Math.min(config.websiteDiscoveryNavigationTimeoutMs, 15_000));
+        return Promise.resolve();
       }),
     );
 
-    for (const { row, found } of outcomes) {
-      const meta: WebsiteDiscoveryMeta = {
-        method: found.method,
-        detail: found.detail,
-        serperQuery: found.serperQuery,
-      };
-
-      if (found.method === 'domain-guess') summary.resolvedDomainGuess += 1;
-      else if (found.method === 'serper') summary.resolvedSerper += 1;
-      else summary.unresolved += 1;
-
-      const website = found.website.trim();
-      const patch: Partial<CompanyResult> = { websiteDiscoveryMeta: meta };
-
-      if (website) {
-        patch.companyWebsite = website;
-        const noteLine = `Website (${found.method}): ${found.detail}`;
-        patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
-      } else {
-        const hadPlaceholder =
-          dominant &&
-          row.companyWebsite?.trim() &&
-          (() => {
-            try {
-              return normalizeDomain(row.companyWebsite) === dominant;
-            } catch {
-              return false;
-            }
-          })();
-
-        if (hadPlaceholder) {
-          patch.companyWebsite = '';
-          const noteLine = `Website cleared: shared listing domain (${dominant}); ${found.detail}`;
-          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
-        } else if (found.detail) {
-          const noteLine = `Website lookup: ${found.detail}`;
-          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
-        }
+    for (let index = 0; index < rows.length; index += pages.length) {
+      if (await Promise.resolve(options.cancelled())) {
+        await log('warn', 'Cancellation requested during website discovery.', 'DISCOVERY_CANCELLED');
+        break;
       }
 
-      patches.push({ resultId: row.id, patch });
+      const batch = rows.slice(index, index + pages.length);
+      const outcomes = await Promise.all(
+        batch.map(async (row, batchIndex) => {
+          const page = pages[batchIndex]!;
+          const detailUrl = row.directoryListingUrl?.trim();
+          if (!detailUrl) {
+            return {
+              row,
+              website: '',
+              meta: {
+                method: 'none',
+                detail: 'No member detail URL was available for this row.',
+              } satisfies WebsiteDiscoveryMeta,
+            };
+          }
+
+          const extraction = await extractCompanyWebsiteFromDetail(page, detailUrl);
+          const website = extraction.website.trim();
+          if (website) {
+            return {
+              row,
+              website,
+              meta: {
+                method: 'detail-page',
+                detail: `Extracted external homepage from member detail page ${extraction.debug.finalUrl || detailUrl}`,
+              } satisfies WebsiteDiscoveryMeta,
+              debug: extraction.debug,
+            };
+          }
+
+          return {
+            row,
+            website: '',
+            meta: {
+              method: 'none',
+              detail: `No external homepage link found on member detail page ${extraction.debug.finalUrl || detailUrl}`,
+            } satisfies WebsiteDiscoveryMeta,
+            debug: extraction.debug,
+          };
+        }),
+      );
+
+      for (const { row, website, meta, debug } of outcomes) {
+        const patch: Partial<CompanyResult> = { websiteDiscoveryMeta: meta };
+        if (website) {
+          summary.resolvedDetailPage += 1;
+          patch.companyWebsite = website;
+          const noteLine = `Website (${meta.method}): ${meta.detail}`;
+          patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
+          await log('info', `Detail page website: ${row.companyName} -> ${website}`, 'DISCOVERY_DETAIL_PAGE_URL');
+        } else {
+          summary.unresolved += 1;
+          const hadPlaceholder =
+            dominant &&
+            row.companyWebsite?.trim() &&
+            (() => {
+              try {
+                return normalizeDomain(row.companyWebsite) === dominant;
+              } catch {
+                return false;
+              }
+            })();
+          if (hadPlaceholder) {
+            patch.companyWebsite = '';
+            const noteLine = `Website cleared: shared listing domain (${dominant}); ${meta.detail}`;
+            patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
+          } else {
+            const noteLine = `Website lookup: ${meta.detail}`;
+            patch.notes = row.notes?.trim() ? `${row.notes.trim()} | ${noteLine}` : noteLine;
+          }
+          const top = (debug?.topCandidates ?? []).slice(0, 2).map((c) => `${c.href} (score ${c.score})`).join(' | ');
+          await log(
+            'warn',
+            `No detail-page website found for ${row.companyName}; finalUrl=${debug?.finalUrl || row.directoryListingUrl}; visibleTextHasUrl=${debug?.visibleTextHasUrl ? 'yes' : 'no'}${top ? `; top=${top}` : ''}`,
+            'DISCOVERY_DETAIL_PAGE_MISS',
+          );
+        }
+
+        patches.push({ resultId: row.id, patch });
+        completedCount += 1;
+      }
+
       if (options.onProgress) {
-        await Promise.resolve(options.onProgress(patches.length, rows.length, row.companyName));
+        const last = batch[batch.length - 1];
+        await Promise.resolve(options.onProgress(completedCount, rows.length, last?.companyName));
+      }
+
+      if (index + pages.length < rows.length) {
+        await sleep(config.delayBetweenWebsiteDiscoveryBatchesMs);
       }
     }
-
-    if (index + config.serperBatchSize < rows.length) {
-      await sleep(config.delayBetweenSerperMs);
+  } finally {
+    await Promise.all(pages.map((page) => page.close().catch(() => {})));
+    await Promise.all(contexts.map((context) => context.close().catch(() => {})));
+    if (browser) {
+      await browser.close().catch(() => {});
     }
   }
 
   await log(
     'info',
-    `Website discovery finished: domain guess ${summary.resolvedDomainGuess}, Serper ${summary.resolvedSerper}, unresolved ${summary.unresolved}.`,
+    `Website discovery finished: detail page ${summary.resolvedDetailPage}, unresolved ${summary.unresolved}.`,
     'DISCOVERY_COMPLETED',
   );
 

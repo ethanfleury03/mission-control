@@ -6,6 +6,7 @@ import type { CompanyResult, DirectoryEntry } from './types';
 import { extractContactFromSite } from './extract-contact-info';
 import { gotoDomContentLoaded } from './navigation-timeout';
 import { runWithTimeout } from './async-timeout';
+import { extractCompanyWebsiteFromDetail } from './extract-company-website-from-detail';
 
 const LISTING_HTML_SLICE = 450_000;
 const LISTING_EXTRACT_MS = 22_000;
@@ -33,78 +34,6 @@ function isSamePageAsListing(detailUrl: string | undefined, listingUrl: string):
     return dh === lh && dp === lp && d.search === l.search;
   } catch {
     return detailUrl.trim() === listingUrl.trim();
-  }
-}
-
-async function extractCompanyWebsiteFromDetail(page: Page, detailUrl: string): Promise<string> {
-  try {
-    assertPublicHttpUrl(detailUrl, 'Directory detail page');
-    await gotoDomContentLoaded(page, detailUrl, 20_000);
-    await sleep(500);
-    const website = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
-      const pageHost = window.location.hostname.replace(/^www\./, '');
-      for (const a of links) {
-        try {
-          const u = new URL(a.href);
-          const host = u.hostname.replace(/^www\./, '');
-          if (
-            host !== pageHost &&
-            !host.includes('facebook') &&
-            !host.includes('twitter') &&
-            !host.includes('linkedin') &&
-            !host.includes('instagram') &&
-            !host.includes('youtube') &&
-            !host.includes('google') &&
-            !host.includes('yelp') &&
-            !host.includes('bbb.org') &&
-            u.protocol.startsWith('http')
-          ) {
-            const text = (a.textContent ?? '').toLowerCase();
-            const rel = (a.getAttribute('rel') ?? '').toLowerCase();
-            if (
-              text.includes('website') ||
-              text.includes('visit') ||
-              text.includes('home') ||
-              rel.includes('external') ||
-              a.closest('[class*="website"], [class*="link"], [class*="url"]')
-            ) {
-              return a.href;
-            }
-          }
-        } catch {
-          /* skip malformed urls */
-        }
-      }
-      for (const a of links) {
-        try {
-          const u = new URL(a.href);
-          const host = u.hostname.replace(/^www\./, '');
-          if (
-            host !== pageHost &&
-            u.protocol.startsWith('http') &&
-            !host.includes('facebook') &&
-            !host.includes('twitter') &&
-            !host.includes('linkedin') &&
-            !host.includes('instagram') &&
-            !host.includes('youtube') &&
-            !host.includes('google') &&
-            !host.includes('yelp') &&
-            !host.includes('bbb.org') &&
-            !host.includes('maps.') &&
-            u.pathname === '/'
-          ) {
-            return a.href;
-          }
-        } catch {
-          /* skip */
-        }
-      }
-      return '';
-    });
-    return website;
-  } catch {
-    return '';
   }
 }
 
@@ -150,12 +79,12 @@ export async function enrichCompany(
     if (detailUrl && !samePage) {
       await log('Step: open member/detail page for listing scrape');
       const scraped = await extractCompanyWebsiteFromDetail(page, detailUrl);
-      if (scraped.trim() && !preferSerperWebsite) {
-        result.companyWebsite = scraped;
+      if (scraped.website.trim() && !preferSerperWebsite) {
+        result.companyWebsite = scraped.website;
       }
       await log(
-        scraped.trim() && !preferSerperWebsite
-          ? `Step: detail page suggested website → ${scraped.slice(0, 60)}…`
+        scraped.website.trim() && !preferSerperWebsite
+          ? `Step: detail page suggested website → ${scraped.website.slice(0, 60)}…`
           : preferSerperWebsite
             ? 'Step: keeping Serper website (not overwriting from detail page)'
             : 'Step: no website extracted from detail page',

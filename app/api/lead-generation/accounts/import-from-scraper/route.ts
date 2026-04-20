@@ -13,6 +13,9 @@ import { normalizeLeadGenCountryKey } from '@/lib/lead-generation/identity';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const INGESTION_EVENT_BATCH_SIZE = 200;
+const IMPORT_LOG_EVERY = 100;
+
 type ImportBody = {
   jobId: string;
   marketId: string;
@@ -24,7 +27,7 @@ type ImportBody = {
 type MergeOutcome = 'created' | 'updated' | 'skipped_duplicate' | 'conflict' | 'error';
 
 function nameCountryKey(name: string | null | undefined, country: string | null | undefined) {
-  const normalized = buildScraperImportLookupKey({ name, country });
+  const normalized = buildScraperImportLookupKey({ name: name ?? '', country });
   return `${normalized.normalizedName}|${normalized.countryKey}`;
 }
 
@@ -34,7 +37,7 @@ function pushMapValue<T>(map: Map<string, T[]>, key: string, value: T) {
   map.set(key, list);
 }
 
-async function createIngestionEvent(data: {
+function buildIngestionEventCreateData(data: {
   marketId: string;
   accountId?: string | null;
   directoryJobId: string;
@@ -43,17 +46,23 @@ async function createIngestionEvent(data: {
   conflictFields?: string[];
   details?: Record<string, unknown>;
 }) {
+  return {
+    marketId: data.marketId,
+    accountId: data.accountId ?? null,
+    directoryJobId: data.directoryJobId,
+    directoryResultId: data.directoryResultId,
+    mergeOutcome: data.mergeOutcome,
+    conflictFieldsJson: JSON.stringify(data.conflictFields ?? []),
+    detailsJson: JSON.stringify(data.details ?? {}),
+  };
+}
+
+async function flushIngestionEvents(buffer: any[]) {
+  if (buffer.length === 0) return;
   const prismaAny = prisma as any;
-  await prismaAny.leadGenIngestionEvent.create({
-    data: {
-      marketId: data.marketId,
-      accountId: data.accountId ?? null,
-      directoryJobId: data.directoryJobId,
-      directoryResultId: data.directoryResultId,
-      mergeOutcome: data.mergeOutcome,
-      conflictFieldsJson: JSON.stringify(data.conflictFields ?? []),
-      detailsJson: JSON.stringify(data.details ?? {}),
-    },
+  const chunk = buffer.splice(0, INGESTION_EVENT_BATCH_SIZE);
+  await prismaAny.leadGenIngestionEvent.createMany({
+    data: chunk,
   });
 }
 
@@ -92,6 +101,11 @@ export async function POST(request: NextRequest) {
   let results = job.results ?? [];
   if (idFilter) results = results.filter((result) => idFilter.has(result.id));
   results = results.filter((result) => result.status !== 'failed');
+  const startedAt = Date.now();
+
+  console.info(
+    `[lead-gen-import] starting import jobId=${jobId} marketId=${marketId} results=${results.length} filtered=${Boolean(idFilter)} defaultCountry=${defaultCountry ?? ''}`,
+  );
 
   const candidates = results.map((result) => {
     const incoming = buildAccountCreateData({ marketId, jobId, result, defaultCountry });
@@ -152,6 +166,7 @@ export async function POST(request: NextRequest) {
   let conflicts = 0;
   const errors: string[] = [];
   const sampleAccounts: ReturnType<typeof prismaAccountToDomain>[] = [];
+  const ingestionEventBuffer: any[] = [];
 
   const pushSample = (account: ReturnType<typeof prismaAccountToDomain>) => {
     if (sampleAccounts.length < 50) sampleAccounts.push(account);
@@ -189,15 +204,23 @@ export async function POST(request: NextRequest) {
           `${incoming.normalizedName}|${normalizeLeadGenCountryKey(incoming.country)}`,
           createdAccount,
         );
-        await createIngestionEvent({
+        ingestionEventBuffer.push(buildIngestionEventCreateData({
           marketId,
           accountId: createdRow.id,
           directoryJobId: jobId,
           directoryResultId: result.id,
           mergeOutcome: 'created',
           details: { matchStrategy },
-        });
+        }));
         pushSample(prismaAccountToDomain(createdRow));
+        if (ingestionEventBuffer.length >= INGESTION_EVENT_BATCH_SIZE) {
+          await flushIngestionEvents(ingestionEventBuffer);
+        }
+        if ((created + updated + skipped + conflicts + errors.length) % IMPORT_LOG_EVERY === 0) {
+          console.info(
+            `[lead-gen-import] progress jobId=${jobId} processed=${created + updated + skipped + conflicts + errors.length}/${candidates.length} created=${created} updated=${updated} skipped=${skipped} conflicts=${conflicts} errors=${errors.length} elapsedMs=${Date.now() - startedAt}`,
+          );
+        }
         continue;
       }
 
@@ -219,7 +242,7 @@ export async function POST(request: NextRequest) {
       else if (mergeOutcome === 'updated') updated += 1;
       else skipped += 1;
 
-      await createIngestionEvent({
+      ingestionEventBuffer.push(buildIngestionEventCreateData({
         marketId,
         accountId: existing.id,
         directoryJobId: jobId,
@@ -230,7 +253,10 @@ export async function POST(request: NextRequest) {
           matchStrategy,
           filledFields: merge.filledFields,
         },
-      });
+      }));
+      if (ingestionEventBuffer.length >= INGESTION_EVENT_BATCH_SIZE) {
+        await flushIngestionEvents(ingestionEventBuffer);
+      }
 
       existingByResultId.set(result.id, updatedRow as unknown as ExistingAccountForImport);
       if (lookup.normalizedDomain) {
@@ -245,16 +271,34 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${result.companyName}: ${message}`);
-      await createIngestionEvent({
+      ingestionEventBuffer.push(buildIngestionEventCreateData({
         marketId,
         accountId: undefined,
         directoryJobId: jobId,
         directoryResultId: result.id,
         mergeOutcome: 'error',
         details: { error: message, matchStrategy },
-      });
+      }));
+      if (ingestionEventBuffer.length >= INGESTION_EVENT_BATCH_SIZE) {
+        await flushIngestionEvents(ingestionEventBuffer);
+      }
+    }
+
+    const processed = created + updated + skipped + conflicts + errors.length;
+    if (processed > 0 && processed % IMPORT_LOG_EVERY === 0) {
+      console.info(
+        `[lead-gen-import] progress jobId=${jobId} processed=${processed}/${candidates.length} created=${created} updated=${updated} skipped=${skipped} conflicts=${conflicts} errors=${errors.length} elapsedMs=${Date.now() - startedAt}`,
+      );
     }
   }
+
+  while (ingestionEventBuffer.length > 0) {
+    await flushIngestionEvents(ingestionEventBuffer);
+  }
+
+  console.info(
+    `[lead-gen-import] completed jobId=${jobId} processed=${candidates.length}/${candidates.length} created=${created} updated=${updated} skipped=${skipped} conflicts=${conflicts} errors=${errors.length} elapsedMs=${Date.now() - startedAt}`,
+  );
 
   return NextResponse.json({
     created,

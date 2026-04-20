@@ -66,6 +66,19 @@ export interface NameExtractionDebugSummary {
   finalUrl: string;
   pageTitle?: string;
   zeroResultExplanation?: string;
+  pageDiagnosis?: {
+    kind:
+      | 'normal'
+      | 'true-end-of-pagination'
+      | 'anti-bot-or-rate-limit'
+      | 'client-side-render-failure'
+      | 'unknown-empty-page';
+    detail: string;
+    playwrightTextLength?: number;
+    playwrightLinkCount?: number;
+    httpStatus?: number;
+    httpItemCount?: number;
+  };
   topContainers: Array<{
     selectorPath: string;
     tagName: string;
@@ -89,13 +102,16 @@ export interface NameExtractionDebugSummary {
     extraPagesFetched: number;
     extractChunks: number;
   };
+  /** Playwright: merged listing pages via query param (for example `page=1`…`page=595`). */
+  paginationQuery?: { param: string; from: number; to: number; pagesLoaded: number };
   /** Page fetch: local Playwright vs Firecrawl API */
   fetchEngine?: ScrapeFetchMode;
 }
 
-/** Counts after Serper + domain-guess pass (job meta) */
+/** Counts after homepage discovery pass (job meta) */
 export interface WebsiteDiscoveryJobSummary {
   attempted: number;
+  resolvedDetailPage: number;
   resolvedDomainGuess: number;
   resolvedSerper: number;
   unresolved: number;
@@ -114,15 +130,20 @@ export interface ScrapeJobInput {
   /** playwright = local browser (default); firecrawl = Firecrawl API (requires FIRECRAWL_API_KEY). */
   scrapeFetchMode?: ScrapeFetchMode;
   /**
-   * When true, resolve missing company homepages via domain guess + Serper.dev search (requires SERPER_API_KEY).
-   * Cheap vs per-company LLM; runs after name extraction, before optional Playwright site visits.
+   * Playwright only: load listing HTML for each integer in `[from, to]` by setting the query
+   * `param` on the job URL (for example `page=1` … `page=595`). Candidates are merged and deduped.
+   */
+  paginationQuery?: { param: string; from: number; to: number };
+  /**
+   * When true, resolve missing company homepages after extraction.
+   * For paginated/member-directory flows this now prefers direct member-detail page extraction before optional enrichment.
    */
   enableSerperWebsiteDiscovery?: boolean;
 }
 
-/** How we resolved companyWebsite when Serper discovery ran */
+/** How we resolved companyWebsite during the discovery phase */
 export interface WebsiteDiscoveryMeta {
-  method: 'domain-guess' | 'serper' | 'none';
+  method: 'detail-page' | 'domain-guess' | 'serper' | 'none';
   detail: string;
   serperQuery?: string;
 }

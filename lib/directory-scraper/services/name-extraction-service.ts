@@ -1,5 +1,9 @@
 import type { Browser } from 'playwright';
-import { extractCompanyNamesFromFirecrawl, extractCompanyNamesFromPage } from '../extract-company-names';
+import {
+  extractCompanyNamesFromFirecrawl,
+  extractCompanyNamesFromPage,
+  extractCompanyNamesFromPaginatedQueryPlaywright,
+} from '../extract-company-names';
 import { firecrawlScrape, isFirecrawlConfigured } from '../firecrawl-client';
 import { validationError, retryableError } from '../errors';
 import { launchChromiumForScraper } from '../playwright-launch';
@@ -36,6 +40,14 @@ export async function runNameExtractionService(
   }
 
   const fetchMode = input.scrapeFetchMode ?? 'playwright';
+  if (input.paginationQuery && fetchMode === 'firecrawl') {
+    throw validationError(
+      'PAGINATION_REQUIRES_PLAYWRIGHT',
+      'extracting_names',
+      'Query pagination requires Playwright fetch mode.',
+    );
+  }
+
   if (fetchMode === 'firecrawl') {
     if (!isFirecrawlConfigured()) {
       throw validationError(
@@ -74,14 +86,30 @@ export async function runNameExtractionService(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1280, height: 720 },
     });
-    const page = await context.newPage();
-    const result = await extractCompanyNamesFromPage(page, {
-      sourceUrl: urlCheck.normalizedUrl ?? sourceUrl,
-      maxCompanies: input.maxCompanies,
-      enableAiFallback: input.enableAiNameFallback ?? false,
-      cancelled: options.cancelled,
-      onLog: options.onLog,
+    await context.route('**/*', (route) => {
+      const resourceType = route.request().resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+        return route.abort();
+      }
+      return route.continue();
     });
+    const page = await context.newPage();
+    const result = input.paginationQuery
+      ? await extractCompanyNamesFromPaginatedQueryPlaywright(page, {
+          sourceUrl: urlCheck.normalizedUrl ?? sourceUrl,
+          paginationQuery: input.paginationQuery,
+          maxCompanies: input.maxCompanies,
+          enableAiFallback: input.enableAiNameFallback ?? false,
+          cancelled: options.cancelled,
+          onLog: options.onLog,
+        })
+      : await extractCompanyNamesFromPage(page, {
+          sourceUrl: urlCheck.normalizedUrl ?? sourceUrl,
+          maxCompanies: input.maxCompanies,
+          enableAiFallback: input.enableAiNameFallback ?? false,
+          cancelled: options.cancelled,
+          onLog: options.onLog,
+        });
 
     return {
       candidates: result.candidates,

@@ -3,7 +3,6 @@ import { addLog, createJob, getAllJobs } from '@/lib/directory-scraper/job-store
 import type { ScrapeJobInput } from '@/lib/directory-scraper/types';
 import { validateScrapeUrl } from '@/lib/directory-scraper/validate-scrape-url';
 import { isFirecrawlConfigured } from '@/lib/directory-scraper/firecrawl-client';
-import { isSerperConfigured } from '@/lib/directory-scraper/serper-client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +15,12 @@ export async function GET() {
     const message = err instanceof Error ? err.message : 'Failed to list jobs';
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+const MAX_QUERY_PAGINATION_PAGES = 2000;
+
+function shouldAutoEnableWebsiteDiscovery(input: ScrapeJobInput): boolean {
+  return Boolean(input.paginationQuery && input.scrapeFetchMode === 'playwright' && input.enableAiNameFallback);
 }
 
 export async function POST(request: NextRequest) {
@@ -36,6 +41,48 @@ export async function POST(request: NextRequest) {
       enableSerperWebsiteDiscovery: !!body.enableSerperWebsiteDiscovery,
     };
 
+    const pq = body.paginationQuery;
+    if (pq != null && typeof pq === 'object') {
+      if (fetchMode === 'firecrawl') {
+        return NextResponse.json(
+          {
+            error: 'Query pagination requires Playwright fetch mode (not Firecrawl).',
+            code: 'PAGINATION_REQUIRES_PLAYWRIGHT',
+          },
+          { status: 400 },
+        );
+      }
+      const param = typeof pq.param === 'string' ? pq.param.trim() : '';
+      const from = Number(pq.from);
+      const to = Number(pq.to);
+      if (!param || !Number.isFinite(from) || !Number.isFinite(to)) {
+        return NextResponse.json(
+          {
+            error: 'paginationQuery requires param (string), from (number), and to (number).',
+            code: 'PAGINATION_INVALID',
+          },
+          { status: 400 },
+        );
+      }
+      const fromI = Math.max(1, Math.floor(from));
+      const toI = Math.floor(to);
+      const pageCount = toI - fromI + 1;
+      if (toI < fromI || pageCount > MAX_QUERY_PAGINATION_PAGES) {
+        return NextResponse.json(
+          {
+            error: `Invalid pagination range: need 1 <= from <= to and at most ${MAX_QUERY_PAGINATION_PAGES} pages.`,
+            code: 'PAGINATION_RANGE',
+          },
+          { status: 400 },
+        );
+      }
+      input.paginationQuery = { param, from: fromI, to: toI };
+    }
+
+    if (shouldAutoEnableWebsiteDiscovery(input)) {
+      input.enableSerperWebsiteDiscovery = true;
+    }
+
     if (!input.url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
@@ -43,13 +90,6 @@ export async function POST(request: NextRequest) {
     if (input.scrapeFetchMode === 'firecrawl' && !isFirecrawlConfigured()) {
       return NextResponse.json(
         { error: 'Firecrawl mode requires FIRECRAWL_API_KEY in server environment.', code: 'FIRECRAWL_NOT_CONFIGURED' },
-        { status: 400 },
-      );
-    }
-
-    if (input.enableSerperWebsiteDiscovery && !isSerperConfigured()) {
-      return NextResponse.json(
-        { error: 'Serper discovery requires SERPER_API_KEY in server environment.', code: 'SERPER_NOT_CONFIGURED' },
         { status: 400 },
       );
     }
@@ -68,6 +108,17 @@ export async function POST(request: NextRequest) {
       phase: 'queued',
       eventCode: 'JOB_QUEUED',
     });
+    if (shouldAutoEnableWebsiteDiscovery(input)) {
+      await addLog(
+        job.id,
+        'info',
+        'Homepage discovery will run automatically after paginated AI extraction so company URLs can fill in row-by-row.',
+        {
+          phase: 'queued',
+          eventCode: 'WEBSITE_DISCOVERY_AUTO_ENABLED',
+        },
+      );
+    }
 
     return NextResponse.json(job, { status: 201 });
   } catch (err: unknown) {

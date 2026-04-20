@@ -65,9 +65,11 @@ function determineNextPhase(job: ScrapeJob): JobPhase {
   if (job.results.length === 0) return 'extracting_names';
 
   const hasPending = job.results.some((row) => row.status === 'pending');
+  const websiteDiscoveryQueuedFromRetry =
+    job.status === 'queued' && job.phase === 'discovering_websites';
   if (
     job.input.enableSerperWebsiteDiscovery &&
-    (job.phase === 'queued' || job.phase === 'extracting_names' || job.phase === 'discovering_websites')
+    (job.phase === 'queued' || job.phase === 'extracting_names' || websiteDiscoveryQueuedFromRetry)
   ) {
     return 'discovering_websites';
   }
@@ -145,13 +147,27 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       const results = await persistInitialCandidates(jobId, extraction.candidates, {
         visitWebsites: startingJob.input.visitCompanyWebsites ?? false,
       });
+      const willDiscoverWebsites = startingJob.input.enableSerperWebsiteDiscovery ?? false;
 
       await updatePhaseProgress(jobId, phase, 1, 1, {
         totalCompanies: results.length,
         completedCompanies: results.filter((row) => row.status === 'done' || row.status === 'failed').length,
-        message: `Extracted ${results.length} company name(s).`,
+        message: willDiscoverWebsites
+          ? `Extracted ${results.length} company name(s). Saved rows and queued homepage discovery.`
+          : `Extracted ${results.length} company name(s).`,
       });
       await logJob(jobId, phase, 'info', 'PHASE_COMPLETED', `Name extraction completed with ${results.length} row(s).`);
+      if (results.length > 0) {
+        await logJob(
+          jobId,
+          phase,
+          'info',
+          'ROWS_PERSISTED',
+          willDiscoverWebsites
+            ? `Saved ${results.length} extracted row(s). Homepage discovery is next and will update company URLs in place.`
+            : `Saved ${results.length} extracted row(s).`,
+        );
+      }
     }
 
     const jobAfterExtraction = await store.getJob(jobId);
@@ -168,9 +184,15 @@ export async function runScrapeJob(jobId: string): Promise<void> {
       await updatePhaseProgress(jobId, phase, 0, total, {
         totalCompanies: jobAfterExtraction.summary.companiesFound,
         completedCompanies: jobAfterExtraction.summary.companiesProcessed,
-        message: 'Resolving company websites for extracted rows.',
+        message: 'Resolving company homepages for extracted rows.',
       });
-      await logJob(jobId, phase, 'info', 'PHASE_STARTED', 'Starting website discovery.');
+      await logJob(
+        jobId,
+        phase,
+        'info',
+        'PHASE_STARTED',
+        `Starting website discovery for ${total} extracted row(s).`,
+      );
 
       const discovery = await runWebsiteDiscoveryService(results, {
         enabled: jobAfterExtraction.input.enableSerperWebsiteDiscovery ?? false,
@@ -181,7 +203,7 @@ export async function runScrapeJob(jobId: string): Promise<void> {
             totalCompanies: jobAfterExtraction.summary.companiesFound,
             completedCompanies: jobAfterExtraction.summary.companiesProcessed,
             currentCompanyName,
-            message: 'Resolving company websites.',
+            message: 'Resolving company homepages.',
           }),
       });
 
