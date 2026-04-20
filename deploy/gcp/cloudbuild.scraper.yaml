@@ -50,7 +50,7 @@ steps:
         else
           VERB=create
         fi
-        gcloud run jobs "$VERB" "${_JOB}" \
+        gcloud run jobs "$$VERB" "${_JOB}" \
           --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$BUILD_ID" \
           --region "${_REGION}" \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
