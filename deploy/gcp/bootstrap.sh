@@ -67,8 +67,18 @@ gcloud config set run/region "$REGION" >/dev/null
 # until Google provisions workers there — do not depend on it for bootstrap.
 gcloud config unset builds/region >/dev/null 2>&1 || true
 
-[ -n "${TURSO_DATABASE_URL:-}" ] || die "TURSO_DATABASE_URL not set in env"
-[ -n "${TURSO_AUTH_TOKEN:-}" ]   || die "TURSO_AUTH_TOKEN not set in env"
+if [ -z "${TURSO_DATABASE_URL:-}" ] || [ -z "${TURSO_AUTH_TOKEN:-}" ]; then
+  die "TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set (non-empty).
+
+Bootstrap only auto-loads REPO_ROOT/.env — current REPO_ROOT:
+  ${REPO_ROOT}
+
+If you ran this from a different clone (e.g. OpenClaw workspace), that .env may not include Turso.
+Fix: copy Turso lines into that file, or export both vars in the shell, then re-run:
+  export TURSO_DATABASE_URL='libsql://...'
+  export TURSO_AUTH_TOKEN='...'
+  bash deploy/gcp/bootstrap.sh ${PROJECT_ID} ${REGION}"
+fi
 
 # Cloud SQL Auth Proxy (used by apply-pg-schema.sh) needs Application Default Credentials,
 # not only 'gcloud auth login'. Fail fast with a clear message.
