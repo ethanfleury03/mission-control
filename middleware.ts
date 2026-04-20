@@ -32,6 +32,7 @@ export default auth((req) => {
 });
 
 export const config = {
-  // Run middleware on everything EXCEPT the Next internals and static assets.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Exclude /healthz from middleware so the route always serves (avoids 404 on
+  // some hosts when auth edge runs first; bootstrap and probes use this path).
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|healthz).*)'],
 };
