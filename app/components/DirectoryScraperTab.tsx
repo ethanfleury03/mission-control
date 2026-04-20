@@ -93,11 +93,13 @@ export function DirectoryScraperTab() {
   const [aiHint, setAiHint] = useState<string | null>(null);
   const [aiModel, setAiModel] = useState<string | null>(null);
   const [scrapeFetchMode, setScrapeFetchMode] = useState<ScrapeFetchMode>('playwright');
+  const [paginationEnabled, setPaginationEnabled] = useState(false);
+  const [paginationParam, setPaginationParam] = useState('page');
+  const [paginationFrom, setPaginationFrom] = useState('1');
+  const [paginationTo, setPaginationTo] = useState('');
   const [firecrawlConfigured, setFirecrawlConfigured] = useState(false);
   const [firecrawlHint, setFirecrawlHint] = useState<string | null>(null);
   const [enableSerperDiscovery, setEnableSerperDiscovery] = useState(false);
-  const [serperConfigured, setSerperConfigured] = useState(false);
-  const [serperHint, setSerperHint] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<'csv' | 'sheets'>('csv');
   const [sheetId, setSheetId] = useState('');
   const [sheetTab, setSheetTab] = useState('');
@@ -114,6 +116,7 @@ export function DirectoryScraperTab() {
   const [exportLoading, setExportLoading] = useState(false);
   const [fieldFilter, setFieldFilter] = useState<FieldFilter>('all');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [isLoadingMoreResults, setIsLoadingMoreResults] = useState(false);
 
   const [leadGenOpen, setLeadGenOpen] = useState(false);
   const [leadGenMarkets, setLeadGenMarkets] = useState<Market[]>([]);
@@ -129,6 +132,12 @@ export function DirectoryScraperTab() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const jobRef = useRef<ScrapeJob | null>(null);
   jobRef.current = job;
+
+  const autoEnableWebsiteDiscovery =
+    paginationEnabled &&
+    scrapeFetchMode === 'playwright' &&
+    enableAiFallback;
+  const effectiveWebsiteDiscovery = enableSerperDiscovery || autoEnableWebsiteDiscovery;
 
   // Check sheets + AI availability
   useEffect(() => {
@@ -150,13 +159,6 @@ export function DirectoryScraperTab() {
       .then((d) => {
         setFirecrawlConfigured(d.configured);
         setFirecrawlHint(d.hint ?? null);
-      })
-      .catch(() => {});
-    fetch(`${API}/serper-status`)
-      .then((r) => r.json())
-      .then((d) => {
-        setSerperConfigured(d.configured);
-        setSerperHint(d.hint ?? null);
       })
       .catch(() => {});
   }, []);
@@ -278,6 +280,11 @@ export function DirectoryScraperTab() {
   const startJob = async () => {
     setIsStarting(true);
     try {
+      const usePagination =
+        paginationEnabled &&
+        scrapeFetchMode === 'playwright' &&
+        paginationTo.trim() !== '';
+      const autoDiscoveryForRequest = usePagination && enableAiFallback;
       const res = await fetch(`${API}/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,12 +292,21 @@ export function DirectoryScraperTab() {
           url: url.trim(),
           maxCompanies: maxCompanies ? Number(maxCompanies) : undefined,
           visitCompanyWebsites: visitWebsites,
-          enableSerperWebsiteDiscovery: enableSerperDiscovery,
+          enableSerperWebsiteDiscovery: enableSerperDiscovery || autoDiscoveryForRequest,
           enableAiNameFallback: enableAiFallback,
           exportTarget,
           googleSheetId: sheetId,
           googleSheetTab: sheetTab,
           scrapeFetchMode,
+          ...(usePagination
+            ? {
+                paginationQuery: {
+                  param: paginationParam.trim() || 'page',
+                  from: Math.max(1, parseInt(paginationFrom, 10) || 1),
+                  to: parseInt(paginationTo, 10),
+                },
+              }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -329,6 +345,24 @@ export function DirectoryScraperTab() {
     setExportError(null);
     setExportInfo(null);
   };
+
+  const loadMoreResults = useCallback(async () => {
+    const j = jobRef.current;
+    if (!j?.id || !j.resultsTruncated || isLoadingMoreResults) return;
+    setIsLoadingMoreResults(true);
+    try {
+      const offset = j.results.length;
+      const res = await fetch(
+        `${API}/jobs/${j.id}?resultsLimit=${POLL_PAGE_SIZE}&resultsOffset=${offset}`,
+        { cache: 'no-store' },
+      );
+      if (!res.ok) return;
+      const data: ScrapeJob = await res.json();
+      setJob((prev) => mergePollSnapshot(prev, data));
+    } finally {
+      setIsLoadingMoreResults(false);
+    }
+  }, [isLoadingMoreResults]);
 
   const retryFailed = async () => {
     if (!job) return;
@@ -550,6 +584,18 @@ export function DirectoryScraperTab() {
               <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
+                  checked={paginationEnabled}
+                  onChange={(e) => setPaginationEnabled(e.target.checked)}
+                  disabled={isRunning || scrapeFetchMode !== 'playwright'}
+                  className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
+                />
+                <span className={scrapeFetchMode === 'playwright' ? '' : 'text-neutral-400'}>
+                  Scrape a page range by query param
+                </span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
                   checked={visitWebsites}
                   onChange={(e) => setVisitWebsites(e.target.checked)}
                   disabled={isRunning}
@@ -560,17 +606,23 @@ export function DirectoryScraperTab() {
               <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={enableSerperDiscovery}
+                  checked={effectiveWebsiteDiscovery}
                   onChange={(e) => setEnableSerperDiscovery(e.target.checked)}
-                  disabled={isRunning || !serperConfigured}
+                  disabled={isRunning || autoEnableWebsiteDiscovery}
                   className="rounded border-neutral-300 text-brand focus:ring-brand/30 accent-brand"
                 />
-                <span className={serperConfigured ? '' : 'text-neutral-400'}>
-                  Find company websites (Serper search)
-                </span>
+                Find company websites from member detail pages
               </label>
-              {!serperConfigured && serperHint && (
-                <p className="text-2xs text-neutral-500 leading-relaxed ml-6">{serperHint}</p>
+              {autoEnableWebsiteDiscovery && (
+                <p className="text-2xs text-neutral-500 leading-relaxed ml-6">
+                  Automatic in paginated AI mode. We save company rows first, then resolve homepages in a second phase so
+                  website URLs can fill in while the job keeps running.
+                </p>
+              )}
+              {!autoEnableWebsiteDiscovery && (
+                <p className="text-2xs text-neutral-500 leading-relaxed ml-6">
+                  Opens each saved member-detail page directly and extracts the company homepage from the page itself.
+                </p>
               )}
               <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer select-none">
                 <input
@@ -587,7 +639,62 @@ export function DirectoryScraperTab() {
               {!aiConfigured && aiHint && (
                 <p className="text-2xs text-neutral-500 leading-relaxed ml-6">{aiHint}</p>
               )}
+              {aiConfigured && paginationEnabled && scrapeFetchMode === 'playwright' && (
+                <p className="text-2xs text-neutral-500 leading-relaxed ml-6">
+                  Paginated Playwright runs use one grounded AI extraction pass per page, using visible text plus page links.
+                  Member/profile URLs are captured during extraction, then homepage discovery runs after rows are saved.
+                </p>
+              )}
             </div>
+
+            {paginationEnabled && scrapeFetchMode === 'playwright' && (
+              <div className="lg:col-span-3 border border-neutral-100 rounded-md p-3 bg-neutral-50/50">
+                <span className="block text-xs font-medium text-neutral-600 mb-2">Pagination query</span>
+                <p className="text-2xs text-neutral-500 mb-3">
+                  Loads the same directory URL repeatedly while changing one query parameter, for example
+                  <code className="mx-1 text-2xs">page=1</code>
+                  through
+                  <code className="mx-1 text-2xs">page=595</code>.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Parameter</label>
+                    <input
+                      type="text"
+                      value={paginationParam}
+                      onChange={(e) => setPaginationParam(e.target.value)}
+                      placeholder="page"
+                      disabled={isRunning}
+                      className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-md text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand/40 disabled:opacity-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">From</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={paginationFrom}
+                      onChange={(e) => setPaginationFrom(e.target.value)}
+                      placeholder="1"
+                      disabled={isRunning}
+                      className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-md text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand/40 disabled:opacity-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">To</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={paginationTo}
+                      onChange={(e) => setPaginationTo(e.target.value)}
+                      placeholder="595"
+                      disabled={isRunning}
+                      className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-md text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand/40 disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Fetch mode: Playwright vs Firecrawl */}
             <div className="lg:col-span-3 border border-neutral-100 rounded-md p-3 bg-neutral-50/50">
@@ -887,6 +994,24 @@ export function DirectoryScraperTab() {
                       <span className="font-medium">Zero rows:</span> {job.meta.nameExtractionDebug.zeroResultExplanation}
                     </p>
                   )}
+                  {job.meta.nameExtractionDebug.pageDiagnosis && (
+                    <p className="text-sky-800 bg-sky-50 border border-sky-100 rounded px-2 py-1.5">
+                      <span className="font-medium">Empty-page diagnosis:</span>{' '}
+                      {job.meta.nameExtractionDebug.pageDiagnosis.kind} · {job.meta.nameExtractionDebug.pageDiagnosis.detail}
+                      {job.meta.nameExtractionDebug.pageDiagnosis.httpStatus != null && (
+                        <span>
+                          {' '}
+                          · HTTP {job.meta.nameExtractionDebug.pageDiagnosis.httpStatus}
+                        </span>
+                      )}
+                      {job.meta.nameExtractionDebug.pageDiagnosis.httpItemCount != null && (
+                        <span>
+                          {' '}
+                          · direct HTML items {job.meta.nameExtractionDebug.pageDiagnosis.httpItemCount}
+                        </span>
+                      )}
+                    </p>
+                  )}
                   {job.meta.nameExtractionDebug.topContainers?.length > 0 && (
                     <div>
                       <span className="font-medium block mb-1">Top containers</span>
@@ -907,8 +1032,9 @@ export function DirectoryScraperTab() {
 
             {job.meta?.websiteDiscoverySummary && (
               <div className="mb-3 text-2xs border border-emerald-100 rounded-md bg-emerald-50/60 px-3 py-2 text-emerald-900">
-                <span className="font-medium">Website discovery (Serper):</span> attempted{' '}
-                {job.meta.websiteDiscoverySummary.attempted}, domain guess{' '}
+                <span className="font-medium">Website discovery:</span> attempted{' '}
+                {job.meta.websiteDiscoverySummary.attempted}, detail page{' '}
+                {job.meta.websiteDiscoverySummary.resolvedDetailPage ?? 0}, domain guess{' '}
                 {job.meta.websiteDiscoverySummary.resolvedDomainGuess}, Serper{' '}
                 {job.meta.websiteDiscoverySummary.resolvedSerper}, unresolved{' '}
                 {job.meta.websiteDiscoverySummary.unresolved}
@@ -1118,6 +1244,22 @@ export function DirectoryScraperTab() {
                 </tbody>
               </table>
             </div>
+            {job.resultsTruncated && job.resultsTotal != null && (
+              <div className="px-5 py-3 border-t border-neutral-100 bg-neutral-50/50 flex items-center justify-between gap-3">
+                <p className="text-2xs text-neutral-600">
+                  Loaded {job.results.length} of {job.resultsTotal} rows. Load more rows on demand to keep the live job view responsive.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadMoreResults()}
+                  disabled={isLoadingMoreResults}
+                  className="px-3 py-1.5 text-2xs rounded-md border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  {isLoadingMoreResults && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Load more
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

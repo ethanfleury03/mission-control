@@ -71,6 +71,10 @@ export async function updateResult(id: string, companyId: string, patch: Partial
   await persistence.updateResult(id, companyId, patch);
 }
 
+export async function updateResults(id: string, patches: Array<{ resultId: string; patch: Partial<CompanyResult> }>) {
+  await persistence.updateResults(id, patches);
+}
+
 export async function deleteResult(jobId: string, resultId: string) {
   return persistence.deleteResult(jobId, resultId);
 }

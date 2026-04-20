@@ -62,6 +62,7 @@ export interface DirectoryScraperPersistence {
   ): Promise<void>;
   setResults(id: string, results: CompanyResult[]): Promise<void>;
   updateResult(id: string, companyId: string, patch: Partial<CompanyResult>): Promise<void>;
+  updateResults(id: string, patches: Array<{ resultId: string; patch: Partial<CompanyResult> }>): Promise<void>;
   /** Permanently remove one result row and refresh job summary. */
   deleteResult(jobId: string, resultId: string): Promise<boolean>;
   updateSummary(id: string, patch: Partial<JobSummary>): Promise<void>;
@@ -278,14 +279,19 @@ const TEXT_FIELDS: (keyof CompanyResult)[] = [
 
 async function recalcSummaryWithClient(prisma: PrismaClient, jobId: string): Promise<void> {
   const client = prisma as any;
-  const results = await client.directoryScrapeResult.findMany({ where: { jobId } });
-  const done = results.filter((r: any) => r.status === 'done' || r.status === 'failed');
+  const [companiesFound, companiesProcessed, emailsFound, phonesFound, failures] = await Promise.all([
+    client.directoryScrapeResult.count({ where: { jobId } }),
+    client.directoryScrapeResult.count({ where: { jobId, status: { in: ['done', 'failed'] } } }),
+    client.directoryScrapeResult.count({ where: { jobId, email: { not: '' } } }),
+    client.directoryScrapeResult.count({ where: { jobId, phone: { not: '' } } }),
+    client.directoryScrapeResult.count({ where: { jobId, status: 'failed' } }),
+  ]);
   const summary: JobSummary = {
-    companiesFound: results.length,
-    companiesProcessed: done.length,
-    emailsFound: results.filter((r: any) => Boolean(r.email)).length,
-    phonesFound: results.filter((r: any) => Boolean(r.phone)).length,
-    failures: results.filter((r: any) => r.status === 'failed').length,
+    companiesFound,
+    companiesProcessed,
+    emailsFound,
+    phonesFound,
+    failures,
   };
   const job = await client.directoryScrapeJob.findUnique({
     where: { id: jobId },
@@ -355,6 +361,14 @@ function serializeResultData(jobId: string, r: CompanyResult, index: number): Re
     needsReview: r.needsReview ?? false,
     sortOrder: r.sortOrder ?? index,
   };
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 async function updateDurationMeta(prisma: PrismaClient, jobId: string): Promise<void> {
@@ -601,19 +615,33 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
         : [];
       const existingIds = new Set(existingRows.map((row: any) => row.id));
 
+      const creates: Record<string, unknown>[] = [];
+      const updates: Array<{ resultId: string; data: Record<string, unknown> }> = [];
       for (let index = 0; index < results.length; index += 1) {
         const result = results[index]!;
         const data = serializeResultData(id, result, index);
         if (existingIds.has(result.id)) {
-          await client.directoryScrapeResult.updateMany({
-            where: { jobId: id, id: result.id },
-            data: data as any,
-          });
+          updates.push({ resultId: result.id, data });
         } else {
-          await client.directoryScrapeResult.create({
-            data: data as any,
-          });
+          creates.push(data);
         }
+      }
+
+      for (const chunk of chunkArray(creates, 200)) {
+        await client.directoryScrapeResult.createMany({
+          data: chunk as any,
+        });
+      }
+
+      for (const chunk of chunkArray(updates, 50)) {
+        await client.$transaction(
+          chunk.map((item) =>
+            client.directoryScrapeResult.updateMany({
+              where: { jobId: id, id: item.resultId },
+              data: item.data as any,
+            }),
+          ),
+        );
       }
 
       await recalcSummaryWithClient(prisma, id);
@@ -660,6 +688,65 @@ export function createPrismaPersistence(prisma: PrismaClient): DirectoryScraperP
         where: { jobId: id, id: companyId },
         data: data as any,
       });
+    },
+
+    async updateResults(id, patches) {
+      if (patches.length === 0) return;
+      const ids = [...new Set(patches.map((item) => item.resultId))];
+      const existingRows = await client.directoryScrapeResult.findMany({
+        where: { jobId: id, id: { in: ids } },
+      });
+      const byId = new Map<string, ResultRow>(existingRows.map((row: any) => [row.id, row as ResultRow]));
+      const updates: Array<{ resultId: string; data: Record<string, unknown> }> = [];
+
+      for (const item of patches) {
+        const existing = byId.get(item.resultId);
+        if (!existing) continue;
+        const mergedPatch = mergeDoneRow(existing, item.patch);
+        const data: Record<string, unknown> = {};
+        if (mergedPatch.companyName !== undefined) data.companyName = mergedPatch.companyName;
+        if (mergedPatch.directoryListingUrl !== undefined) data.directoryListingUrl = mergedPatch.directoryListingUrl;
+        if (mergedPatch.companyWebsite !== undefined) data.companyWebsite = mergedPatch.companyWebsite;
+        if (mergedPatch.contactName !== undefined) data.contactName = mergedPatch.contactName;
+        if (mergedPatch.email !== undefined) data.email = mergedPatch.email;
+        if (mergedPatch.phone !== undefined) data.phone = mergedPatch.phone;
+        if (mergedPatch.address !== undefined) data.address = mergedPatch.address;
+        if (mergedPatch.contactPageUrl !== undefined) data.contactPageUrl = mergedPatch.contactPageUrl;
+        if (mergedPatch.socialLinks !== undefined) data.socialLinks = mergedPatch.socialLinks;
+        if (mergedPatch.notes !== undefined) data.notes = mergedPatch.notes;
+        if (mergedPatch.confidence !== undefined) data.confidence = mergedPatch.confidence;
+        if (mergedPatch.status !== undefined) data.status = mergedPatch.status;
+        if (mergedPatch.error !== undefined) data.error = mergedPatch.error ?? null;
+        if (mergedPatch.rawContact !== undefined) {
+          data.rawContactJson = mergedPatch.rawContact ? JSON.stringify(mergedPatch.rawContact) : null;
+        }
+        if (mergedPatch.needsReview !== undefined) data.needsReview = mergedPatch.needsReview;
+        if (mergedPatch.nameExtractionMeta !== undefined) {
+          data.nameExtractionMetaJson = mergedPatch.nameExtractionMeta
+            ? JSON.stringify(mergedPatch.nameExtractionMeta)
+            : null;
+        }
+        if (mergedPatch.websiteDiscoveryMeta !== undefined) {
+          data.websiteDiscoveryMetaJson = mergedPatch.websiteDiscoveryMeta
+            ? JSON.stringify(mergedPatch.websiteDiscoveryMeta)
+            : null;
+        }
+        if (mergedPatch.sortOrder !== undefined) data.sortOrder = mergedPatch.sortOrder;
+        if (Object.keys(data).length > 0) {
+          updates.push({ resultId: item.resultId, data });
+        }
+      }
+
+      for (const chunk of chunkArray(updates, 50)) {
+        await client.$transaction(
+          chunk.map((item) =>
+            client.directoryScrapeResult.updateMany({
+              where: { jobId: id, id: item.resultId },
+              data: item.data as any,
+            }),
+          ),
+        );
+      }
     },
 
     async updateSummary(id, patch) {

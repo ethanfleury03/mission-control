@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Database, MapPin, Users, Wrench, Building2, Filter, Zap, Download, ArrowRight, Loader2, ExternalLink, Send, Square, SquareCheck } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { FitScoreBadge, HubSpotHandoffBanner } from './shared';
+import { HubSpotHandoffBanner } from './shared';
 import type { Account, Market } from '@/lib/lead-generation/types';
 import { fetchMarketBySlug, fetchAccounts, fetchHubSpotConfig, bulkPushAccountsToHubSpot } from '@/lib/lead-generation/api';
 import { isEligibleForHubSpotPush } from '@/lib/lead-generation/push-eligibility';
-import { LEAD_PIPELINE_STAGE_LABELS, LEAD_PIPELINE_STAGE_COLORS } from '@/lib/lead-generation/config';
 
 interface MarketDetailProps {
   slug: string;
@@ -24,6 +23,14 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
   const [hubCfg, setHubCfg] = useState<{ pushDisabled: boolean; portalConfigured: boolean; portalId: string | null } | null>(null);
   const [bulkPushing, setBulkPushing] = useState(false);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+
+  const escapeCsv = (value: string | number | null | undefined) => {
+    const text = String(value ?? '');
+    if (/[",\n]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -116,6 +123,27 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
     } finally {
       setBulkPushing(false);
     }
+  };
+
+  const downloadCsv = () => {
+    const header = ['Company', 'URL', 'Email', 'Phone'];
+    const rows = accounts.map((account) => [
+      account.name,
+      account.website || account.domain || '',
+      account.email || '',
+      account.phone || '',
+    ]);
+    const csv = [header, ...rows].map((row) => row.map((cell) => escapeCsv(cell)).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeSlug = (market.slug || slug || 'market').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
+    link.href = url;
+    link.download = `${safeSlug}-accounts.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -243,6 +271,15 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
             <span className="text-2xs text-neutral-400">{selected.size} selected</span>
             <button
               type="button"
+              onClick={downloadCsv}
+              disabled={accounts.length === 0}
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-2xs font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <Download className="h-3 w-3" />
+              Download CSV
+            </button>
+            <button
+              type="button"
               onClick={onBulkPush}
               disabled={bulkPushing || hubCfg?.pushDisabled || selectedEligible.length === 0}
               className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-2xs font-medium bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40"
@@ -279,12 +316,6 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">URL</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Email</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600">Phone</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Country</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Size</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Industry</th>
-                <th className="text-center px-4 py-2 font-semibold text-neutral-600">Fit Score</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Source</th>
-                <th className="text-left px-4 py-2 font-semibold text-neutral-600">Pipeline</th>
                 <th className="text-left px-4 py-2 font-semibold text-neutral-600"></th>
               </tr>
             </thead>
@@ -339,24 +370,6 @@ export function MarketDetail({ slug, onBack, onSelectAccount }: MarketDetailProp
                   </td>
                   <td className="px-4 py-2.5 text-neutral-700 whitespace-nowrap">
                     {account.phone ? account.phone : <span className="text-neutral-400">—</span>}
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-600">{account.country}</td>
-                  <td className="px-4 py-2.5 text-neutral-600 capitalize">{account.companySizeBand.replace('-', ' ')}</td>
-                  <td className="px-4 py-2.5 text-neutral-600">{account.industry || account.subindustry || '—'}</td>
-                  <td className="px-4 py-2.5 text-center">
-                    <FitScoreBadge score={account.fitScore} />
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-500 capitalize">{account.sourceType.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-2.5">
-                    <span
-                      className={cn(
-                        'text-2xs px-1.5 py-0.5 rounded font-medium',
-                        LEAD_PIPELINE_STAGE_COLORS[account.leadPipelineStage ?? 'discovered'] ?? 'bg-neutral-100 text-neutral-600',
-                      )}
-                    >
-                      {LEAD_PIPELINE_STAGE_LABELS[account.leadPipelineStage ?? 'discovered'] ??
-                        (account.leadPipelineStage ?? '—')}
-                    </span>
                   </td>
                   <td className="px-4 py-2.5">
                     <ArrowRight className="h-3.5 w-3.5 text-neutral-300" />

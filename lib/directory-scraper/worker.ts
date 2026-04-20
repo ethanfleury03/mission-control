@@ -24,9 +24,27 @@ export async function runDirectoryScraperWorker(options?: {
 }) {
   const config = getDirectoryScraperWorkerConfig();
   const owner = options?.owner ?? `directory-worker-${randomUUID().slice(0, 8)}`;
+  let startupFailureCount = 0;
 
   for (;;) {
-    const job = await store.claimNextJob(owner, config.leaseMs);
+    let job: Awaited<ReturnType<typeof store.claimNextJob>> | undefined;
+    try {
+      job = await store.claimNextJob(owner, config.leaseMs);
+      startupFailureCount = 0;
+    } catch (error) {
+      startupFailureCount += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error(
+        `[directory-scraper-worker] transient store error while polling for jobs (attempt ${startupFailureCount}): ${message}`,
+      );
+      if (options?.once) {
+        throw error;
+      }
+      await sleep(config.startupRetryDelayMs);
+      continue;
+    }
+
     if (!job) {
       if (options?.once) return;
       await sleep(config.pollIntervalMs);

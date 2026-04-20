@@ -29,6 +29,52 @@ import { extractCompanyNamesFromTextBlobs, isAiExtractionAvailable } from './ext
 import { locateRosterWithAi, collectSameOriginLinks, type PageLink } from './ai-locate-roster';
 import type { FirecrawlScrapeSuccess } from './firecrawl-client';
 import { firecrawlScrape } from './firecrawl-client';
+import { sleep } from './utils';
+import { collectPageLinks, extractPageRosterWithAi } from './ai-page-roster-extraction';
+
+const DEFAULT_PAGINATION_PAGE_DELAY_MS = 700;
+const DEFAULT_PAGINATION_CHALLENGE_DELAY_MS = 2200;
+const DEFAULT_PAGINATION_ANTI_BOT_COOLDOWN_MS = 15000;
+const DEFAULT_PAGINATION_CONCURRENCY = 3;
+const DEFAULT_PAGINATION_ANTI_BOT_RETRY_LIMIT = 2;
+
+type EmptyPageDiagnosis = {
+  kind:
+    | 'true-end-of-pagination'
+    | 'anti-bot-or-rate-limit'
+    | 'client-side-render-failure'
+    | 'unknown-empty-page';
+  detail: string;
+  httpStatus?: number;
+  httpItemCount?: number;
+  fallbackHtml?: string;
+};
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? '');
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return Math.floor(raw);
+}
+
+function getPaginationConcurrency(): number {
+  return Math.max(1, Math.min(readPositiveIntEnv('SCRAPER_PAGINATION_CONCURRENCY', DEFAULT_PAGINATION_CONCURRENCY), 8));
+}
+
+function getPaginationPageDelayMs(): number {
+  return Math.max(0, readPositiveIntEnv('SCRAPER_PAGINATION_DELAY_MS', DEFAULT_PAGINATION_PAGE_DELAY_MS));
+}
+
+function getPaginationChallengeDelayMs(): number {
+  return Math.max(0, readPositiveIntEnv('SCRAPER_PAGINATION_CHALLENGE_DELAY_MS', DEFAULT_PAGINATION_CHALLENGE_DELAY_MS));
+}
+
+function getPaginationAntiBotCooldownMs(): number {
+  return Math.max(1000, readPositiveIntEnv('SCRAPER_PAGINATION_ANTI_BOT_COOLDOWN_MS', DEFAULT_PAGINATION_ANTI_BOT_COOLDOWN_MS));
+}
+
+function getPaginationAntiBotRetryLimit(): number {
+  return Math.max(0, Math.min(readPositiveIntEnv('SCRAPER_PAGINATION_ANTI_BOT_RETRY_LIMIT', DEFAULT_PAGINATION_ANTI_BOT_RETRY_LIMIT), 5));
+}
 
 function mergePageText(artifacts: { text: string; frames: { text: string }[] }): string {
   return [artifacts.text, ...artifacts.frames.map((f) => f.text)].join('\n');
@@ -54,6 +100,212 @@ function normalizeUrlKey(u: string): string {
   } catch {
     return u.split('#')[0];
   }
+}
+
+function setUrlSearchParam(url: string, key: string, value: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set(key, value);
+  return parsed.toString();
+}
+
+function isSpecialtyFoodDirectoryUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname.replace(/^www\./, '').toLowerCase() === 'specialtyfood.com' &&
+      parsed.pathname.includes('/membership/member-directory/')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function extractSpecialtyFoodDirectoryCandidates(html: string, sourceUrl: string): ExtractedCompanyCandidate[] {
+  const $ = cheerio.load(html || '<html></html>');
+  const byName = new Map<string, ExtractedCompanyCandidate>();
+
+  $('.member-directory-listing__list-item').each((index, item) => {
+    const titleLink = $(item).find('.member-directory-listing__list-item-title a[href]').first();
+    if (!titleLink.length) return;
+
+    const href = titleLink.attr('href');
+    const name = titleLink.text().replace(/\s+/g, ' ').trim();
+    if (!href || !name) return;
+
+    const absHref = normalizeUrlKey(new URL(href, sourceUrl).toString());
+    const normalizedName = name
+      .trim()
+      .toLowerCase()
+      .replace(/[\u2018\u2019\u201c\u201d]/g, "'")
+      .replace(/[\u2013\u2014]/g, '-')
+      .replace(/[^\w\s&'-]/gi, '')
+      .replace(/\s+/g, ' ');
+
+    const candidate: ExtractedCompanyCandidate = {
+      name,
+      normalizedName,
+      sourceUrl,
+      sourceSelector: `.member-directory-listing__list-item:nth-of-type(${index + 1}) .member-directory-listing__list-item-title a`,
+      sourceText: name,
+      containerSelector: '.member-directory-listing__list-item',
+      containerScore: 100,
+      method: 'detail-link',
+      confidence: 96,
+      reasons: ['specialtyfood-fast-path', 'organization-detail-link'],
+      listingUrl: absHref,
+      detailUrl: absHref,
+    };
+
+    const existing = byName.get(normalizedName);
+    if (!existing || candidate.confidence > existing.confidence) {
+      byName.set(normalizedName, candidate);
+    }
+  });
+
+  return [...byName.values()];
+}
+
+function countSpecialtyFoodListingItems(html: string): number {
+  if (!html?.trim()) return 0;
+  const $ = cheerio.load(html);
+  return $('.member-directory-listing__list-item').length;
+}
+
+function detectAntiBotMarkers(html: string): string | null {
+  const text = html.toLowerCase();
+  const markers = [
+    'access denied',
+    'forbidden',
+    'too many requests',
+    'rate limit',
+    'temporarily blocked',
+    'verify you are human',
+    'captcha',
+    'cf-browser-verification',
+    'cloudflare',
+    'attention required',
+    'request unsuccessful',
+  ];
+  const hit = markers.find((marker) => text.includes(marker));
+  return hit ?? null;
+}
+
+async function fetchHtmlSnapshot(url: string): Promise<{ ok: boolean; status: number; html: string; finalUrl: string }> {
+  try {
+    const response = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.9',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
+    });
+    const html = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      html,
+      finalUrl: response.url || url,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 0,
+      html: '',
+      finalUrl: url,
+    };
+  }
+}
+
+async function diagnoseSpecialtyFoodEmptyPage(input: {
+  pageUrl: string;
+  finalUrl: string;
+  pageTitle: string;
+  playwrightText: string;
+  playwrightLinkCount: number;
+  skipHttpProbe?: boolean;
+}): Promise<EmptyPageDiagnosis> {
+  if (input.skipHttpProbe) {
+    return {
+      kind: 'anti-bot-or-rate-limit',
+      detail: 'Challenge mode already active for this run, so later empty pages are being treated as anti-bot/rate-limit responses.',
+      httpStatus: 0,
+      httpItemCount: 0,
+    };
+  }
+  const http = await fetchHtmlSnapshot(input.pageUrl);
+  const antiBotMarker = detectAntiBotMarkers(http.html);
+  const httpItemCount = countSpecialtyFoodListingItems(http.html);
+  const normalizedTitle = (input.pageTitle ?? '').trim().toLowerCase();
+
+  if (http.status === 403 || http.status === 429 || http.status === 503 || antiBotMarker) {
+    return {
+      kind: 'anti-bot-or-rate-limit',
+      detail:
+        antiBotMarker
+          ? `Direct HTML fetch looks blocked or challenged (${antiBotMarker}).`
+          : `Direct HTML fetch returned HTTP ${http.status}.`,
+      httpStatus: http.status,
+      httpItemCount,
+      fallbackHtml: http.html,
+    };
+  }
+
+  if (httpItemCount > 0) {
+    return {
+      kind: 'client-side-render-failure',
+      detail: `Playwright saw an empty page, but direct HTML fetch still contains ${httpItemCount} listing item(s).`,
+      httpStatus: http.status,
+      httpItemCount,
+      fallbackHtml: http.html,
+    };
+  }
+
+  const httpLower = http.html.toLowerCase();
+  if (httpLower.includes('no results') || httpLower.includes('no matching results') || httpLower.includes('0 results')) {
+    return {
+      kind: 'true-end-of-pagination',
+      detail: 'Direct HTML fetch indicates no directory results on this page.',
+      httpStatus: http.status,
+      httpItemCount,
+      fallbackHtml: http.html,
+    };
+  }
+
+  if (
+    normalizedTitle.includes('member directory') &&
+    (httpLower.includes('member-directory-listing') || httpLower.includes('member-directory-listing-container'))
+  ) {
+    return {
+      kind: 'unknown-empty-page',
+      detail: 'Directory shell loaded but no listing rows were present in either Playwright or direct HTML.',
+      httpStatus: http.status,
+      httpItemCount,
+      fallbackHtml: http.html,
+    };
+  }
+
+  return {
+    kind: 'unknown-empty-page',
+    detail: 'Could not determine whether the empty result was pagination end, blocking, or render failure.',
+    httpStatus: http.status,
+    httpItemCount,
+    fallbackHtml: http.html,
+  };
+}
+
+function mergeStrategyCounts(
+  left: Partial<Record<NameExtractionMethod, number>>,
+  right: Partial<Record<NameExtractionMethod, number>>,
+): Partial<Record<NameExtractionMethod, number>> {
+  const merged = { ...left };
+  for (const [method, count] of Object.entries(right) as Array<[NameExtractionMethod, number]>) {
+    merged[method] = (merged[method] ?? 0) + count;
+  }
+  return merged;
 }
 
 function runFullDocumentStrategies(html: string, sourceUrl: string): ExtractedCompanyCandidate[] {
@@ -420,6 +672,384 @@ export async function extractCompanyNamesFromPage(
       return { text: snap.text, finalUrl: snap.finalUrl };
     },
   });
+}
+
+/**
+ * Playwright: load multiple listing pages by setting one query parameter (`page=1` … `page=N`).
+ * Merges and dedupes candidates across the page range.
+ */
+export async function extractCompanyNamesFromPaginatedQueryPlaywright(
+  page: Page,
+  options: ExtractCompanyNamesOptions & {
+    paginationQuery: { param: string; from: number; to: number };
+  },
+): Promise<ExtractCompanyNamesResult> {
+  const { paginationQuery, sourceUrl: baseUrl, maxCompanies, cancelled, onLog, enableAiFallback } = options;
+  const { param, from, to } = paginationQuery;
+
+  let mergedCandidates: ExtractedCompanyCandidate[] = [];
+  let mergedStrategyCounts: Partial<Record<NameExtractionMethod, number>> = {};
+  let anyAiFallback = false;
+  let lastDebug: NameExtractionDebugSummary | null = null;
+  let pagesLoaded = 0;
+  const claimedPages = new Set<number>();
+  const completedPages = new Set<number>();
+  const context = page.context();
+  const concurrency = Math.min(getPaginationConcurrency(), to - from + 1);
+  const baseDelayMs = getPaginationPageDelayMs();
+  const challengeDelayMs = getPaginationChallengeDelayMs();
+  const antiBotCooldownMs = getPaginationAntiBotCooldownMs();
+  const antiBotRetryLimit = getPaginationAntiBotRetryLimit();
+  const workers = [page];
+  for (let i = 1; i < concurrency; i += 1) {
+    workers.push(await context.newPage());
+  }
+
+  try {
+    let nextPage = from;
+    let challengeMode = false;
+    let globalCooldownUntil = 0;
+    const runWorker = async (workerPage: Page) => {
+      for (;;) {
+        if (cancelled && (await Promise.resolve(cancelled()))) return;
+        const now = Date.now();
+        if (globalCooldownUntil > now) {
+          await sleep(globalCooldownUntil - now);
+          continue;
+        }
+        const currentPage = nextPage;
+        nextPage += 1;
+        if (currentPage > to) return;
+        if (claimedPages.has(currentPage)) {
+          if (onLog) {
+            await Promise.resolve(onLog(`Skipped duplicate pagination claim for ${param}=${currentPage}`));
+          }
+          continue;
+        }
+        claimedPages.add(currentPage);
+
+        const pageUrl = setUrlSearchParam(baseUrl, param, String(currentPage));
+        if (onLog) {
+          await Promise.resolve(onLog(`Pagination: ${param}=${currentPage} (${currentPage - from + 1}/${to - from + 1})`));
+        }
+
+        let result: ExtractCompanyNamesResult | null = null;
+        let antiBotAttempts = 0;
+        for (;;) {
+          result =
+            enableAiFallback ?
+              await extractCompaniesFromSinglePageRosterWithAi(workerPage, {
+                sourceUrl: pageUrl,
+                cancelled,
+                onLog,
+                skipHttpProbe: challengeMode && antiBotAttempts > 0,
+              })
+            : await extractCompanyNamesFromPage(workerPage, {
+                sourceUrl: pageUrl,
+                maxCompanies: undefined,
+                enableAiFallback: false,
+                cancelled,
+                onLog,
+              });
+
+          const diagnosisKind = result.debug.pageDiagnosis?.kind;
+          if (diagnosisKind !== 'anti-bot-or-rate-limit' || antiBotAttempts >= antiBotRetryLimit) {
+            break;
+          }
+
+          antiBotAttempts += 1;
+          challengeMode = true;
+          globalCooldownUntil = Math.max(globalCooldownUntil, Date.now() + antiBotCooldownMs);
+          if (onLog) {
+            await Promise.resolve(
+              onLog(
+                `Challenge detected on ${pageUrl}; backing off for ${(antiBotCooldownMs / 1000).toFixed(0)}s before retry ${antiBotAttempts}/${antiBotRetryLimit}.`,
+              ),
+            );
+          }
+          await sleep(antiBotCooldownMs);
+        }
+        if (!result) return;
+
+        if (result.debug.pageDiagnosis?.kind === 'anti-bot-or-rate-limit') {
+          challengeMode = true;
+          globalCooldownUntil = Math.max(globalCooldownUntil, Date.now() + antiBotCooldownMs);
+        }
+
+        mergedCandidates = dedupeCompanyCandidates([...mergedCandidates, ...result.candidates]);
+        mergedStrategyCounts = mergeStrategyCounts(mergedStrategyCounts, result.debug.strategyCounts);
+        anyAiFallback = anyAiFallback || result.debug.aiFallbackUsed;
+        lastDebug = result.debug;
+        pagesLoaded += 1;
+        completedPages.add(currentPage);
+
+        if (maxCompanies && mergedCandidates.length >= maxCompanies) {
+          return;
+        }
+
+        const interPageDelayMs = challengeMode ? challengeDelayMs : baseDelayMs;
+        if (currentPage < to && interPageDelayMs > 0) {
+          await sleep(interPageDelayMs);
+        }
+      }
+    };
+
+    await Promise.all(workers.map((workerPage) => runWorker(workerPage)));
+  } finally {
+    for (const workerPage of workers.slice(1)) {
+      await workerPage.close().catch(() => {});
+    }
+  }
+
+  let finalCandidates = mergedCandidates;
+  if (maxCompanies && finalCandidates.length > maxCompanies) {
+    finalCandidates = finalCandidates
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, maxCompanies);
+  }
+
+  const baseDebug: NameExtractionDebugSummary =
+    lastDebug ??
+    ({
+      sourceUrl: baseUrl,
+      finalUrl: baseUrl,
+      pageTitle: '',
+      zeroResultExplanation: 'No listing pages were processed.',
+      topContainers: [],
+      strategyCounts: {},
+      aiFallbackUsed: false,
+      iframeCount: 0,
+      loadMoreClicks: 0,
+    } satisfies NameExtractionDebugSummary);
+
+  return {
+    candidates: finalCandidates,
+    debug: {
+      ...baseDebug,
+      sourceUrl: baseUrl,
+      finalUrl: baseDebug.finalUrl || baseUrl,
+      strategyCounts: mergedStrategyCounts,
+      aiFallbackUsed: anyAiFallback,
+      paginationQuery: { param, from, to, pagesLoaded },
+      aiFallbackReason:
+        baseDebug.aiFallbackReason ??
+        `pagination claimed ${claimedPages.size} page(s), completed ${completedPages.size} page(s)`,
+      zeroResultExplanation:
+        finalCandidates.length === 0
+          ? baseDebug.zeroResultExplanation ?? 'No companies extracted across paginated listing pages.'
+          : undefined,
+    },
+  };
+}
+
+async function extractCompaniesFromSinglePageRosterWithAi(
+  page: Page,
+  options: {
+    sourceUrl: string;
+    cancelled?: CancelSignal;
+    onLog?: (message: string) => void | Promise<void>;
+    skipHttpProbe?: boolean;
+  },
+): Promise<ExtractCompanyNamesResult> {
+  const { sourceUrl, cancelled, onLog, skipHttpProbe } = options;
+  const artifacts = await collectRenderedPageArtifacts(page, sourceUrl, { cancelled });
+  if (cancelled && (await Promise.resolve(cancelled()))) {
+    return makeEmptyResult(
+      sourceUrl,
+      artifacts.finalUrl,
+      artifacts.title,
+      'Cancelled during page load',
+      artifacts.frames.length,
+      artifacts.loadMoreClicks,
+    );
+  }
+
+  const fullText = mergePageText(artifacts);
+  const links = collectPageLinks(artifacts.html, artifacts.finalUrl);
+
+  if (isSpecialtyFoodDirectoryUrl(artifacts.finalUrl)) {
+    const fastPath = extractSpecialtyFoodDirectoryCandidates(artifacts.html, artifacts.finalUrl);
+    if (fastPath.length > 0) {
+      if (onLog) {
+        await Promise.resolve(
+          onLog(
+            `Fast path roster extraction: ${fastPath.length} companies from Specialty Food DOM on ${artifacts.finalUrl}`,
+          ),
+        );
+      }
+      return {
+        candidates: fastPath,
+        debug: {
+          sourceUrl,
+          finalUrl: artifacts.finalUrl,
+          pageTitle: artifacts.title,
+          zeroResultExplanation: undefined,
+          topContainers: [],
+          strategyCounts: { 'detail-link': fastPath.length },
+          aiFallbackUsed: false,
+          aiFallbackReason: 'specialtyfood-fast-path',
+          iframeCount: artifacts.frames.length,
+          loadMoreClicks: artifacts.loadMoreClicks,
+          aiLocateSummary: {
+            rosterUrlsFound: fastPath.length,
+            textSpansFound: fullText.length,
+            extraPagesFetched: 0,
+            extractChunks: 0,
+          },
+        },
+      };
+    }
+
+    if (fullText.trim().length === 0 && links.length === 0) {
+      const diagnosis = await diagnoseSpecialtyFoodEmptyPage({
+        pageUrl: sourceUrl,
+        finalUrl: artifacts.finalUrl,
+        pageTitle: artifacts.title,
+        playwrightText: fullText,
+        playwrightLinkCount: links.length,
+        skipHttpProbe,
+      });
+
+      if (diagnosis.kind === 'client-side-render-failure' && diagnosis.fallbackHtml) {
+        const recovered = extractSpecialtyFoodDirectoryCandidates(
+          diagnosis.fallbackHtml,
+          artifacts.finalUrl || sourceUrl,
+        );
+        if (recovered.length > 0) {
+          if (onLog) {
+            await Promise.resolve(
+              onLog(
+                `HTTP fallback roster extraction: ${recovered.length} companies recovered from direct HTML on ${sourceUrl} (${diagnosis.detail})`,
+              ),
+            );
+          }
+          return {
+            candidates: recovered,
+            debug: {
+              sourceUrl,
+              finalUrl: artifacts.finalUrl,
+              pageTitle: artifacts.title,
+              zeroResultExplanation: undefined,
+              pageDiagnosis: {
+                kind: diagnosis.kind,
+                detail: diagnosis.detail,
+                playwrightTextLength: fullText.length,
+                playwrightLinkCount: links.length,
+                httpStatus: diagnosis.httpStatus,
+                httpItemCount: diagnosis.httpItemCount,
+              },
+              topContainers: [],
+              strategyCounts: { 'detail-link': recovered.length },
+              aiFallbackUsed: false,
+              aiFallbackReason: 'specialtyfood-http-fallback-after-empty-playwright',
+              iframeCount: artifacts.frames.length,
+              loadMoreClicks: artifacts.loadMoreClicks,
+              aiLocateSummary: {
+                rosterUrlsFound: recovered.length,
+                textSpansFound: 0,
+                extraPagesFetched: 0,
+                extractChunks: 0,
+              },
+            },
+          };
+        }
+      }
+
+      if (onLog) {
+        await Promise.resolve(
+          onLog(
+            `Specialty Food empty-page diagnosis: ${diagnosis.kind} on ${sourceUrl} (${diagnosis.detail})`,
+          ),
+        );
+      }
+
+      return {
+        candidates: [],
+        debug: {
+          sourceUrl,
+          finalUrl: artifacts.finalUrl,
+          pageTitle: artifacts.title,
+          zeroResultExplanation: diagnosis.detail,
+          pageDiagnosis: {
+            kind: diagnosis.kind,
+            detail: diagnosis.detail,
+            playwrightTextLength: fullText.length,
+            playwrightLinkCount: links.length,
+            httpStatus: diagnosis.httpStatus,
+            httpItemCount: diagnosis.httpItemCount,
+          },
+          topContainers: [],
+          strategyCounts: {},
+          aiFallbackUsed: false,
+          aiFallbackReason: 'specialtyfood-empty-page-diagnosed-before-ai',
+          iframeCount: artifacts.frames.length,
+          loadMoreClicks: artifacts.loadMoreClicks,
+          aiLocateSummary: {
+            rosterUrlsFound: 0,
+            textSpansFound: 0,
+            extraPagesFetched: 0,
+            extractChunks: 0,
+          },
+        },
+      };
+    }
+  }
+
+  if (onLog) {
+    await Promise.resolve(
+      onLog(
+        `AI page roster extraction: ${fullText.length.toLocaleString()} chars, ${links.length} links from ${artifacts.finalUrl}`,
+      ),
+    );
+  }
+
+  const ai = await extractPageRosterWithAi({
+    pageUrl: artifacts.finalUrl,
+    pageTitle: artifacts.title,
+    visibleText: fullText,
+    links,
+  });
+
+  if (ai.error && onLog) {
+    await Promise.resolve(onLog(`AI page roster warning: ${ai.error}`));
+  }
+
+  const strategyCounts: Partial<Record<NameExtractionMethod, number>> = ai.candidates.length
+    ? { 'ai-classified': ai.candidates.length }
+    : {};
+
+  if (onLog) {
+    await Promise.resolve(
+      onLog(
+        `AI page roster result: ${ai.candidates.length} companies, ${ai.candidates.filter((c) => Boolean(c.listingUrl || c.detailUrl)).length} member/profile URL(s) captured`,
+      ),
+    );
+  }
+
+  return {
+    candidates: ai.candidates,
+    debug: {
+      sourceUrl,
+      finalUrl: artifacts.finalUrl,
+      pageTitle: artifacts.title,
+      zeroResultExplanation:
+        ai.candidates.length === 0
+          ? ai.error ?? 'AI page roster extraction returned no grounded companies.'
+          : undefined,
+      topContainers: [],
+      strategyCounts,
+      aiFallbackUsed: true,
+      aiFallbackReason: `ai-page-roster; model:${ai.modelUsed}; raw:${ai.rawCount ?? 0}; links:${links.length}`,
+      iframeCount: artifacts.frames.length,
+      loadMoreClicks: artifacts.loadMoreClicks,
+      aiLocateSummary: {
+        rosterUrlsFound: 0,
+        textSpansFound: fullText.length,
+        extraPagesFetched: 0,
+        extractChunks: 1,
+      },
+    },
+  };
 }
 
 /** Firecrawl scrape result → same extraction as Playwright (follow-ups via Firecrawl). */
