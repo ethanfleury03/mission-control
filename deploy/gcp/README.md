@@ -64,6 +64,16 @@ At the end the script prints:
 - The private `mc-api` URL.
 - A confirmation that `/healthz` responds publicly and `mc-api` refuses unauthenticated requests.
 
+### After deploy: verify and OAuth redirect
+
+With `gcloud` authenticated to the same project:
+
+```bash
+bash deploy/gcp/verify-deployment.sh YOUR_PROJECT_ID us-central1
+```
+
+That prints **`mc-web`** / **`mc-api`** URLs, **`/healthz`** and **`/health/live`** HTTP codes, and the **exact OAuth redirect URI** to paste into the Google OAuth Web client (APIs & Services → Credentials).
+
 ## What the bootstrap does (summary)
 
 1. Enables: Run, Cloud Build, Artifact Registry, Cloud SQL Admin, Secret Manager, Cloud Scheduler, IAM, IAM Credentials, Compute.
