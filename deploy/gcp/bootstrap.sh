@@ -18,8 +18,12 @@
 #   MISSION_CONTROL_WEBHOOK_URL, MISSION_CONTROL_WEBHOOK_SECRET
 #
 # Idempotent: re-runs reuse existing resources.
+#
+# Do NOT enable `set -u` (nounset) before sourcing .env: many .env files reference
+# optional vars (${FOO}) or include lines that break under nounset, which prevents
+# TURSO_* from ever being assigned even when present in the file.
 
-set -euo pipefail
+set -eo pipefail
 
 PROJECT_ID="${1:?PROJECT_ID required (e.g. bash bootstrap.sh my-project us-central1)}"
 REGION="${2:-us-central1}"
@@ -49,11 +53,17 @@ pause()  { read -r -p "$(printf '\033[1;35m?>\033[0m %s ' "$*")" _; }
 # as a stray command and variables never set correctly).
 if [[ -f "$REPO_ROOT/.env" ]]; then
   info "Loading variables from $REPO_ROOT/.env"
+  _ENV_TMP="$(mktemp "${TMPDIR:-/tmp}/mc-bootstrap-env.XXXXXX")"
+  tr -d '\r' < "$REPO_ROOT/.env" >"$_ENV_TMP"
   set -a
   # shellcheck disable=SC1090
-  source <(tr -d '\r' < "$REPO_ROOT/.env")
+  source "$_ENV_TMP" || die "Failed to parse $REPO_ROOT/.env (bash syntax error?)"
   set +a
+  rm -f "$_ENV_TMP"
 fi
+
+# Strict vars for the rest of the script (after .env is loaded).
+set -uo pipefail
 
 command -v gcloud >/dev/null 2>&1 || die "gcloud not installed. See https://cloud.google.com/sdk/docs/install"
 command -v openssl >/dev/null 2>&1 || die "openssl required"
