@@ -3,8 +3,15 @@ import Google from 'next-auth/providers/google';
 
 import { ALLOWED_HD, isAllowedGoogleProfile } from '@/lib/auth/hd-guard';
 
+const authSecret =
+  process.env.AUTH_SECRET?.trim() ||
+  (process.env.NODE_ENV !== 'production'
+    ? 'dev-insecure-auth-secret-only-for-local-npm-run-dev'
+    : undefined);
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
+  secret: authSecret,
   session: { strategy: 'jwt' },
   pages: {
     signIn: '/signin',

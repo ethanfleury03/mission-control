@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import * as db from './database';
 import { wsManager } from './websocket';
-import agentsRoutes from './routes/agents';
 import teamsRoutes from './routes/teams';
 import commandsRoutes from './routes/commands';
 import registryRoutes from './routes/registry';
@@ -11,7 +10,6 @@ import workRoutes from './work/routes';
 const router = Router();
 
 // Agent/team registry (PostgreSQL-backed)
-router.use('/agents', agentsRoutes);
 router.use('/org', orgRoutes);
 router.use('/teams', teamsRoutes);
 router.use('/commands', commandsRoutes);

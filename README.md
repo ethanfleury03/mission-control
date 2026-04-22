@@ -18,6 +18,8 @@ npm run db:push && npm run db:seed
 npm run dev
 ```
 
+If you see **Module not found: Can't resolve 'next-auth'** (or similar), run **`npm install`** from the repo root and try again. `npm run dev` runs a short **predev** check that errors with the same fix if `node_modules` is incomplete. To skip that check: **`npm run dev:raw`**.
+
 ### Turso (hosted SQLite, one DB for every machine)
 
 Prisma CLI (`db push`, `migrate dev`) still uses **`DATABASE_URL`** pointing at a **local** `dev.db` to generate and verify SQL. The running Next.js app uses **`TURSO_DATABASE_URL`** + **`TURSO_AUTH_TOKEN`** when those are set, via the LibSQL driver adapter in `lib/prisma.ts`. If `TURSO_DATABASE_URL` is unset, the app falls back to normal Prisma SQLite against `DATABASE_URL` (local file, CI, Vitest).

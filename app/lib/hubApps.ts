@@ -1,14 +1,12 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  LayoutDashboard,
   Kanban,
   Newspaper,
-  Bot,
   Globe,
   Target,
 } from 'lucide-react';
 
-export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS' | 'SCRAPER' | 'LEAD_GEN';
+export type HubAppId = 'KANBAN' | 'BLOGS' | 'SCRAPER' | 'LEAD_GEN';
 
 export interface HubApp {
   id: HubAppId;
@@ -18,12 +16,6 @@ export interface HubApp {
 }
 
 export const HUB_APPS: HubApp[] = [
-  {
-    id: 'OPENCLAW',
-    label: 'OpenClaw',
-    description: 'Live OpenClaw stats & runtime',
-    icon: LayoutDashboard,
-  },
   {
     id: 'KANBAN',
     label: 'Work board',
@@ -35,12 +27,6 @@ export const HUB_APPS: HubApp[] = [
     label: 'Blogs',
     description: 'Content pipeline',
     icon: Newspaper,
-  },
-  {
-    id: 'AGENTS',
-    label: 'Agents',
-    description: 'Agent office',
-    icon: Bot,
   },
   {
     id: 'SCRAPER',
