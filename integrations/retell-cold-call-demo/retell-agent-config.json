@@ -1,0 +1,280 @@
+{
+  "captured_at": "2026-04-20T21:13:08Z",
+  "recommended_demo_agent": {
+    "agent_id": "agent_116dfdec8727eb1da6d5d3d8a3",
+    "agent_name": "Arrow Systems Cold Call Demo V2",
+    "version": 0,
+    "is_published": false,
+    "channel": "voice",
+    "language": "en-US",
+    "timezone": "America/New_York",
+    "version_description": "Mocked boss-demo outbound agent rebuilt as a Retell conversation flow with curated Arrow Systems knowledge, discovery-first sales logic, and fixed mock scheduling.",
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_942dd6bbaf78",
+      "version": 0
+    },
+    "voice": {
+      "voice_id": "11labs-Adrian",
+      "voice_model": "eleven_turbo_v2",
+      "voice_speed": 0.94,
+      "enable_dynamic_voice_speed": true,
+      "responsiveness": 0.62,
+      "enable_dynamic_responsiveness": false,
+      "interruption_sensitivity": 0.45,
+      "enable_backchannel": true,
+      "backchannel_frequency": 0.25,
+      "backchannel_words": [
+        "right",
+        "got it",
+        "mm-hmm"
+      ],
+      "begin_message_delay_ms": 900,
+      "normalize_for_speech": true
+    },
+    "boosted_keywords": [
+      "Arrow Systems",
+      "ArrowJet",
+      "Anytron",
+      "Aries",
+      "Taurus",
+      "Nova",
+      "EZCut",
+      "BOPP",
+      "Tyvek",
+      "Mylar",
+      "Limitronic",
+      "Gerber"
+    ],
+    "pronunciation_dictionary": [
+      {
+        "word": "Arrow Systems",
+        "alphabet": "ipa",
+        "phoneme": "ˈæroʊ ˈsɪstəmz"
+      },
+      {
+        "word": "ArrowJet",
+        "alphabet": "ipa",
+        "phoneme": "ˈæroʊ dʒɛt"
+      },
+      {
+        "word": "Anytron",
+        "alphabet": "ipa",
+        "phoneme": "ˈɛniˌtrɑn"
+      },
+      {
+        "word": "Aries",
+        "alphabet": "ipa",
+        "phoneme": "ˈɛəriːz"
+      },
+      {
+        "word": "Taurus",
+        "alphabet": "ipa",
+        "phoneme": "ˈtɔrəs"
+      },
+      {
+        "word": "Nova",
+        "alphabet": "ipa",
+        "phoneme": "ˈnoʊvə"
+      },
+      {
+        "word": "EZCut",
+        "alphabet": "ipa",
+        "phoneme": "ˈiːzi kʌt"
+      },
+      {
+        "word": "BOPP",
+        "alphabet": "ipa",
+        "phoneme": "biː oʊ piː piː"
+      },
+      {
+        "word": "Tyvek",
+        "alphabet": "ipa",
+        "phoneme": "ˈtaɪvɛk"
+      },
+      {
+        "word": "Mylar",
+        "alphabet": "ipa",
+        "phoneme": "ˈmaɪlɑr"
+      },
+      {
+        "word": "Limitronic",
+        "alphabet": "ipa",
+        "phoneme": "ˌlɪmɪˈtrɑnɪk"
+      },
+      {
+        "word": "Gerber",
+        "alphabet": "ipa",
+        "phoneme": "ˈɡɜrbər"
+      }
+    ],
+    "voicemail_message": "Hey, this is Sasha from Arrow Systems. We help companies bring short-run label and packaging printing in-house with digital printers and finishing equipment. I'd love fifteen minutes next week to see if it's relevant. You can reach me at sasha@arrsys.com or just reply to the follow-up email. Thanks, take care.",
+    "analysis": {
+      "successful_prompt": "Mark the call successful only if the prospect confirmed one of the five allowed demo slots, or if the prospect clearly qualified themselves as relevant and explicitly asked Sasha to follow up.",
+      "summary_prompt": "Write a concise 2 sentence summary covering the prospect's current printing setup or pain point, the main objection or interest signal, and whether a fixed demo slot was confirmed.",
+      "user_sentiment_prompt": "Classify the prospect sentiment based on openness, skepticism, resistance, and overall tone during the conversation."
+    }
+  },
+  "conversation_flow": {
+    "conversation_flow_id": "conversation_flow_942dd6bbaf78",
+    "version": 0,
+    "model": "gpt-4.1",
+    "model_temperature": 0.12,
+    "tool_call_strict_mode": true,
+    "start_speaker": "agent",
+    "start_node_id": "start_intro",
+    "kb_config": {
+      "top_k": 3,
+      "filter_score": 0.6
+    },
+    "default_dynamic_variables": {
+      "prospect_first_name": "",
+      "company_name": "",
+      "industry_segment": "unknown",
+      "contact_role": "unknown",
+      "suspected_pain": "unknown",
+      "current_equipment_hint": "unknown",
+      "reason_for_call": "Arrow Systems helps teams bring short-run label and packaging production in-house."
+    },
+    "core_path_nodes": [
+      "start_intro",
+      "discovery_current_state",
+      "value_bridge",
+      "meeting_ask",
+      "offer_slots_round_1",
+      "offer_slots_round_2",
+      "offer_slots_round_3",
+      "confirm_tuesday_11",
+      "confirm_wednesday_2",
+      "confirm_thursday_1030",
+      "confirm_friday_130",
+      "confirm_monday_3"
+    ],
+    "global_nodes": [
+      "ai_disclosure",
+      "wrong_person",
+      "gatekeeper",
+      "call_screening",
+      "busy_not_now",
+      "send_info",
+      "already_have_solution",
+      "not_sure_relevance",
+      "first_decline_soft_close",
+      "remove_me",
+      "voicemail",
+      "product_question",
+      "industry_question"
+    ]
+  },
+  "knowledge_bases": [
+    {
+      "knowledge_base_id": "knowledge_base_ade786b454005132",
+      "knowledge_base_name": "Arrow Company ICP",
+      "used_for": [
+        "start_intro",
+        "discovery_current_state",
+        "value_bridge",
+        "meeting_ask",
+        "gatekeeper",
+        "call_screening"
+      ]
+    },
+    {
+      "knowledge_base_id": "knowledge_base_0526c2e496fbed0c",
+      "knowledge_base_name": "Arrow Products",
+      "used_for": [
+        "product_question"
+      ]
+    },
+    {
+      "knowledge_base_id": "knowledge_base_7c1416f760cdb54a",
+      "knowledge_base_name": "Arrow Industries",
+      "used_for": [
+        "already_have_solution",
+        "not_sure_relevance",
+        "industry_question"
+      ]
+    }
+  ],
+  "retell_test_cases": [
+    {
+      "test_case_definition_id": "test_case_54364fdc90ba",
+      "name": "Cold Call Demo V2 - Qualified Prospect Books Slot"
+    },
+    {
+      "test_case_definition_id": "test_case_1cc105f07c8b",
+      "name": "Cold Call Demo V2 - Busy Prospect Accepts Callback Slot"
+    },
+    {
+      "test_case_definition_id": "test_case_894948dbe70c",
+      "name": "Cold Call Demo V2 - Prospect Asks What Arrow Systems Sells"
+    },
+    {
+      "test_case_definition_id": "test_case_0a2b966510dc",
+      "name": "Cold Call Demo V2 - Prospect Asks If Caller Is AI"
+    },
+    {
+      "test_case_definition_id": "test_case_760f8529f3eb",
+      "name": "Cold Call Demo V2 - Wrong Person And Gatekeeper"
+    },
+    {
+      "test_case_definition_id": "test_case_9cb80e8c7200",
+      "name": "Cold Call Demo V2 - Prospect Already Has Vendor"
+    },
+    {
+      "test_case_definition_id": "test_case_f18110936b96",
+      "name": "Cold Call Demo V2 - Prospect Asks For Email Info"
+    },
+    {
+      "test_case_definition_id": "test_case_b181016b0f08",
+      "name": "Cold Call Demo V2 - Prospect Asks Product Question"
+    },
+    {
+      "test_case_definition_id": "test_case_4f20e11ea04f",
+      "name": "Cold Call Demo V2 - Prospect Asks Industry Fit Question"
+    },
+    {
+      "test_case_definition_id": "test_case_1df5923dd4c5",
+      "name": "Cold Call Demo V2 - Voicemail Detection"
+    }
+  ],
+  "batch_tests": [
+    {
+      "test_case_batch_job_id": "test_batch_4acdb38dabe5",
+      "status": "complete",
+      "total_count": 10,
+      "pass_count": 8,
+      "fail_count": 1,
+      "error_count": 1,
+      "note": "Initial full-suite run before follow-up flow patch."
+    },
+    {
+      "test_case_batch_job_id": "test_batch_0f9d0c9b81b8",
+      "status": "complete",
+      "total_count": 2,
+      "pass_count": 2,
+      "fail_count": 0,
+      "error_count": 0,
+      "note": "Targeted rerun after patching AI disclosure wording and product-question routing. Both cases now pass."
+    }
+  ],
+  "legacy_agent": {
+    "agent_id": "agent_6c8d946ce386930457d2e72aa9",
+    "agent_name": "Arrow Systems Cold Call Demo",
+    "version": 2,
+    "response_engine": {
+      "type": "retell-llm",
+      "llm_id": "llm_b146b8861db8f3961ee1e2b97a2c",
+      "version": 2
+    },
+    "voice_id": "openai-Anna",
+    "note": "Retained because Retell does not allow response engine changes on agent versions greater than 0."
+  },
+  "notes": [
+    "The v2 rebuild is intentionally mock-only and does not book a real calendar event.",
+    "The five fixed demo slots are the only allowed booking outcomes in the flow.",
+    "The old prompt-based test cases were deleted after the new v2 suite was created.",
+    "The original plan's publish gate was not executed here because manual listen-pass and QA review still need to happen in the Retell UI.",
+    "The first automated batch exposed two issues: AI disclosure phrasing and product-question routing. Both were patched in the flow and passed on the follow-up rerun."
+  ]
+}
