@@ -11,6 +11,11 @@
 import { NextResponse } from 'next/server';
 
 import { auth } from '@/auth';
+import {
+  getAuthBypassEmail,
+  getAuthBypassHd,
+  isAuthBypassEnabled,
+} from '@/lib/auth/bypass';
 
 export interface AuthedSession {
   email: string;
@@ -21,6 +26,15 @@ type Allowed = { authed: AuthedSession; response?: undefined };
 type Denied = { authed?: undefined; response: NextResponse };
 
 export async function requireAuth(): Promise<Allowed | Denied> {
+  if (isAuthBypassEnabled()) {
+    return {
+      authed: {
+        email: getAuthBypassEmail(),
+        hd: getAuthBypassHd(),
+      },
+    };
+  }
+
   const session = await auth();
   if (!session || !session.user) {
     return {

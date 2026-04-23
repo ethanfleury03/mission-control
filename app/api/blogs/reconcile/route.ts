@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { backendFetch } from '../../_lib/backend';
 
 const BLOG_CONTEXT = 'blog:content';
@@ -35,6 +36,9 @@ async function patchItem(item: WorkItem, metadataPatch: Record<string, any>, sta
 }
 
 export async function POST() {
+  const disabled = ensureBlogsEnabled();
+  if (disabled) return disabled;
+
   try {
     const boardRes = await backendFetch(`/work/board?contextKey=${encodeURIComponent(BLOG_CONTEXT)}`, { cache: 'no-store' });
     const board = await boardRes.json();

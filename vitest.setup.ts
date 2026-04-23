@@ -17,6 +17,9 @@ try {
   // ignore if missing
 }
 
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+fs.closeSync(fs.openSync(dbPath, 'w'));
+
 execSync('npx prisma db push --skip-generate --accept-data-loss', {
   stdio: 'pipe',
   cwd: __dirname,

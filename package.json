@@ -14,12 +14,14 @@
     "db:seed": "prisma db seed",
     "db:migrate": "prisma migrate dev",
     "check:no-mock": "pwsh -File ./scripts/no-mock-check.ps1",
-    "worker:directory-scraper": "tsx ./scripts/directory-scraper-worker.ts"
+    "worker:directory-scraper": "tsx ./scripts/directory-scraper-worker.ts",
+    "worker:phone-campaign": "tsx ./scripts/phone-campaign-worker.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.8.0",
     "@prisma/adapter-libsql": "^5.22.0",
     "@types/dagre": "^0.7.53",
+    "@types/three": "^0.184.0",
     "@xyflow/react": "^12.10.0",
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
@@ -33,8 +35,13 @@
     "playwright": "^1.59.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-globe.gl": "^2.37.1",
+    "react-markdown": "^10.1.0",
     "recharts": "^2.15.4",
+    "remark-gfm": "^4.0.1",
+    "shpjs": "^6.2.0",
     "tailwind-merge": "^2.6.1",
+    "three": "^0.184.0",
     "uuid": "^13.0.0",
     "zustand": "^5.0.11"
   },

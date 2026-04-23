@@ -14,6 +14,8 @@ substitutions:
   _SERVICE: mc-web
   _SERVICE_ACCOUNT: mc-web-sa
   _API_URL: ''
+  _ENABLE_BLOGS: 'false'
+  _NEXT_PUBLIC_ENABLE_BLOGS: 'false'
 
 serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
 
@@ -24,6 +26,8 @@ steps:
       - build
       - '-f'
       - Dockerfile
+      - '--build-arg'
+      - 'NEXT_PUBLIC_ENABLE_BLOGS=${_NEXT_PUBLIC_ENABLE_BLOGS}'
       - '-t'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID'
       - '-t'
@@ -48,12 +52,12 @@ steps:
         # (avoids gcloud exit 2 when the service has no previous env to merge into).
         # ${_API_URL} is a Cloud Build substitution, expanded when the build is created.
         API_URL_S="${_API_URL}"
-        SET_ENV="NODE_ENV=production,AUTH_TRUST_HOST=true"
+        SET_ENV="NODE_ENV=production,AUTH_TRUST_HOST=true,ENABLE_BLOGS=${_ENABLE_BLOGS},NEXT_PUBLIC_ENABLE_BLOGS=${_NEXT_PUBLIC_ENABLE_BLOGS}"
         if [ -n "$$API_URL_S" ]; then
           SET_ENV="$$SET_ENV,API_URL=$$API_URL_S,NEXT_PUBLIC_API_URL=$$API_URL_S,MISSION_CONTROL_API_URL=$$API_URL_S"
         fi
         SECRET_FLAGS="--set-secrets=AUTH_SECRET=mc-auth-secret:latest,AUTH_GOOGLE_ID=mc-google-client-id:latest,AUTH_GOOGLE_SECRET=mc-google-client-secret:latest,TURSO_DATABASE_URL=mc-turso-url:latest,TURSO_AUTH_TOKEN=mc-turso-token:latest"
-        for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper HUBSPOT_ACCESS_TOKEN=mc-hubspot-token HUBSPOT_PORTAL_ID=mc-hubspot-portal GOOGLE_SERVICE_ACCOUNT_EMAIL=mc-google-sa-email GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=mc-google-sa-key; do
+        for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter IMAGE_OPENROUTER_API_KEY=mc-image-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper HUBSPOT_ACCESS_TOKEN=mc-hubspot-token HUBSPOT_PORTAL_ID=mc-hubspot-portal GOOGLE_SERVICE_ACCOUNT_EMAIL=mc-google-sa-email GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=mc-google-sa-key; do
           NAME="$${OPTIONAL%%=*}"
           SECRET="$${OPTIONAL##*=}"
           if gcloud secrets describe "$$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then

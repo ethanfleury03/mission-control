@@ -45,6 +45,7 @@ export TURSO_AUTH_TOKEN="..."
 
 # Optional — wired into mc-web / mc-scraper only if set
 export OPENROUTER_API_KEY="..."     # directory scraper AI
+export IMAGE_OPENROUTER_API_KEY="..." # Image Studio orchestration
 export FIRECRAWL_API_KEY="..."      # directory scraper alt fetch
 export SERPER_API_KEY="..."         # company website discovery
 export HUBSPOT_ACCESS_TOKEN="..."   # lead-gen HubSpot push
@@ -53,7 +54,7 @@ export GOOGLE_SERVICE_ACCOUNT_EMAIL="..."         # Google Sheets export
 export GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="..."
 
 # 3. Run the bootstrap
-bash deploy/gcp/bootstrap.sh YOUR_PROJECT_ID us-central1
+bash deploy/gcp/bootstrap.sh YOUR_PROJECT_ID us-central1 support.arrsys.com
 ```
 
 During the run you will be prompted **once** to create an OAuth 2.0 client in the console (Google doesn't expose Web OAuth client creation via `gcloud` for Workspace Internal apps). The script walks you through it, waits for the Client ID/Secret, stores them in Secret Manager, and continues.
@@ -62,6 +63,7 @@ At the end the script prints:
 
 - The public `mc-web` URL (your dashboard).
 - The private `mc-api` URL.
+- The custom-domain edge IP plus the Certificate Manager DNS-authorization record for `support.arrsys.com`.
 - A confirmation that **`/api/healthz`** responds publicly (liveness) and `mc-api` refuses unauthenticated requests. The same JSON is at **`/healthz`**; prefer **`/api/healthz`** for scripts and Cloud Run.
 
 ### After deploy: verify and OAuth redirect
@@ -69,14 +71,30 @@ At the end the script prints:
 With `gcloud` authenticated to the same project:
 
 ```bash
-bash deploy/gcp/verify-deployment.sh YOUR_PROJECT_ID us-central1
+bash deploy/gcp/verify-deployment.sh YOUR_PROJECT_ID us-central1 support.arrsys.com
 ```
 
-That prints **`mc-web`** / **`mc-api`** URLs, **`/api/healthz`** and **`/health/live`** HTTP codes, and the **exact OAuth redirect URI** to paste into the Google OAuth Web client (APIs & Services → Credentials).
+That prints **`mc-web`** / **`mc-api`** URLs, **`/api/healthz`** and **`/health/live`** HTTP codes, custom-domain cert status, current DNS answers, and both OAuth callback URIs.
+
+### Custom domain cutover
+
+Bootstrap now keeps `NEXTAUTH_URL` on the `run.app` hostname until the custom domain is actually live. After:
+
+1. the Certificate Manager DNS-authorization record is added,
+2. the managed certificate becomes `ACTIVE`, and
+3. `support.arrsys.com` points at the printed load-balancer IP,
+
+run:
+
+```bash
+bash deploy/gcp/activate-custom-domain.sh YOUR_PROJECT_ID us-central1 support.arrsys.com
+```
+
+That verifies `https://support.arrsys.com/api/healthz`, updates `NEXTAUTH_URL`, and provisions the minimal Monitoring alerts.
 
 ## What the bootstrap does (summary)
 
-1. Enables: Run, Cloud Build, Artifact Registry, Cloud SQL Admin, Secret Manager, Cloud Scheduler, IAM, IAM Credentials, Compute.
+1. Enables: Run, Cloud Build, Artifact Registry, Cloud SQL Admin, Secret Manager, Cloud Scheduler, IAM, IAM Credentials, Compute, Monitoring, Certificate Manager.
 2. Creates Artifact Registry repo `mission-control` in the chosen region.
 3. Creates Cloud SQL Postgres instance `mc-sql` (db-f1-micro, zonal), database `missioncontrol`, user `mcapp` with a generated password stored in Secret Manager.
 4. Creates service accounts: `mc-web-sa`, `mc-api-sa`, `mc-scraper-sa`, `mc-scheduler-sa`.
@@ -86,8 +104,9 @@ That prints **`mc-web`** / **`mc-api`** URLs, **`/api/healthz`** and **`/health/
 8. Builds + deploys `mc-api` first, reads its URL, then builds + deploys `mc-web` with `API_URL` / `NEXT_PUBLIC_API_URL` wired in. Adds `run.invoker` binding so `mc-web-sa` can call the private API.
 9. Builds + deploys the `mc-scraper` Cloud Run Job.
 10. Creates/updates a Cloud Scheduler HTTP trigger `mc-scraper-tick` that runs the Job every 5 minutes with an OIDC token.
-11. Asks you to add the OAuth redirect URI (`<mc-web-url>/api/auth/callback/google`) to the OAuth client (10 seconds in the console).
-12. Runs a smoke test.
+11. Prepares the global external Application Load Balancer, serverless NEG, static IP, Certificate Manager DNS authorization, and managed certificate for `support.arrsys.com`.
+12. Asks you to add both OAuth redirect URIs (`<mc-web-url>/api/auth/callback/google` and `https://support.arrsys.com/api/auth/callback/google`) to the OAuth client.
+13. Runs a smoke test.
 
 ## Auth details
 
@@ -136,6 +155,12 @@ gcloud run jobs executions list --job=mc-scraper --region=us-central1
 gcloud run jobs update mc-scraper --region=us-central1 --image=<previous-image-tag>
 ```
 
+To roll `NEXTAUTH_URL` back from the custom domain to the `run.app` URL:
+
+```bash
+gcloud run services update mc-web --region=us-central1 --update-env-vars NEXTAUTH_URL=https://YOUR_MC_WEB_RUN_APP_URL
+```
+
 ## Cost shape (order of magnitude)
 
 - Cloud Run services scale to zero; expect a few dollars a month for the mc-web baseline plus traffic.
@@ -146,6 +171,6 @@ gcloud run jobs update mc-scraper --region=us-central1 --image=<previous-image-t
 
 ## Gotchas
 
-- The `.env.example` references an OpenClaw gateway on `localhost:18792` for the Agents / Registry panels. That service is not in this repo. After deploy those panels will return 502 until the gateway is hosted elsewhere and `NEXT_PUBLIC_GATEWAY_URL` is updated. Kanban, Org chart, Lead Gen, and the Directory Scraper work without it.
+- The `.env.example` still includes a local OpenClaw gateway example (`localhost:18792`), but production deploys no longer wire `NEXT_PUBLIC_GATEWAY_URL` automatically. Only set it if you actually host a separate gateway service.
 - First scraper run on a fresh Cloud Run Job has a ~20s cold start for Playwright. The `--task-timeout 900s` gives each tick up to 15 minutes of work.
 - Prisma/Next still use Turso (SQLite) at runtime. If you later want a single GCP-only data plane, switch `prisma/schema.prisma` to `provider = "postgresql"`, generate a migration, and point the same Cloud SQL instance (separate DB) from `lib/prisma.ts`. Out of scope for this deploy.

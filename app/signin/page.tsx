@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { auth, signIn } from '@/auth';
+import { isAuthBypassEnabled } from '@/lib/auth/bypass';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,17 +30,26 @@ export default async function SignInPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const authBypassEnabled = isAuthBypassEnabled();
+  const googleAuthConfigured = Boolean(
+    process.env.AUTH_GOOGLE_ID?.trim() && process.env.AUTH_GOOGLE_SECRET?.trim()
+  );
   const session = await auth();
   const params = await searchParams;
   const callbackUrl = first(params.callbackUrl) ?? '/';
-  const err = errorMessage(first(params.error));
+  const err = authBypassEnabled
+    ? null
+    : !googleAuthConfigured
+    ? 'Google sign-in is not configured on this deployment yet. Set AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET, then redeploy.'
+    : errorMessage(first(params.error));
 
-  if (session) {
+  if (authBypassEnabled || session) {
     redirect(callbackUrl);
   }
 
   async function doSignIn() {
     'use server';
+    if (!googleAuthConfigured) return;
     await signIn('google', { redirectTo: callbackUrl });
   }
 
@@ -90,6 +100,7 @@ export default async function SignInPage({
         <form action={doSignIn}>
           <button
             type="submit"
+            disabled={!googleAuthConfigured}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -103,7 +114,8 @@ export default async function SignInPage({
               color: '#1a1a1a',
               fontSize: 15,
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: googleAuthConfigured ? 'pointer' : 'not-allowed',
+              opacity: googleAuthConfigured ? 1 : 0.55,
             }}
           >
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">

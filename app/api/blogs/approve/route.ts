@@ -2,12 +2,16 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_PUBLISHER_AGENT_ID } from '../_lib/agents';
+import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
 import { backendFetch } from '../../_lib/backend';
 
 const execFileAsync = promisify(execFile);
 
 export async function POST(request: NextRequest) {
+  const disabled = ensureBlogsEnabled();
+  if (disabled) return disabled;
+
   try {
     const { itemId } = await request.json();
     if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });

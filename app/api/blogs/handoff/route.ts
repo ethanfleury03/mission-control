@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { applyBlogHandoff, extractBlogHandoffs, type BlogHandoff } from '../_lib/handoff';
 import { backendFetch } from '../../_lib/backend';
 
@@ -15,6 +16,9 @@ async function findItemIdByRunId(runId: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
+  const disabled = ensureBlogsEnabled();
+  if (disabled) return disabled;
+
   try {
     const body = await request.json().catch(() => ({}));
     const itemIdInput = String(body?.itemId || body?.work_item_id || '').trim();

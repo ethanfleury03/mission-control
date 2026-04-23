@@ -8,11 +8,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Save, Trash2, Edit, Loader2 } from 'lucide-react';
 import { cn } from '../app/lib/utils';
 
-const WORK_API_BASE =
-  (typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_GATEWAY_URL : undefined) ||
-  'http://localhost:18792';
-const WORK_ITEMS_URL = `${WORK_API_BASE.replace(/\/$/, '')}/mission-control/work/items`;
-const AGENTS_URL_BASE = `${WORK_API_BASE.replace(/\/$/, '')}/mission-control/registry/teams`;
+const WORK_ITEMS_URL = '/api/work/items';
+const AGENTS_URL_BASE = '/api/registry/teams';
 
 type KanbanColumn = 'queue' | 'ongoing' | 'need_human' | 'completed';
 
@@ -82,13 +79,13 @@ export const TaskDetailPanel: React.FC<{ taskId: string; isOpen: boolean; onClos
       const teamsRes = await fetch(`${AGENTS_URL_BASE}`);
       if (!teamsRes.ok) return;
       const teamsData = await teamsRes.json();
-      const teams = teamsData.teams || [];
+      const teams = Array.isArray(teamsData) ? teamsData : teamsData.teams || [];
       if (teams.length === 0) return;
       const teamId = teams[0].id; // Assuming first team for now
       const agentsRes = await fetch(`${AGENTS_URL_BASE}/${teamId}/agents`);
       if (!agentsRes.ok) return;
       const agentsData = await agentsRes.json();
-      setAgents(agentsData.agents || []);
+      setAgents(Array.isArray(agentsData) ? agentsData : agentsData.agents || []);
     } catch (err) {
       console.error('Failed to fetch agents:', err);
     }
