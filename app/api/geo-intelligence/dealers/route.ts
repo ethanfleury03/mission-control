@@ -59,10 +59,18 @@ function mapDealerData(body: Record<string, unknown>) {
 }
 
 export async function GET() {
-  const dealers = await prisma.geoDealer.findMany({
-    orderBy: [{ status: 'asc' }, { name: 'asc' }],
-  });
-  return NextResponse.json(dealers.map((dealer) => prismaGeoDealerToDomain(dealer)));
+  try {
+    const dealers = await prisma.geoDealer.findMany({
+      orderBy: [{ status: 'asc' }, { name: 'asc' }],
+    });
+    return NextResponse.json(dealers.map((dealer) => prismaGeoDealerToDomain(dealer)));
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === 'P2021' || code === 'P2022') {
+      return NextResponse.json([]);
+    }
+    throw error;
+  }
 }
 
 export async function POST(request: NextRequest) {

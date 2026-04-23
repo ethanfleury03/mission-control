@@ -96,6 +96,7 @@ export interface GeoSummary {
   statesCovered: number;
   hubspotContactsMapped: number;
   unmappedContacts: number;
+  dealerRoutes: number;
 }
 
 export interface GeoArc {
@@ -105,6 +106,18 @@ export interface GeoArc {
   endLat: number;
   endLng: number;
   label: string;
+  kind?: 'dealer' | 'ecosystem';
+  weight?: number;
+}
+
+export interface GeoCityPoint {
+  key: string;
+  label: string;
+  country: string;
+  countryIsoA3: string;
+  lat: number;
+  lng: number;
+  count: number;
 }
 
 export interface GeoDashboardSnapshot {
@@ -117,6 +130,8 @@ export interface GeoDashboardSnapshot {
   };
   dealers: GeoDealer[];
   dealerArcs: GeoArc[];
+  ecosystemArcs: GeoArc[];
+  topCities: GeoCityPoint[];
   countryBuckets: GeoCoverageBucket[];
   topCountries: GeoTopStat[];
   topStates: GeoTopStat[];
