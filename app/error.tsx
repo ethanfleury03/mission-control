@@ -21,9 +21,11 @@ export default function AppError({
         {error.message || 'The page failed to render.'}
       </h1>
       <p className="mt-4 max-w-md text-center text-sm leading-6 text-zinc-400">
-        If you just pulled new code, stop the dev server, delete the <code className="rounded bg-white/10 px-1">.next</code> folder, run{' '}
-        <code className="rounded bg-white/10 px-1">npm install</code>, then <code className="rounded bg-white/10 px-1">npm run dev</code> again. Stale
-        webpack chunks often cause a blank white screen.
+        If DevTools Network shows <strong className="text-white">404</strong> on{' '}
+        <code className="rounded bg-white/10 px-1">/_next/static/chunks/*.js</code>, your <code className="rounded bg-white/10 px-1">.next</code> cache is
+        out of sync or the wrong program is listening on this port. Stop the server, run{' '}
+        <code className="rounded bg-white/10 px-1">npm run dev:clean</code> (or delete <code className="rounded bg-white/10 px-1">.next</code> manually), then
+        start again. Make sure only <strong className="text-white">one</strong> Next dev server uses port 3002.
       </p>
       <button
         type="button"

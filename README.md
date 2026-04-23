@@ -20,6 +20,14 @@ npm run db:push && npm run db:seed
 npm run dev
 ```
 
+### White screen + Network tab shows 404 on `/_next/static/chunks/*.js`
+
+That pattern means the browser loaded the HTML document but **Next never served the compiled JS/CSS** for that dev session. Common causes:
+
+1. **Stale or half-written `.next`** after a pull, interrupted build, or antivirus locking files. Fix: stop the dev server, run **`npm run dev:clean`** (deletes `.next` then starts `next dev`), or manually delete the `.next` folder and run **`npm run dev`** again.
+2. **Wrong process on the port** (e.g. an old `next dev` still bound to 3002 while you started another, or a different app on 3002). Fix: stop every Node process using that port, then start a single `npm run dev`.
+3. **Opening `npm run start` (production) without a prior `npm run build`** — there is no `.next` output, so chunks 404. Fix: run **`npm run build`** then **`npm run start`**, or use **`npm run dev`** for local work.
+
 ### Turso (hosted SQLite, one DB for every machine)
 
 Prisma CLI (`db push`, `migrate dev`) still uses **`DATABASE_URL`** pointing at a **local** `dev.db` to generate and verify SQL. The running Next.js app uses **`TURSO_DATABASE_URL`** + **`TURSO_AUTH_TOKEN`** when those are set, via the LibSQL driver adapter in `lib/prisma.ts`. If `TURSO_DATABASE_URL` is unset, the app falls back to normal Prisma SQLite against `DATABASE_URL` (local file, CI, Vitest).
