@@ -13,6 +13,7 @@ build/
 
 # local db
 dev.db
+dev.db-journal
 server/data/*.db
 prisma/*.db
 prisma/prisma/
