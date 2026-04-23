@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
@@ -11,8 +12,6 @@ import { AgentOffice } from './components/AgentOffice';
 import { BlogsTab } from './components/BlogsTab';
 import { DirectoryScraperTab } from './components/DirectoryScraperTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
-import { GeoIntelligenceTab } from './components/geo-intelligence/GeoIntelligenceTab';
-import { GeoIntelligenceErrorBoundary } from './components/geo-intelligence/GeoIntelligenceErrorBoundary';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
 import type { HubAppId } from './lib/hubApps';
 
@@ -32,6 +31,21 @@ const EMPTY_METRICS: SystemMetrics = {
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'mc_sidebar_collapsed';
+
+const GeoIntelligenceEntry = dynamic(
+  () => import('./geo-intelligence-entry').then((m) => m.GeoIntelligenceEntry),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="flex min-h-screen w-full items-center justify-center text-sm text-white/70"
+        style={{ backgroundColor: '#05070d', minHeight: '100vh' }}
+      >
+        Loading Geo Intelligence…
+      </div>
+    ),
+  },
+);
 
 export default function ArrowHub() {
   const [activeApp, setActiveApp] = useState<HubAppId>('GEO_INTELLIGENCE');
@@ -169,14 +183,18 @@ export default function ArrowHub() {
   if (!mounted) {
     if (activeApp === 'GEO_INTELLIGENCE') {
       return (
-        <div className="h-screen w-full bg-[#05070d]">
-          <div className="flex h-full items-center justify-center text-sm text-white/60">
+        <div className="h-screen w-full" style={{ backgroundColor: '#05070d' }}>
+          <div className="flex h-full items-center justify-center text-sm text-white/70">
             Loading Geo Intelligence…
           </div>
         </div>
       );
     }
-    return <div className="h-screen flex flex-col bg-bg-primary" />;
+    return (
+      <div className="h-screen flex flex-col" style={{ backgroundColor: '#f4f4f5' }}>
+        <span className="sr-only">Loading…</span>
+      </div>
+    );
   }
 
   if (activeApp === 'GEO_INTELLIGENCE') {
@@ -191,9 +209,7 @@ export default function ArrowHub() {
             Open Mission Control
           </button>
         </div>
-        <GeoIntelligenceErrorBoundary>
-          <GeoIntelligenceTab />
-        </GeoIntelligenceErrorBoundary>
+        <GeoIntelligenceEntry />
       </div>
     );
   }
