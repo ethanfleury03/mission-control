@@ -12,6 +12,7 @@ import { BlogsTab } from './components/BlogsTab';
 import { DirectoryScraperTab } from './components/DirectoryScraperTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
 import { GeoIntelligenceTab } from './components/geo-intelligence/GeoIntelligenceTab';
+import { GeoIntelligenceErrorBoundary } from './components/geo-intelligence/GeoIntelligenceErrorBoundary';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
 import type { HubAppId } from './lib/hubApps';
 
@@ -166,6 +167,15 @@ export default function ArrowHub() {
   }, [mounted, refreshOpenClawData]);
 
   if (!mounted) {
+    if (activeApp === 'GEO_INTELLIGENCE') {
+      return (
+        <div className="h-screen w-full bg-[#05070d]">
+          <div className="flex h-full items-center justify-center text-sm text-white/60">
+            Loading Geo Intelligence…
+          </div>
+        </div>
+      );
+    }
     return <div className="h-screen flex flex-col bg-bg-primary" />;
   }
 
@@ -181,7 +191,9 @@ export default function ArrowHub() {
             Open Mission Control
           </button>
         </div>
-        <GeoIntelligenceTab />
+        <GeoIntelligenceErrorBoundary>
+          <GeoIntelligenceTab />
+        </GeoIntelligenceErrorBoundary>
       </div>
     );
   }
