@@ -1,0 +1,82 @@
+import countriesGeo from '../../public/data/geo/countries.geojson';
+import admin1Index from '../../public/data/geo/admin1-index.json';
+import { normalizeGeoKey } from './keys';
+
+type CountryProperties = {
+  id: string;
+  name: string;
+  isoA2: string;
+  isoA3: string;
+  labelLat: number;
+  labelLng: number;
+  continent: string;
+};
+
+type CountryFeature = {
+  type: 'Feature';
+  properties: CountryProperties;
+  geometry: unknown;
+};
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  uk: 'GBR',
+  uae: 'ARE',
+  usa: 'USA',
+  us: 'USA',
+  korea: 'KOR',
+  'south korea': 'KOR',
+  'north korea': 'PRK',
+  russia: 'RUS',
+  laos: 'LAO',
+  bolivia: 'BOL',
+  venezuela: 'VEN',
+  tanzania: 'TZA',
+  syria: 'SYR',
+  iran: 'IRN',
+  moldova: 'MDA',
+  vietnam: 'VNM',
+};
+
+const countryFeatures = (countriesGeo as { features: CountryFeature[] }).features;
+const admin1Available = new Set(
+  (admin1Index as { isoA3: string; count: number }[]).map((entry) => entry.isoA3.toUpperCase()),
+);
+
+const countryByIsoA2 = new Map<string, CountryProperties>();
+const countryByIsoA3 = new Map<string, CountryProperties>();
+const countryByName = new Map<string, CountryProperties>();
+
+for (const feature of countryFeatures) {
+  const props = feature.properties;
+  countryByIsoA2.set(props.isoA2.toUpperCase(), props);
+  countryByIsoA3.set(props.isoA3.toUpperCase(), props);
+  countryByName.set(normalizeGeoKey(props.name), props);
+}
+
+for (const [alias, isoA3] of Object.entries(COUNTRY_ALIASES)) {
+  const target = countryByIsoA3.get(isoA3);
+  if (target) countryByName.set(alias, target);
+}
+
+export function listCountryFeatures() {
+  return countryFeatures;
+}
+
+export function resolveCountryRecord(input?: string | null, code?: string | null): CountryProperties | null {
+  const rawCode = (code ?? '').trim().toUpperCase();
+  if (rawCode.length === 2 && countryByIsoA2.has(rawCode)) return countryByIsoA2.get(rawCode)!;
+  if (rawCode.length === 3 && countryByIsoA3.has(rawCode)) return countryByIsoA3.get(rawCode)!;
+
+  const rawInput = (input ?? '').trim();
+  if (!rawInput) return null;
+
+  const upper = rawInput.toUpperCase();
+  if (upper.length === 2 && countryByIsoA2.has(upper)) return countryByIsoA2.get(upper)!;
+  if (upper.length === 3 && countryByIsoA3.has(upper)) return countryByIsoA3.get(upper)!;
+
+  return countryByName.get(normalizeGeoKey(rawInput)) ?? null;
+}
+
+export function hasAdmin1Boundary(countryIsoA3: string): boolean {
+  return admin1Available.has(countryIsoA3.toUpperCase());
+}

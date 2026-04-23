@@ -263,3 +263,77 @@ model LeadGenIngestionEvent {
   @@index([directoryJobId, directoryResultId])
   @@map("lead_gen_ingestion_events")
 }
+
+// --- Geo Intelligence (dealer network + HubSpot contact coverage snapshot) ---
+
+model GeoDealer {
+  id           String   @id @default(cuid())
+  name         String
+  addressLine1 String
+  addressLine2 String   @default("")
+  city         String   @default("")
+  stateRegion  String   @default("")
+  postalCode   String   @default("")
+  country      String
+  countryCode  String   @default("")
+  countryIsoA3 String   @default("")
+  lat          Float
+  lng          Float
+  status       String   @default("active") // active | inactive | archived
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([countryIsoA3])
+  @@map("geo_dealers")
+}
+
+model GeoHubSpotContactSnapshot {
+  id             String   @id @default(cuid())
+  hubspotContactId String @unique
+  firstName      String   @default("")
+  lastName       String   @default("")
+  email          String   @default("")
+  country        String   @default("")
+  countryCode    String   @default("")
+  countryIsoA3   String   @default("")
+  stateRegion    String   @default("")
+  stateCode      String   @default("")
+  stateKey       String   @default("")
+  city           String   @default("")
+  ownerId        String   @default("")
+  ownerName      String   @default("")
+  lifecycleStage String   @default("")
+  leadStatus     String   @default("")
+  persona        String   @default("")
+  isMappable     Boolean  @default(false)
+  sourceUpdatedAt DateTime?
+  lastSyncedAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([countryIsoA3])
+  @@index([countryIsoA3, stateKey])
+  @@index([ownerId])
+  @@index([lifecycleStage])
+  @@index([leadStatus])
+  @@index([persona])
+  @@index([isMappable])
+  @@map("geo_hubspot_contact_snapshots")
+}
+
+model GeoSyncState {
+  id              String   @id
+  status          String   @default("idle") // idle | syncing | synced | failed
+  lastAttemptedAt DateTime?
+  lastSyncedAt    DateTime?
+  lastError       String   @default("")
+  totalRecords    Int      @default(0)
+  mappableRecords Int      @default(0)
+  unmappableRecords Int    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("geo_sync_state")
+}

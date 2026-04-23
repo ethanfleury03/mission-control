@@ -11,6 +11,7 @@ import { AgentOffice } from './components/AgentOffice';
 import { BlogsTab } from './components/BlogsTab';
 import { DirectoryScraperTab } from './components/DirectoryScraperTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
+import { GeoIntelligenceTab } from './components/geo-intelligence/GeoIntelligenceTab';
 import { SystemMetrics, Task, ActivityDataPoint, Session, Agent, Alert, CronJob } from './lib/types';
 import type { HubAppId } from './lib/hubApps';
 
@@ -195,6 +196,8 @@ export default function ArrowHub() {
           <DirectoryScraperTab />
         ) : activeApp === 'LEAD_GEN' ? (
           <LeadGenerationTab />
+        ) : activeApp === 'GEO_INTELLIGENCE' ? (
+          <GeoIntelligenceTab />
         ) : (
           <MainContent
             metrics={metrics}

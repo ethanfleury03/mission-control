@@ -6,9 +6,17 @@ import {
   Bot,
   Globe,
   Target,
+  Orbit,
 } from 'lucide-react';
 
-export type HubAppId = 'OPENCLAW' | 'KANBAN' | 'BLOGS' | 'AGENTS' | 'SCRAPER' | 'LEAD_GEN';
+export type HubAppId =
+  | 'OPENCLAW'
+  | 'KANBAN'
+  | 'BLOGS'
+  | 'AGENTS'
+  | 'SCRAPER'
+  | 'LEAD_GEN'
+  | 'GEO_INTELLIGENCE';
 
 export interface HubApp {
   id: HubAppId;
@@ -53,5 +61,11 @@ export const HUB_APPS: HubApp[] = [
     label: 'Lead Generation',
     description: 'Market databases & account qualification',
     icon: Target,
+  },
+  {
+    id: 'GEO_INTELLIGENCE',
+    label: 'Geo Intelligence',
+    description: 'Dealer ecosystem & HubSpot coverage map',
+    icon: Orbit,
   },
 ];
