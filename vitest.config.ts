@@ -12,6 +12,7 @@ export default defineConfig({
       'lib/directory-scraper/__tests__/**/*.test.ts',
       'lib/lead-generation/__tests__/**/*.test.ts',
       'lib/hubspot/__tests__/**/*.test.ts',
+      'lib/phone/__tests__/**/*.test.ts',
     ],
   },
   resolve: {

@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { backendFetch, backendUrl } from '../../_lib/backend';
 
-async function proxy(request: NextRequest, params: { path?: string[] }) {
+type RouteContext = {
+  params: Promise<{ path?: string[] }>;
+};
+
+async function getRouteParams(context: RouteContext): Promise<{ path?: string[] }> {
+  return await context.params;
+}
+
+async function proxy(request: NextRequest, context: RouteContext) {
+  const params = await getRouteParams(context);
   const path = (params.path || []).join('/');
   const url = new URL(backendUrl(`/work/${path}`));
   url.search = request.nextUrl.search;
@@ -33,7 +42,7 @@ async function proxy(request: NextRequest, params: { path?: string[] }) {
   }
 }
 
-export async function GET(request: NextRequest, context: any)    { return proxy(request, context?.params || {}); }
-export async function POST(request: NextRequest, context: any)   { return proxy(request, context?.params || {}); }
-export async function PATCH(request: NextRequest, context: any)  { return proxy(request, context?.params || {}); }
-export async function DELETE(request: NextRequest, context: any) { return proxy(request, context?.params || {}); }
+export async function GET(request: NextRequest, context: RouteContext)    { return proxy(request, context); }
+export async function POST(request: NextRequest, context: RouteContext)   { return proxy(request, context); }
+export async function PATCH(request: NextRequest, context: RouteContext)  { return proxy(request, context); }
+export async function DELETE(request: NextRequest, context: RouteContext) { return proxy(request, context); }

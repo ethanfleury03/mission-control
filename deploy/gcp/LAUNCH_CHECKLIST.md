@@ -34,6 +34,7 @@ Use this file as the short path to production. The repo already contains working
   - `TURSO_AUTH_TOKEN`
 - Decide which optional integrations are needed at launch:
   - `OPENROUTER_API_KEY`
+  - `IMAGE_OPENROUTER_API_KEY`
   - `FIRECRAWL_API_KEY`
   - `SERPER_API_KEY`
   - `HUBSPOT_ACCESS_TOKEN`
@@ -49,11 +50,11 @@ Use this file as the short path to production. The repo already contains working
 
 ### 4. Custom domain: `support.arrsys.com`
 
-- The bootstrap script deploys to the default `run.app` URL. It does not map `support.arrsys.com`.
-- For production, plan the custom-domain layer separately after `mc-web` is healthy.
+- `bootstrap.sh` now prepares the load balancer + certificate-manager layer for `support.arrsys.com`, but it intentionally leaves `NEXTAUTH_URL` on the `run.app` hostname until the domain is live.
+- Use `deploy/gcp/provision-edge.sh` to re-check the edge setup and DNS-authorization record any time.
 - Recommended production direction: put `mc-web` behind a Google Cloud external Application Load Balancer and attach `support.arrsys.com` there.
 - Update DNS at your registrar or Cloud DNS after the host is ready.
-- Once the domain is live, update `NEXTAUTH_URL` to `https://support.arrsys.com` and add that callback URL to the OAuth client.
+- Once the domain is live, run `deploy/gcp/activate-custom-domain.sh` to switch `NEXTAUTH_URL` to `https://support.arrsys.com`.
 
 ### 5. OpenClaw gateway dependency
 
@@ -74,5 +75,5 @@ Use this file as the short path to production. The repo already contains working
 2. Verify with `bash deploy/gcp/verify-deployment.sh <PROJECT_ID> us-central1`
 3. Confirm Google sign-in works on the `run.app` URL
 4. Map `support.arrsys.com`
-5. Update `NEXTAUTH_URL` and OAuth redirect URI to the custom domain
+5. Run `bash deploy/gcp/activate-custom-domain.sh <PROJECT_ID> us-central1 support.arrsys.com`
 6. Point reps to the custom domain only after auth and smoke checks pass

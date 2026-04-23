@@ -9,11 +9,13 @@ RUN npm ci
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG NEXT_PUBLIC_ENABLE_BLOGS=false
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Next standalone COPY expects this path; repo may not have a public/ dir.
 RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_ENABLE_BLOGS=${NEXT_PUBLIC_ENABLE_BLOGS}
 # Prisma CLI only needs a valid SQLite URL for generate (schema is sqlite).
 ENV DATABASE_URL="file:./prisma/dev.db"
 RUN npx prisma generate && npm run build

@@ -2,7 +2,7 @@
 # Mission Control — end-to-end GCP bootstrap.
 #
 # Usage:
-#   bash deploy/gcp/bootstrap.sh <PROJECT_ID> [REGION]
+#   bash deploy/gcp/bootstrap.sh <PROJECT_ID> [REGION] [CUSTOM_DOMAIN]
 #
 # Required env (Turso stays as the dashboard DB per plan):
 #   TURSO_DATABASE_URL
@@ -15,7 +15,8 @@
 #   OPENROUTER_API_KEY, FIRECRAWL_API_KEY, SERPER_API_KEY,
 #   HUBSPOT_ACCESS_TOKEN, HUBSPOT_PORTAL_ID,
 #   GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
-#   MISSION_CONTROL_WEBHOOK_URL, MISSION_CONTROL_WEBHOOK_SECRET
+#   MISSION_CONTROL_WEBHOOK_URL, MISSION_CONTROL_WEBHOOK_SECRET,
+#   MISSION_CONTROL_DOMAIN, MISSION_CONTROL_NOTIFICATION_CHANNELS
 #
 # Idempotent: re-runs reuse existing resources.
 #
@@ -27,6 +28,7 @@ set -eo pipefail
 
 PROJECT_ID="${1:?PROJECT_ID required (e.g. bash bootstrap.sh my-project us-central1)}"
 REGION="${2:-us-central1}"
+CUSTOM_DOMAIN="${3:-${MISSION_CONTROL_DOMAIN:-support.arrsys.com}}"
 
 AR_REPO="mission-control"
 SQL_INSTANCE="mc-sql"
@@ -116,10 +118,12 @@ info "Enabling required GCP APIs"
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
+  monitoring.googleapis.com \
   logging.googleapis.com \
   serviceusage.googleapis.com \
   storage.googleapis.com \
   artifactregistry.googleapis.com \
+  certificatemanager.googleapis.com \
   sqladmin.googleapis.com \
   secretmanager.googleapis.com \
   cloudscheduler.googleapis.com \
@@ -299,6 +303,7 @@ upsert_secret mc-api-db-url     "$DATABASE_URL"
 upsert_secret mc-turso-url      "$TURSO_DATABASE_URL"
 upsert_secret mc-turso-token    "$TURSO_AUTH_TOKEN"
 upsert_secret mc-openrouter     "${OPENROUTER_API_KEY:-}"
+upsert_secret mc-image-openrouter "${IMAGE_OPENROUTER_API_KEY:-}"
 upsert_secret mc-firecrawl      "${FIRECRAWL_API_KEY:-}"
 upsert_secret mc-serper         "${SERPER_API_KEY:-}"
 upsert_secret mc-hubspot-token  "${HUBSPOT_ACCESS_TOKEN:-}"
@@ -433,6 +438,12 @@ gcloud run services update mc-web --region="$REGION" \
   --update-env-vars "NEXTAUTH_URL=$WEB_URL" >/dev/null
 
 # -------------------------------------------------------------------------------------------------
+# 10b. Prepare the custom-domain edge (LB + cert auth + static IP)
+# -------------------------------------------------------------------------------------------------
+info "Preparing custom-domain edge for ${CUSTOM_DOMAIN}"
+bash "$SCRIPT_DIR/provision-edge.sh" "$PROJECT_ID" "$REGION" "$CUSTOM_DOMAIN" "mc-web"
+
+# -------------------------------------------------------------------------------------------------
 # 11. Build + deploy mc-scraper Job
 # -------------------------------------------------------------------------------------------------
 info "Building and deploying mc-scraper (Cloud Run Job)"
@@ -473,14 +484,16 @@ fi
 # 13. Patch OAuth client redirect URI (manual hint + secret re-check)
 # -------------------------------------------------------------------------------------------------
 REDIRECT_URI="${WEB_URL}/api/auth/callback/google"
+CUSTOM_REDIRECT_URI="https://${CUSTOM_DOMAIN}/api/auth/callback/google"
 cat <<EOF
 
 ========================================================================
-FINAL MANUAL STEP (10 seconds): add the redirect URI to your OAuth client.
+FINAL MANUAL STEP (10 seconds): add both redirect URIs to your OAuth client.
 
 Open: https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID
   -> click the mc-web OAuth client -> "Authorized redirect URIs"
   -> add: $REDIRECT_URI
+  -> add: $CUSTOM_REDIRECT_URI
   -> Save.
 ========================================================================
 
@@ -510,6 +523,8 @@ echo "================================================================"
 echo "  Mission Control is live."
 echo "  Dashboard: $WEB_URL"
 echo "  API:       $API_URL (private; mc-web authenticates via ID token)"
+echo "  Custom:    https://${CUSTOM_DOMAIN} (prepare DNS + cert, then activate)"
 echo "  Scheduler: mc-scraper-tick runs every 5 minutes"
 echo "  Login restricted to @arrsys.com Google accounts."
+echo "  Next step: bash deploy/gcp/activate-custom-domain.sh ${PROJECT_ID} ${REGION} ${CUSTOM_DOMAIN}"
 echo "================================================================"

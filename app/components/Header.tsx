@@ -1,7 +1,6 @@
 'use client';
 
-import { Search, Clock, ExternalLink } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Search, ExternalLink } from 'lucide-react';
 import { HUB_APPS, type HubAppId } from '../lib/hubApps';
 
 interface HeaderProps {
@@ -39,7 +38,9 @@ export function Header({ activeApp }: HeaderProps) {
         </span>
       </div>
 
-      <div className="relative flex-1 max-w-md min-w-[12rem] flex items-stretch gap-0">
+      <div className="hidden md:block flex-1 min-w-0" />
+
+      <div className="relative ml-auto w-full max-w-md min-w-[12rem] flex items-stretch gap-0">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none z-10" />
         <input
           type="text"
@@ -54,50 +55,6 @@ export function Header({ activeApp }: HeaderProps) {
           <Search className="w-4 h-4" />
         </button>
       </div>
-
-      <div className="flex-1 hidden lg:block" />
-
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-md border border-neutral-200">
-          <Clock className="w-3.5 h-3.5 text-neutral-500" />
-          <span className="text-xs font-mono text-neutral-600">8a/18s/12c</span>
-        </div>
-
-        <StatusBadge label="Live" value="8a/18s/12c" color="green" />
-        <StatusBadge label="Sync age" value="5s ago" color="default" />
-        <div className="hidden xl:flex items-center gap-2">
-          <StatusBadge label="Workspace" value="Mission Control" color="brand" />
-          <StatusBadge label="Gateway" value="Ok" color="green" />
-        </div>
-      </div>
     </header>
-  );
-}
-
-function StatusBadge({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color: 'green' | 'brand' | 'default';
-}) {
-  const colorClasses = {
-    green: 'text-accent-green border-accent-green/25 bg-accent-green/10',
-    brand: 'text-brand border-brand/25 bg-brand-muted',
-    default: 'text-neutral-600 border-neutral-200 bg-neutral-50',
-  };
-
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs',
-        colorClasses[color]
-      )}
-    >
-      <span className="text-neutral-500">{label}</span>
-      <span className="font-medium text-neutral-900">{value}</span>
-    </div>
   );
 }

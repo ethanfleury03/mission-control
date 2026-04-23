@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import { isAuthBypassEnabled } from '@/lib/auth/bypass';
 import { NextResponse } from 'next/server';
 
 const PUBLIC_PATHS = [
@@ -20,6 +21,7 @@ function isPublic(pathname: string): boolean {
 export default auth((req) => {
   const { pathname, search } = req.nextUrl;
   if (isPublic(pathname)) return NextResponse.next();
+  if (isAuthBypassEnabled()) return NextResponse.next();
 
   if (!req.auth) {
     if (pathname.startsWith('/api/')) {

@@ -1,12 +1,17 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Kanban,
+  BookOpen,
+  Orbit,
   Newspaper,
   Globe,
   Target,
+  ImagePlus,
+  Phone,
 } from 'lucide-react';
 
-export type HubAppId = 'KANBAN' | 'BLOGS' | 'SCRAPER' | 'LEAD_GEN';
+import { BLOGS_ENABLED } from '@/lib/features';
+
+export type HubAppId = 'BLOGS' | 'SCRAPER' | 'LEAD_GEN' | 'IMAGE_GEN' | 'GEO_INTELLIGENCE' | 'PHONE' | 'MANUALS';
 
 export interface HubApp {
   id: HubAppId;
@@ -15,12 +20,12 @@ export interface HubApp {
   icon: LucideIcon;
 }
 
-export const HUB_APPS: HubApp[] = [
+const ALL_HUB_APPS: HubApp[] = [
   {
-    id: 'KANBAN',
-    label: 'Work board',
-    description: 'Tasks and kanban',
-    icon: Kanban,
+    id: 'GEO_INTELLIGENCE',
+    label: 'Geo Intelligence',
+    description: 'Dealer ecosystem & coverage map',
+    icon: Orbit,
   },
   {
     id: 'BLOGS',
@@ -40,4 +45,26 @@ export const HUB_APPS: HubApp[] = [
     description: 'Market databases & account qualification',
     icon: Target,
   },
+  {
+    id: 'IMAGE_GEN',
+    label: 'Image Generation',
+    description: 'Guided content creation workspace',
+    icon: ImagePlus,
+  },
+  {
+    id: 'PHONE',
+    label: 'Phone',
+    description: 'Cold calling & operations',
+    icon: Phone,
+  },
+  {
+    id: 'MANUALS',
+    label: 'Manuals',
+    description: 'Internal manual library',
+    icon: BookOpen,
+  },
 ];
+
+export const HUB_APPS: HubApp[] = ALL_HUB_APPS.filter(
+  (app) => app.id !== 'BLOGS' || BLOGS_ENABLED,
+);

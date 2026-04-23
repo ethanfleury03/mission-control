@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
+import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
 import { backendFetch } from '../../_lib/backend';
 
@@ -148,6 +149,9 @@ function dispatchWriterAsync(params: {
 }
 
 export async function POST(request: NextRequest) {
+  const disabled = ensureBlogsEnabled();
+  if (disabled) return disabled;
+
   try {
     const body = await request.json();
     const inferred = inferBlogDraft(body || {});
