@@ -1,14 +1,19 @@
 /**
- * Prisma seed — explicit local demo data for Lead Gen.
- * Run: `npm run db:seed` (after `npm run db:push` and `.env` with DATABASE_URL).
+ * Prisma seed — explicit local demo data for Lead Gen and Geo Intelligence.
+ * Run: `npm run db:push && npm run db:seed`
  */
 import { seedLeadGenDemoDataIfEmpty } from '../lib/lead-generation/seed-db';
+import { seedGeoDemoData } from '../lib/geo-intelligence/seed-db';
 
 async function main() {
-  const r = await seedLeadGenDemoDataIfEmpty();
+  const [leadGen, geo] = await Promise.all([seedLeadGenDemoDataIfEmpty(), seedGeoDemoData()]);
   // eslint-disable-next-line no-console
   console.log(
-    `Lead Gen demo seed: upserted ${r.seededMarkets} market(s); created ${r.seededAccounts} demo account(s).`,
+    `Lead Gen demo seed: upserted ${leadGen.seededMarkets} market(s); created ${leadGen.seededAccounts} demo account(s).`,
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `Geo demo seed: created ${geo.seededDealers} dealer(s), ${geo.seededContacts} mock contact snapshot(s) (${geo.mappableRecords} mappable / ${geo.unmappableRecords} unmappable).`,
   );
 }
 

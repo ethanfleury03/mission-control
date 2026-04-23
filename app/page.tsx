@@ -33,7 +33,7 @@ const EMPTY_METRICS: SystemMetrics = {
 const SIDEBAR_COLLAPSED_KEY = 'mc_sidebar_collapsed';
 
 export default function ArrowHub() {
-  const [activeApp, setActiveApp] = useState<HubAppId>('OPENCLAW');
+  const [activeApp, setActiveApp] = useState<HubAppId>('GEO_INTELLIGENCE');
   const [mounted, setMounted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openClawHubOff, setOpenClawHubOff] = useState(false);
@@ -169,6 +169,23 @@ export default function ArrowHub() {
     return <div className="h-screen flex flex-col bg-bg-primary" />;
   }
 
+  if (activeApp === 'GEO_INTELLIGENCE') {
+    return (
+      <div className="relative h-screen overflow-hidden bg-[#020409]">
+        <div className="absolute right-4 top-4 z-40">
+          <button
+            type="button"
+            onClick={() => setActiveApp('OPENCLAW')}
+            className="rounded-full border border-white/10 bg-black/35 px-4 py-2 text-sm font-medium text-white/85 backdrop-blur-md transition-colors hover:border-brand/30 hover:bg-brand/15 hover:text-white"
+          >
+            Open Mission Control
+          </button>
+        </div>
+        <GeoIntelligenceTab />
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-bg-primary overflow-hidden hub-shell">
       <Header
@@ -196,8 +213,6 @@ export default function ArrowHub() {
           <DirectoryScraperTab />
         ) : activeApp === 'LEAD_GEN' ? (
           <LeadGenerationTab />
-        ) : activeApp === 'GEO_INTELLIGENCE' ? (
-          <GeoIntelligenceTab />
         ) : (
           <MainContent
             metrics={metrics}

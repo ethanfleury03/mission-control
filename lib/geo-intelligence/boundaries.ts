@@ -1,4 +1,4 @@
-import countriesGeo from '../../public/data/geo/countries.geojson';
+import countryIndex from '../../public/data/geo/country-index.json';
 import admin1Index from '../../public/data/geo/admin1-index.json';
 import { normalizeGeoKey } from './keys';
 
@@ -10,12 +10,6 @@ type CountryProperties = {
   labelLat: number;
   labelLng: number;
   continent: string;
-};
-
-type CountryFeature = {
-  type: 'Feature';
-  properties: CountryProperties;
-  geometry: unknown;
 };
 
 const COUNTRY_ALIASES: Record<string, string> = {
@@ -37,7 +31,7 @@ const COUNTRY_ALIASES: Record<string, string> = {
   vietnam: 'VNM',
 };
 
-const countryFeatures = (countriesGeo as { features: CountryFeature[] }).features;
+const countries = countryIndex as CountryProperties[];
 const admin1Available = new Set(
   (admin1Index as { isoA3: string; count: number }[]).map((entry) => entry.isoA3.toUpperCase()),
 );
@@ -46,20 +40,17 @@ const countryByIsoA2 = new Map<string, CountryProperties>();
 const countryByIsoA3 = new Map<string, CountryProperties>();
 const countryByName = new Map<string, CountryProperties>();
 
-for (const feature of countryFeatures) {
-  const props = feature.properties;
-  countryByIsoA2.set(props.isoA2.toUpperCase(), props);
-  countryByIsoA3.set(props.isoA3.toUpperCase(), props);
-  countryByName.set(normalizeGeoKey(props.name), props);
+for (const country of countries) {
+  if (!countryByIsoA2.has(country.isoA2.toUpperCase())) {
+    countryByIsoA2.set(country.isoA2.toUpperCase(), country);
+  }
+  countryByIsoA3.set(country.isoA3.toUpperCase(), country);
+  countryByName.set(normalizeGeoKey(country.name), country);
 }
 
 for (const [alias, isoA3] of Object.entries(COUNTRY_ALIASES)) {
   const target = countryByIsoA3.get(isoA3);
   if (target) countryByName.set(alias, target);
-}
-
-export function listCountryFeatures() {
-  return countryFeatures;
 }
 
 export function resolveCountryRecord(input?: string | null, code?: string | null): CountryProperties | null {

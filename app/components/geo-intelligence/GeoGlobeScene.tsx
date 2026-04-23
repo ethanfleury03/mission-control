@@ -144,6 +144,7 @@ interface GeoGlobeSceneProps {
   drilldown: GeoCountryDrilldownSnapshot | null;
   layers: Record<GeoLayerKey, boolean>;
   loading: boolean;
+  fullscreen?: boolean;
   onSelectCountry: (countryIsoA3: string | null) => void;
   onSelectDealer: (dealer: GeoDealer | null) => void;
   onResetView: () => void;
@@ -198,6 +199,7 @@ export function GeoGlobeScene({
   drilldown,
   layers,
   loading,
+  fullscreen = false,
   onSelectCountry,
   onSelectDealer,
   onResetView,
@@ -208,11 +210,11 @@ export function GeoGlobeScene({
   const interactedRef = useRef(false);
   const materialRef = useRef(
     new MeshPhongMaterial({
-      color: new Color('#07090f'),
-      emissive: new Color('#1a0d13'),
-      emissiveIntensity: 0.78,
-      shininess: 18,
-      specular: new Color('#7a2334'),
+      color: new Color('#24364a'),
+      emissive: new Color('#0d1723'),
+      emissiveIntensity: 0.24,
+      shininess: 5,
+      specular: new Color('#94a3b8'),
       transparent: true,
       opacity: 1,
     }),
@@ -231,14 +233,17 @@ export function GeoGlobeScene({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const width = Math.max(320, Math.floor(entry.contentRect.width));
-        const height = Math.max(540, Math.min(760, Math.floor(width * 0.72)));
+        const nextHeight = fullscreen
+          ? Math.max(540, Math.floor(entry.contentRect.height))
+          : Math.max(540, Math.min(760, Math.floor(width * 0.72)));
+        const height = Number.isFinite(nextHeight) && nextHeight > 0 ? nextHeight : 540;
         setDimensions({ width, height });
       }
     });
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [fullscreen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -374,26 +379,25 @@ export function GeoGlobeScene({
         id: 'origin-ring',
         lat: snapshot.arrowOrigin.lat,
         lng: snapshot.arrowOrigin.lng,
-        maxRadius: 4.2,
-        speed: 2.4,
-        repeat: 900,
-        color: ['rgba(255,255,255,0.45)', 'rgba(196,30,58,0.05)'],
+        maxRadius: 3.5,
+        speed: 1.35,
+        repeat: 2400,
+        color: ['rgba(255,255,255,0.22)', 'rgba(244,114,182,0.02)'],
       },
     ];
 
     if (!layers.dealers) return base;
 
     const selectedRings = snapshot.dealers
-      .filter((dealer) => dealer.status === 'active' && (dealer.id === selectedDealer?.id || dealer.sameCountryContacts > 0))
-      .slice(0, 18)
+      .filter((dealer) => dealer.status === 'active' && dealer.id === selectedDealer?.id)
       .map((dealer) => ({
         id: `ring:${dealer.id}`,
         lat: dealer.lat,
         lng: dealer.lng,
-        maxRadius: dealer.id === selectedDealer?.id ? 3.8 : 2.4,
-        speed: dealer.id === selectedDealer?.id ? 1.8 : 1.2,
-        repeat: dealer.id === selectedDealer?.id ? 1100 : 2000,
-        color: ['rgba(255,255,255,0.28)', 'rgba(244,63,94,0.02)'],
+        maxRadius: 3.1,
+        speed: 1.15,
+        repeat: 1800,
+        color: ['rgba(255,255,255,0.18)', 'rgba(244,63,94,0.01)'],
       }));
 
     return [...base, ...selectedRings];
@@ -406,31 +410,36 @@ export function GeoGlobeScene({
       return statePolygonData
         .filter((item) => item.count > 0 && item.feature.properties.latitude !== undefined && item.feature.properties.longitude !== undefined)
         .sort((a, b) => b.count - a.count)
-        .slice(0, 7)
+        .slice(0, 5)
         .map((item) => ({
           id: `state-label:${item.id}`,
           lat: item.feature.properties.latitude ?? drilldown.country.lat,
           lng: item.feature.properties.longitude ?? drilldown.country.lng,
           text: item.feature.properties.name,
-          size: item.intensity > 0.45 ? 0.9 : 0.66,
-          color: 'rgba(255,255,255,0.78)',
-          altitude: 0.038 + item.intensity * 0.02,
+          size: item.intensity > 0.45 ? 0.84 : 0.62,
+          color: 'rgba(248,250,252,0.88)',
+          altitude: 0.034 + item.intensity * 0.016,
         }));
     }
 
     return snapshot.countryBuckets
       .filter((bucket) => bucket.lat !== undefined && bucket.lng !== undefined)
-      .slice(0, 10)
+      .slice(0, 6)
       .map((bucket, index) => ({
         id: `country-label:${bucket.key}`,
         lat: bucket.lat ?? 0,
         lng: bucket.lng ?? 0,
         text: bucket.label,
-        size: index < 3 ? 1.04 : 0.8,
-        color: index < 3 ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.66)',
-        altitude: 0.028,
+        size: index < 3 ? 0.94 : 0.72,
+        color: index < 3 ? 'rgba(248,250,252,0.96)' : 'rgba(226,232,240,0.78)',
+        altitude: 0.024,
       }));
   }, [drilldown, polygonMode, snapshot, statePolygonData]);
+
+  const arcData = useMemo(() => {
+    if (!layers.dealerNetwork || !snapshot) return [];
+    return snapshot.dealerArcs.slice(0, 10);
+  }, [layers.dealerNetwork, snapshot]);
 
   const heatmapsData = useMemo<HeatDataset[]>(() => {
     if (!layers.contactCoverage || !snapshot) return [];
@@ -493,29 +502,36 @@ export function GeoGlobeScene({
   const statePolygonDatum = (item: object) => item as StatePolygonDatum;
 
   return (
-    <div className="geo-stage-card relative overflow-hidden rounded-[32px] border border-white/10 bg-[#06070b] shadow-[0_24px_80px_rgba(3,4,7,0.45)]">
+    <div
+      className={cn(
+        'geo-stage-card relative overflow-hidden bg-[#0f1826]',
+        fullscreen
+          ? 'min-h-[68svh] rounded-none border-0 shadow-none lg:min-h-screen'
+          : 'rounded-[32px] border border-white/35 shadow-[0_24px_80px_rgba(15,23,42,0.16)]',
+      )}
+    >
       <div className="absolute inset-0 geo-stage" />
-      <div className="absolute inset-0 geo-stage-grid opacity-80" />
-      <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-3 px-5 py-5">
+      <div className="absolute inset-0 geo-stage-grid opacity-55" />
+      <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-3 px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">Geo Intelligence</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Geo Intelligence</p>
           <h3 className="mt-2 text-2xl font-semibold tracking-tight text-white">
             {drilldown ? `${drilldown.country.name} Focus` : 'Global Dealer & Contact Surface'}
           </h3>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+          <p className="mt-2 max-w-2xl text-sm text-white/72">
             Dealer pins, Arrow network arcs, and HubSpot coverage layers all share the same globe so territory patterns read instantly.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {hoverLabel && (
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur-sm">
+            <span className="rounded-full border border-white/35 bg-slate-950/55 px-3 py-1.5 text-xs text-white backdrop-blur-sm">
               {hoverLabel}
             </span>
           )}
           <button
             type="button"
             onClick={onResetView}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-medium text-zinc-200 backdrop-blur-sm transition-colors hover:border-brand/30 hover:bg-brand/10 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-slate-950/55 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:border-brand/30 hover:bg-brand/10"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Reset Globe
@@ -525,7 +541,10 @@ export function GeoGlobeScene({
 
       <div
         ref={stageRef}
-        className="relative z-0 h-[40rem] min-h-[34rem] w-full"
+        className={cn(
+          'relative z-0 w-full',
+          fullscreen ? 'h-[68svh] min-h-[34rem] lg:h-screen lg:min-h-screen' : 'h-[40rem] min-h-[34rem]',
+        )}
         onPointerDown={() => {
           interactedRef.current = true;
           const controls = globeRef.current?.controls();
@@ -533,8 +552,8 @@ export function GeoGlobeScene({
         }}
       >
         {(loading || assetsLoading) && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#06070b]/55 backdrop-blur-sm">
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-zinc-200">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#0f1826]/38 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-3 rounded-full border border-white/40 bg-slate-950/60 px-5 py-3 text-sm text-white">
               <LoaderCircle className="h-4 w-4 animate-spin text-brand" />
               Building the globe scene…
             </div>
@@ -547,10 +566,8 @@ export function GeoGlobeScene({
             width={dimensions.width}
             height={dimensions.height}
             backgroundColor="rgba(0,0,0,0)"
-            showAtmosphere
-            atmosphereColor="#c41e3a"
-            atmosphereAltitude={0.18}
-            showGraticules
+            showAtmosphere={false}
+            showGraticules={false}
             showGlobe
             globeMaterial={materialRef.current}
             pointsData={globeMarkers}
@@ -574,17 +591,17 @@ export function GeoGlobeScene({
                 startTransition(() => onSelectDealer(item.dealer ?? null));
               }
             }}
-            arcsData={layers.dealerNetwork && snapshot ? snapshot.dealerArcs : []}
+            arcsData={arcData}
             arcStartLat="startLat"
             arcStartLng="startLng"
             arcEndLat="endLat"
             arcEndLng="endLng"
             arcAltitudeAutoScale={0.22}
-            arcStroke={0.38}
-            arcDashLength={0.44}
-            arcDashGap={1.12}
-            arcDashAnimateTime={2300}
-            arcColor={() => ['rgba(255,255,255,0.88)', 'rgba(196,30,58,0.92)', 'rgba(196,30,58,0.08)']}
+            arcStroke={0.28}
+            arcDashLength={0.78}
+            arcDashGap={0.4}
+            arcDashAnimateTime={0}
+            arcColor={() => ['rgba(255,255,255,0.56)', 'rgba(196,30,58,0.72)', 'rgba(196,30,58,0.06)']}
             arcLabel={(arc) => htmlTooltip((arc as { label: string }).label, 1, 'Arrow network route')}
             onArcHover={(arc) => setHoverLabel(arc ? (arc as { label: string }).label : null)}
             ringsData={ringsData}
@@ -602,7 +619,7 @@ export function GeoGlobeScene({
             labelColor="color"
             labelAltitude="altitude"
             labelIncludeDot={() => true}
-            labelDotRadius={() => 0.28}
+            labelDotRadius={() => 0.22}
             polygonsData={polygonData}
             polygonGeoJsonGeometry={(item) =>
               (item as CountryPolygonDatum | StatePolygonDatum).feature.geometry as unknown as {
@@ -614,12 +631,12 @@ export function GeoGlobeScene({
               const datum = item as CountryPolygonDatum | StatePolygonDatum;
               const selected = drilldown && 'feature' in datum && 'isoA3' in datum.feature.properties && datum.feature.properties.isoA3 === drilldown.country.isoA3;
               if (polygonMode === 'country' && !layers.countryHeatmap) {
-                return selected ? 'rgba(196,30,58,0.32)' : 'rgba(255,255,255,0.06)';
+                return selected ? 'rgba(196,30,58,0.26)' : 'rgba(255,255,255,0.08)';
               }
               if (polygonMode === 'state' && !layers.stateHeatmap) {
-                return 'rgba(255,255,255,0.08)';
+                return 'rgba(255,255,255,0.12)';
               }
-              return polarColor(datum.intensity, datum.count > 0 ? 0.85 : 0.14);
+              return polarColor(datum.intensity, datum.count > 0 ? 0.72 : 0.18);
             }}
             polygonSideColor={(item) => {
               const datum = item as CountryPolygonDatum | StatePolygonDatum;
@@ -638,11 +655,11 @@ export function GeoGlobeScene({
               }
               if (polygonMode === 'state' && !layers.stateHeatmap) return 0.008;
               return polygonMode === 'state'
-                ? 0.008 + datum.intensity * 0.055
-                : 0.004 + datum.intensity * 0.034;
+                ? 0.007 + datum.intensity * 0.04
+                : 0.003 + datum.intensity * 0.026;
             }}
             polygonCapCurvatureResolution={3}
-            polygonsTransitionDuration={1200}
+            polygonsTransitionDuration={700}
             polygonLabel={(item) => {
               if (polygonMode === 'state') {
                 const datum = statePolygonDatum(item);
@@ -669,25 +686,27 @@ export function GeoGlobeScene({
             heatmapPointLat="lat"
             heatmapPointLng="lng"
             heatmapPointWeight="weight"
-            heatmapBandwidth={() => (polygonMode === 'state' ? 1.18 : 1.5)}
-            heatmapBaseAltitude={() => 0.012}
-            heatmapTopAltitude={() => (polygonMode === 'state' ? 0.085 : 0.062)}
-            heatmapColorSaturation={() => 0.9}
-            heatmapColorFn={() => (t: number) => polarColor(t, 0.24 + t * 0.48)}
-            heatmapsTransitionDuration={900}
+            heatmapBandwidth={() => (polygonMode === 'state' ? 1.02 : 1.28)}
+            heatmapBaseAltitude={() => 0.008}
+            heatmapTopAltitude={() => (polygonMode === 'state' ? 0.058 : 0.044)}
+            heatmapColorSaturation={() => 0.72}
+            heatmapColorFn={() => (t: number) => polarColor(t, 0.18 + t * 0.34)}
+            heatmapsTransitionDuration={650}
             onGlobeReady={() => {
               const globe = globeRef.current;
               if (!globe) return;
-              globe.scene().fog = new FogExp2('#05060a', 0.06);
-              const ambient = new AmbientLight('#f5ced6', 1.5);
-              const directional = new DirectionalLight('#ffffff', 1.65);
-              directional.position.set(-320, 220, 220);
-              const point = new PointLight('#c41e3a', 1.1);
-              point.position.set(260, 80, 230);
-              globe.lights([ambient, directional, point]);
+              globe.scene().fog = new FogExp2('#142131', 0.0068);
+              const ambient = new AmbientLight('#dbeafe', 0.72);
+              const directional = new DirectionalLight('#f8fafc', 0.95);
+              directional.position.set(-260, 210, 260);
+              const rim = new PointLight('#fb7185', 0.18);
+              rim.position.set(220, 110, 260);
+              const fill = new PointLight('#38bdf8', 0.12);
+              fill.position.set(-220, -60, 180);
+              globe.lights([ambient, directional, rim, fill]);
               const controls = globe.controls();
               controls.autoRotate = !interactedRef.current;
-              controls.autoRotateSpeed = 0.35;
+              controls.autoRotateSpeed = 0.18;
             }}
             onZoom={() => {
               interactedRef.current = true;
@@ -699,7 +718,7 @@ export function GeoGlobeScene({
         )}
 
         {!loading && !assetsLoading && !hasInteractiveData && (
-          <div className="absolute inset-x-6 bottom-6 z-20 rounded-[28px] border border-white/10 bg-black/35 p-4 backdrop-blur-md">
+          <div className="absolute inset-x-6 bottom-6 z-20 rounded-[28px] border border-white/35 bg-slate-950/58 p-4 backdrop-blur-md">
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand/15 text-brand">
                 <Sparkles className="h-5 w-5" />

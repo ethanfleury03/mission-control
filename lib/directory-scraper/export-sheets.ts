@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import type { sheets_v4 } from 'googleapis';
 import type { CompanyResult } from './types';
 import { getResultHeaders, resultToValues } from './export-csv';
 
@@ -52,7 +53,7 @@ export async function exportToGoogleSheets(
   let sheetId = 0;
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const tabs = meta.data.sheets ?? [];
+    const tabs: sheets_v4.Schema$Sheet[] = meta.data.sheets ?? [];
     const tab = tabs.find((s) => s.properties?.title === tabName);
     sheetExists = !!tab;
     sheetId = tab?.properties?.sheetId ?? 0;
@@ -148,7 +149,8 @@ export async function exportToGoogleSheets(
   }
 
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const tab = meta.data.sheets?.find((s) => s.properties?.title === tabName);
+  const tabs: sheets_v4.Schema$Sheet[] = meta.data.sheets ?? [];
+  const tab = tabs.find((s) => s.properties?.title === tabName);
   const gid = tab?.properties?.sheetId ?? 0;
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${gid}`;
 

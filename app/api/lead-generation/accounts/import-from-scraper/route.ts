@@ -24,7 +24,7 @@ type ImportBody = {
 type MergeOutcome = 'created' | 'updated' | 'skipped_duplicate' | 'conflict' | 'error';
 
 function nameCountryKey(name: string | null | undefined, country: string | null | undefined) {
-  const normalized = buildScraperImportLookupKey({ name, country });
+  const normalized = buildScraperImportLookupKey({ name: name ?? '', country: country ?? null });
   return `${normalized.normalizedName}|${normalized.countryKey}`;
 }
 
