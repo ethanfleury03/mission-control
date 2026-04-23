@@ -25,7 +25,8 @@ export default function AppError({
         <code className="rounded bg-white/10 px-1">/_next/static/chunks/*.js</code>, your <code className="rounded bg-white/10 px-1">.next</code> cache is
         out of sync or the wrong program is listening on this port. Stop the server, run{' '}
         <code className="rounded bg-white/10 px-1">npm run dev:clean</code> (or delete <code className="rounded bg-white/10 px-1">.next</code> manually), then
-        start again. Make sure only <strong className="text-white">one</strong> Next dev server uses port 3002.
+        start again. Make sure only <strong className="text-white">one</strong> Next dev server uses port 3002. On Windows, try{' '}
+        <code className="rounded bg-white/10 px-1">http://127.0.0.1:3002</code> instead of <code className="rounded bg-white/10 px-1">localhost</code> if chunks still 404.
       </p>
       <button
         type="button"

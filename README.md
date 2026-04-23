@@ -14,7 +14,7 @@ npx prisma generate
 npm run db:migrate:deploy
 # Option A — shared Turso DB (recommended for a team): set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN in .env (see below). Then:
 npm run dev
-# App: http://localhost:3002
+# App: http://127.0.0.1:3002  (use this URL on Windows — `npm run dev` binds 127.0.0.1 so IPv4 and IPv6 both hit the same Next process)
 # Option B — local SQLite only: leave Turso vars unset. Either set DATABASE_URL in .env or rely on the default file:./dev.db, then:
 npm run db:push && npm run db:seed
 npm run dev
@@ -26,7 +26,9 @@ That pattern means the browser loaded the HTML document but **Next never served 
 
 1. **Stale or half-written `.next`** after a pull, interrupted build, or antivirus locking files. Fix: stop the dev server, run **`npm run dev:clean`** (deletes `.next` then starts `next dev`), or manually delete the `.next` folder and run **`npm run dev`** again.
 2. **Wrong process on the port** (e.g. an old `next dev` still bound to 3002 while you started another, or a different app on 3002). Fix: stop every Node process using that port, then start a single `npm run dev`.
-3. **Opening `npm run start` (production) without a prior `npm run build`** — there is no `.next` output, so chunks 404. Fix: run **`npm run build`** then **`npm run start`**, or use **`npm run dev`** for local work.
+
+3. **Windows: `localhost` resolves to IPv6 (`::1`) but something else only listens on IPv4 (`127.0.0.1`)** — the HTML loads from one stack and `/_next/static/chunks/*.js` 404s from another. Fix: open **`http://127.0.0.1:3002`** (not `localhost`). This repo’s `npm run dev` binds **`-H 127.0.0.1`** so both names behave consistently once you use the IPv4 URL or ensure only one listener exists.
+4. **Opening `npm run start` (production) without a prior `npm run build`** — there is no `.next` output, so chunks 404. Fix: run **`npm run build`** then **`npm run start`**, or use **`npm run dev`** for local work.
 
 ### Turso (hosted SQLite, one DB for every machine)
 
