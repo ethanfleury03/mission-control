@@ -12,7 +12,6 @@ import type { GlobeMethods } from 'react-globe.gl';
 import {
   AdditiveBlending,
   AmbientLight,
-  BackSide,
   CanvasTexture,
   Color,
   DirectionalLight,
@@ -22,7 +21,6 @@ import {
   MeshPhongMaterial,
   PointLight,
   RepeatWrapping,
-  ShaderMaterial,
   SphereGeometry,
   Sprite,
   SpriteMaterial,
@@ -316,57 +314,12 @@ function createCloudLayer(radius: number, texture: Texture) {
   const material = new MeshPhongMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.22,
     depthWrite: false,
   });
-  const geometry = new SphereGeometry(radius, 96, 72);
+  const geometry = new SphereGeometry(radius, 48, 32);
   const mesh = new Mesh(geometry, material);
   mesh.renderOrder = 2;
-  return mesh;
-}
-
-const atmosphereVertexShader = `
-  varying vec3 vNormal;
-  varying vec3 vPos;
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
-    gl_Position = projectionMatrix * vec4(vPos, 1.0);
-  }
-`;
-
-const atmosphereFragmentShader = `
-  varying vec3 vNormal;
-  varying vec3 vPos;
-  uniform vec3 uColorInner;
-  uniform vec3 uColorOuter;
-  uniform float uPower;
-  void main() {
-    vec3 viewDir = normalize(-vPos);
-    float rim = 1.0 - max(dot(vNormal, viewDir), 0.0);
-    float intensity = pow(rim, uPower);
-    vec3 color = mix(uColorInner, uColorOuter, intensity);
-    gl_FragColor = vec4(color, intensity * 1.1);
-  }
-`;
-
-function createAtmosphereShell(radius: number) {
-  const material = new ShaderMaterial({
-    uniforms: {
-      uColorInner: { value: new Color('#3b4a68') },
-      uColorOuter: { value: new Color('#ff5a78') },
-      uPower: { value: 3.4 },
-    },
-    vertexShader: atmosphereVertexShader,
-    fragmentShader: atmosphereFragmentShader,
-    side: BackSide,
-    blending: AdditiveBlending,
-    transparent: true,
-    depthWrite: false,
-  });
-  const geometry = new SphereGeometry(radius, 96, 72);
-  const mesh = new Mesh(geometry, material);
-  mesh.renderOrder = 3;
   return mesh;
 }
 
@@ -385,7 +338,6 @@ export function GeoGlobeScene({
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
   const interactedRef = useRef(false);
   const cloudMeshRef = useRef<Mesh | null>(null);
-  const atmoMeshRef = useRef<Mesh | null>(null);
 
   const materialRef = useRef<MeshPhongMaterial | null>(null);
   if (!materialRef.current && typeof window !== 'undefined') {
@@ -400,27 +352,27 @@ export function GeoGlobeScene({
     const loader = new TextureLoader();
     loader.load('/data/geo/textures/earth-day.jpg', (texture) => {
       texture.colorSpace = SRGBColorSpace;
-      texture.anisotropy = 8;
+      texture.anisotropy = 4;
       material.map = texture;
       // Dim blue marble a touch so city lights + arcs read on top of it.
       material.color = new Color('#cfd7e6');
       material.needsUpdate = true;
     });
     loader.load('/data/geo/textures/earth-topology.png', (texture) => {
-      texture.anisotropy = 8;
+      texture.anisotropy = 4;
       material.bumpMap = texture;
       material.bumpScale = 14;
       material.needsUpdate = true;
     });
     loader.load('/data/geo/textures/earth-water.png', (texture) => {
-      texture.anisotropy = 8;
+      texture.anisotropy = 4;
       material.specularMap = texture;
       material.specular = new Color('#3a6cb0');
       material.needsUpdate = true;
     });
     loader.load('/data/geo/textures/earth-night.jpg', (texture) => {
       texture.colorSpace = SRGBColorSpace;
-      texture.anisotropy = 8;
+      texture.anisotropy = 4;
       material.emissiveMap = texture;
       material.emissive = new Color('#ffc27a');
       material.emissiveIntensity = 0.55;
@@ -604,44 +556,22 @@ export function GeoGlobeScene({
   const ringsData = useMemo<GlobeRing[]>(() => {
     if (!snapshot) return [];
 
-    const base: GlobeRing[] = [
+    if (!layers.dealers || !selectedDealer) return [];
+
+    const dealer = snapshot.dealers.find((d) => d.id === selectedDealer.id && d.status === 'active');
+    if (!dealer) return [];
+
+    return [
       {
-        id: 'origin-ring',
-        lat: snapshot.arrowOrigin.lat,
-        lng: snapshot.arrowOrigin.lng,
-        maxRadius: 3.8,
-        speed: 1.2,
-        repeat: 2800,
-        color: ['rgba(255,225,180,0.4)', 'rgba(244,114,182,0.02)'],
+        id: `ring:${dealer.id}`,
+        lat: dealer.lat,
+        lng: dealer.lng,
+        maxRadius: 2.6,
+        speed: 0.85,
+        repeat: 1400,
+        color: ['rgba(255,255,255,0.35)', 'rgba(244,63,94,0.0)'],
       },
     ];
-
-    if (!layers.dealers) return base;
-
-    const selectedRings = snapshot.dealers
-      .filter((dealer) => dealer.status === 'active' && dealer.id === selectedDealer?.id)
-      .flatMap((dealer) => [
-        {
-          id: `ring:${dealer.id}:outer`,
-          lat: dealer.lat,
-          lng: dealer.lng,
-          maxRadius: 4.2,
-          speed: 1.1,
-          repeat: 1500,
-          color: ['rgba(255,255,255,0.85)', 'rgba(244,63,94,0.0)'],
-        },
-        {
-          id: `ring:${dealer.id}:inner`,
-          lat: dealer.lat,
-          lng: dealer.lng,
-          maxRadius: 2.4,
-          speed: 0.8,
-          repeat: 1100,
-          color: ['rgba(244,63,94,0.95)', 'rgba(196,30,58,0.0)'],
-        },
-      ]);
-
-    return [...base, ...selectedRings];
   }, [layers.dealers, selectedDealer?.id, snapshot]);
 
   const labelsData = useMemo<GlobeLabel[]>(() => {
@@ -704,8 +634,8 @@ export function GeoGlobeScene({
   const arcData = useMemo<GeoArc[]>(() => {
     if (!snapshot) return [];
     const arcs: GeoArc[] = [];
-    if (layers.dealerNetwork) arcs.push(...snapshot.dealerArcs.slice(0, 14));
-    if (layers.contactCoverage) arcs.push(...(snapshot.ecosystemArcs?.slice(0, 24) ?? []));
+    if (layers.dealerNetwork) arcs.push(...snapshot.dealerArcs.slice(0, 10));
+    if (layers.contactCoverage) arcs.push(...(snapshot.ecosystemArcs?.slice(0, 12) ?? []));
     return arcs;
   }, [layers.contactCoverage, layers.dealerNetwork, snapshot]);
 
@@ -743,11 +673,11 @@ export function GeoGlobeScene({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.autoRotate = !interactedRef.current;
-    controls.autoRotateSpeed = 0.22;
+    controls.autoRotateSpeed = 0.14;
     controls.minDistance = 175;
     controls.maxDistance = 520;
-    controls.rotateSpeed = 0.75;
-    controls.zoomSpeed = 0.85;
+    controls.rotateSpeed = 0.55;
+    controls.zoomSpeed = 0.75;
   }, [dimensions.height, dimensions.width]);
 
   useEffect(() => {
@@ -775,7 +705,7 @@ export function GeoGlobeScene({
       const dt = (now - prev) / 1000;
       prev = now;
       if (cloudMeshRef.current) {
-        cloudMeshRef.current.rotation.y += dt * 0.011;
+        cloudMeshRef.current.rotation.y += dt * 0.004;
       }
       frame = requestAnimationFrame(tick);
     };
@@ -784,6 +714,11 @@ export function GeoGlobeScene({
   }, []);
 
   const hasInteractiveData = Boolean(snapshot) && (polygonData.length > 0 || globeMarkers.length > 0);
+  const emptyNetwork =
+    snapshot !== null &&
+    snapshot.summary.activeDealers === 0 &&
+    snapshot.dealerArcs.length === 0 &&
+    snapshot.summary.hubspotContactsMapped === 0;
   const countryPolygonDatum = (item: object) => item as CountryPolygonDatum;
   const statePolygonDatum = (item: object) => item as StatePolygonDatum;
 
@@ -827,7 +762,6 @@ export function GeoGlobeScene({
             width={dimensions.width}
             height={dimensions.height}
             backgroundColor="rgba(0,0,0,0)"
-            backgroundImageUrl="/data/geo/textures/night-sky.png"
             showAtmosphere={false}
             showGraticules={false}
             showGlobe
@@ -879,7 +813,7 @@ export function GeoGlobeScene({
             arcDashLength={0.38}
             arcDashGap={2.0}
             arcDashInitialGap={() => Math.random() * 2}
-            arcDashAnimateTime={(arc: object) => ((arc as GeoArc).kind === 'ecosystem' ? 5200 : 3200)}
+            arcDashAnimateTime={(arc: object) => ((arc as GeoArc).kind === 'ecosystem' ? 0 : 2800)}
             arcColor={(arc: object) => {
               const a = arc as GeoArc;
               if (a.kind === 'ecosystem') {
@@ -905,7 +839,7 @@ export function GeoGlobeScene({
             labelAltitude="altitude"
             labelIncludeDot={() => true}
             labelDotRadius={(label) => (label as GlobeLabel).dotRadius}
-            labelResolution={3}
+            labelResolution={2}
             polygonsData={polygonData}
             polygonGeoJsonGeometry={(item) =>
               (item as CountryPolygonDatum | StatePolygonDatum).feature.geometry as unknown as {
@@ -945,8 +879,8 @@ export function GeoGlobeScene({
                 ? 0.01 + datum.intensity * 0.085
                 : 0.006 + datum.intensity * 0.07;
             }}
-            polygonCapCurvatureResolution={3}
-            polygonsTransitionDuration={800}
+            polygonCapCurvatureResolution={2}
+            polygonsTransitionDuration={500}
             polygonLabel={(item) => {
               if (polygonMode === 'state') {
                 const datum = statePolygonDatum(item);
@@ -987,19 +921,19 @@ export function GeoGlobeScene({
             heatmapTopAltitude={() => (polygonMode === 'state' ? 0.058 : 0.044)}
             heatmapColorSaturation={() => 0.72}
             heatmapColorFn={() => (t: number) => heatColor(t, 0.18 + t * 0.34)}
-            heatmapsTransitionDuration={650}
+            heatmapsTransitionDuration={400}
             onGlobeReady={() => {
               const globe = globeRef.current;
               if (!globe) return;
               const scene = globe.scene();
-              scene.fog = new FogExp2('#05070d', 0.0018);
+              scene.fog = new FogExp2('#05070d', 0.0014);
 
-              const ambient = new AmbientLight('#c7d4f0', 0.32);
-              const sun = new DirectionalLight('#fff5df', 1.7);
+              const ambient = new AmbientLight('#c7d4f0', 0.28);
+              const sun = new DirectionalLight('#fff5df', 1.35);
               sun.position.set(-360, 220, 200);
-              const rim = new PointLight('#ff7a94', 0.55, 900);
+              const rim = new PointLight('#ff7a94', 0.28, 900);
               rim.position.set(420, 120, -260);
-              const fill = new PointLight('#4c80ff', 0.3, 900);
+              const fill = new PointLight('#4c80ff', 0.22, 900);
               fill.position.set(-360, -140, 220);
               globe.lights([ambient, sun, rim, fill]);
 
@@ -1009,19 +943,15 @@ export function GeoGlobeScene({
               loader.load('/data/geo/textures/earth-clouds.png', (texture) => {
                 texture.wrapS = RepeatWrapping;
                 texture.wrapT = RepeatWrapping;
-                texture.anisotropy = 8;
+                texture.anisotropy = 4;
                 const cloudMesh = createCloudLayer(globeRadius * 1.012, texture);
                 scene.add(cloudMesh);
                 cloudMeshRef.current = cloudMesh;
               });
 
-              const atmo = createAtmosphereShell(globeRadius * 1.14);
-              scene.add(atmo);
-              atmoMeshRef.current = atmo;
-
               const controls = globe.controls();
               controls.autoRotate = !interactedRef.current;
-              controls.autoRotateSpeed = 0.22;
+              controls.autoRotateSpeed = 0.14;
             }}
             onZoom={() => {
               interactedRef.current = true;
@@ -1047,6 +977,18 @@ export function GeoGlobeScene({
             Reset Globe
           </button>
         </div>
+
+        {!loading && !assetsLoading && emptyNetwork && (
+          <div className="pointer-events-none absolute inset-0 z-[15] flex items-center justify-center px-6">
+            <div className="max-w-md rounded-2xl border border-white/12 bg-[#070a12]/88 px-5 py-4 text-center shadow-[0_24px_60px_rgba(0,0,0,0.5)] backdrop-blur-md">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">No map data yet</p>
+              <p className="mt-2 text-sm font-medium text-white">Only Arrow HQ is shown until you add data.</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-400">
+                Add dealers in <strong className="text-zinc-300">Dealers</strong> and set a HubSpot token, then <strong className="text-zinc-300">Refresh HubSpot</strong> to plot contacts and heatmaps.
+              </p>
+            </div>
+          </div>
+        )}
 
         {!loading && !assetsLoading && !hasInteractiveData && (
           <div className="absolute inset-x-6 bottom-6 z-20 rounded-[28px] border border-white/15 bg-slate-950/75 p-4 backdrop-blur-md">
