@@ -12,6 +12,7 @@ build/
 .vscode/
 
 # local db
+dev.db
 server/data/*.db
 prisma/*.db
 prisma/prisma/

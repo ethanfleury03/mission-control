@@ -8,9 +8,10 @@
     "start": "next start -p 3002",
     "lint": "next lint",
     "test": "vitest run",
-    "db:push": "prisma db push",
-    "db:seed": "prisma db seed",
-    "db:migrate": "prisma migrate dev",
+    "db:push": "node scripts/prisma-with-default-db.mjs db push",
+    "db:seed": "node scripts/prisma-with-default-db.mjs db seed",
+    "db:migrate": "node scripts/prisma-with-default-db.mjs migrate dev",
+    "db:migrate:deploy": "node scripts/prisma-with-default-db.mjs migrate deploy",
     "check:no-mock": "pwsh -File ./scripts/no-mock-check.ps1",
     "worker:directory-scraper": "tsx ./scripts/directory-scraper-worker.ts"
   },

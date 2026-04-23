@@ -8,12 +8,14 @@ cd mission-control && docker-compose up -d
 
 # Or run just the dev version
 npm install
-cp .env.example .env
-# Option A — shared Turso DB (recommended for a team): set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (see below). Then:
+# Optional: cp .env.example .env — DATABASE_URL is optional for local SQLite; npm db scripts default to file:./dev.db
 npx prisma generate
+# Apply schema (local SQLite at ./dev.db if DATABASE_URL is unset):
+npm run db:migrate:deploy
+# Option A — shared Turso DB (recommended for a team): set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN in .env (see below). Then:
 npm run dev
 # App: http://localhost:3002
-# Option B — local SQLite only: leave Turso vars unset, set DATABASE_URL (see .env.example), then:
+# Option B — local SQLite only: leave Turso vars unset. Either set DATABASE_URL in .env or rely on the default file:./dev.db, then:
 npm run db:push && npm run db:seed
 npm run dev
 ```
