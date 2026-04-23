@@ -620,15 +620,26 @@ export function GeoGlobeScene({
 
     const selectedRings = snapshot.dealers
       .filter((dealer) => dealer.status === 'active' && dealer.id === selectedDealer?.id)
-      .map((dealer) => ({
-        id: `ring:${dealer.id}`,
-        lat: dealer.lat,
-        lng: dealer.lng,
-        maxRadius: 3.4,
-        speed: 1.05,
-        repeat: 1600,
-        color: ['rgba(255,255,255,0.55)', 'rgba(244,63,94,0.02)'],
-      }));
+      .flatMap((dealer) => [
+        {
+          id: `ring:${dealer.id}:outer`,
+          lat: dealer.lat,
+          lng: dealer.lng,
+          maxRadius: 4.2,
+          speed: 1.1,
+          repeat: 1500,
+          color: ['rgba(255,255,255,0.85)', 'rgba(244,63,94,0.0)'],
+        },
+        {
+          id: `ring:${dealer.id}:inner`,
+          lat: dealer.lat,
+          lng: dealer.lng,
+          maxRadius: 2.4,
+          speed: 0.8,
+          repeat: 1100,
+          color: ['rgba(244,63,94,0.95)', 'rgba(196,30,58,0.0)'],
+        },
+      ]);
 
     return [...base, ...selectedRings];
   }, [layers.dealers, selectedDealer?.id, snapshot]);
