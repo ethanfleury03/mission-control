@@ -6,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { GEO_SYNC_SCOPE_ID } from './constants';
 import { buildCountryIdentity, buildStateKey } from './normalize';
+import { ensureGeoIntelligenceSchema } from './schema';
 
 type SeedOwner = {
   id: string;
@@ -54,6 +55,7 @@ type GeoSeedResult = {
 
 const MOCK_DEALER_NOTE_PREFIX = '[mock-geo]';
 const MOCK_CONTACT_PREFIX = 'mock-geo-';
+const LOCAL_CONTACT_MULTIPLIER = 9;
 
 const OWNERS: SeedOwner[] = [
   { id: 'geo-owner-nadia', name: 'Nadia Chen' },
@@ -790,7 +792,7 @@ function buildGeoContactSeedRows(): Prisma.GeoHubSpotContactSnapshotCreateManyIn
       const stateKey = buildStateKey(identity.countryIsoA3, identity.countryCode, region.name, region.code);
 
       for (const [cityIndex, city] of region.cities.entries()) {
-        for (let contactIndex = 0; contactIndex < market.contactsPerCity; contactIndex += 1) {
+        for (let contactIndex = 0; contactIndex < market.contactsPerCity * LOCAL_CONTACT_MULTIPLIER; contactIndex += 1) {
           const currentIndex = globalIndex;
           globalIndex += 1;
 
@@ -800,7 +802,6 @@ function buildGeoContactSeedRows(): Prisma.GeoHubSpotContactSnapshotCreateManyIn
           const lifecycleStage = LIFECYCLE_STAGES[(currentIndex + countryIndex) % LIFECYCLE_STAGES.length];
           const leadStatus = LEAD_STATUSES[(currentIndex + cityIndex) % LEAD_STATUSES.length];
           const persona = PERSONAS[(currentIndex + regionIndex) % PERSONAS.length];
-          const isMappable = currentIndex % 9 !== 0;
           const email = `${slugify(firstName)}.${slugify(lastName)}.${slugify(city.name)}.${currentIndex + 1}@arrow-demo.test`;
           const sourceUpdatedAt = new Date(seededAt.getTime() - (currentIndex % 17) * 3_600_000);
 
@@ -809,19 +810,19 @@ function buildGeoContactSeedRows(): Prisma.GeoHubSpotContactSnapshotCreateManyIn
             firstName,
             lastName,
             email,
-            country: isMappable ? identity.country : '',
-            countryCode: isMappable ? identity.countryCode : '',
-            countryIsoA3: isMappable ? identity.countryIsoA3 : '',
-            stateRegion: isMappable ? region.name : '',
-            stateCode: isMappable ? region.code : '',
-            stateKey: isMappable ? stateKey : '',
-            city: isMappable ? city.name : '',
+            country: identity.country,
+            countryCode: identity.countryCode,
+            countryIsoA3: identity.countryIsoA3,
+            stateRegion: region.name,
+            stateCode: region.code,
+            stateKey,
+            city: city.name,
             ownerId: owner.id,
             ownerName: owner.name,
             lifecycleStage,
             leadStatus,
             persona,
-            isMappable,
+            isMappable: true,
             sourceUpdatedAt,
             lastSyncedAt: seededAt,
           });
@@ -834,6 +835,8 @@ function buildGeoContactSeedRows(): Prisma.GeoHubSpotContactSnapshotCreateManyIn
 }
 
 async function performGeoSeed(): Promise<GeoSeedResult> {
+  await ensureGeoIntelligenceSchema();
+
   const dealers = buildGeoDealerSeedRows();
   const contacts = buildGeoContactSeedRows();
 

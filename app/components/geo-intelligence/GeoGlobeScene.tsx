@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import {
   startTransition,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -28,17 +29,22 @@ import {
   TextureLoader,
   type Texture,
 } from 'three';
-import { LoaderCircle, RotateCcw, Sparkles } from 'lucide-react';
+import { LoaderCircle, RotateCcw } from 'lucide-react';
 import { cn } from '@/app/lib/utils';
 import { buildFeatureStateKeys } from '@/lib/geo-intelligence/keys';
 import type {
   GeoArc,
-  GeoCityPoint,
   GeoCountryDrilldownSnapshot,
   GeoDashboardSnapshot,
   GeoDealer,
   GeoLayerKey,
 } from '@/lib/geo-intelligence/types';
+import { GeoThreeGlobeScene } from './GeoThreeGlobeScene';
+import {
+  buildGeoSceneModel,
+  type GeoRendererMode,
+  type GeoSceneHeatPoint,
+} from './geo-globe-model';
 
 const Globe = dynamic(async () => (await import('react-globe.gl')).default, {
   ssr: false,
@@ -49,6 +55,10 @@ const Globe = dynamic(async () => (await import('react-globe.gl')).default, {
     </div>
   ),
 }) as typeof import('react-globe.gl').default;
+
+const zeroPointRadius = () => 0;
+const includeLabelDot = () => true;
+const showPointerCursor = (type: string) => type === 'polygon' || type === 'point' || type === 'arc';
 
 type GeoPolygon = number[][][];
 type GeoMultiPolygon = number[][][][];
@@ -142,17 +152,6 @@ type GlobeLabel = {
   dotRadius: number;
 };
 
-type HeatPoint = {
-  lat: number;
-  lng: number;
-  weight: number;
-};
-
-type HeatDataset = {
-  id: string;
-  points: HeatPoint[];
-};
-
 interface GeoGlobeSceneProps {
   snapshot: GeoDashboardSnapshot | null;
   drilldown: GeoCountryDrilldownSnapshot | null;
@@ -164,6 +163,7 @@ interface GeoGlobeSceneProps {
   onResetView: () => void;
   zoomCommand?: { id: number; direction: 'in' | 'out' } | null;
   selectedDealer: GeoDealer | null;
+  rendererMode?: GeoRendererMode;
 }
 
 function clamp(value: number, min = 0, max = 1) {
@@ -326,10 +326,10 @@ function createCloudLayer(radius: number, texture: Texture) {
   const material = new MeshPhongMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.14,
     depthWrite: false,
   });
-  const geometry = new SphereGeometry(radius, 48, 32);
+  const geometry = new SphereGeometry(radius, 42, 28);
   const mesh = new Mesh(geometry, material);
   mesh.renderOrder = 2;
   return mesh;
@@ -346,20 +346,25 @@ export function GeoGlobeScene({
   onResetView,
   zoomCommand,
   selectedDealer,
+  rendererMode = 'hybrid',
 }: GeoGlobeSceneProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
   const interactedRef = useRef(false);
   const cloudMeshRef = useRef<Mesh | null>(null);
+  const hoverBadgeRef = useRef<HTMLSpanElement | null>(null);
+  const hoverLabelValueRef = useRef<string | null>(null);
+  const admin1PreloadTimeoutRef = useRef<number | null>(null);
+  const autoRotateResumeTimeoutRef = useRef<number | null>(null);
 
   const materialRef = useRef<MeshPhongMaterial | null>(null);
   if (!materialRef.current && typeof window !== 'undefined') {
     const material = new MeshPhongMaterial({
-      color: new Color('#1b2f4e'),
-      emissive: new Color('#162a44'),
-      emissiveIntensity: 0.3,
-      specular: new Color('#6f98c8'),
-      shininess: 16,
+      color: new Color('#142033'),
+      emissive: new Color('#101c2e'),
+      emissiveIntensity: 0.18,
+      specular: new Color('#42698c'),
+      shininess: 11,
     });
 
     const loader = new TextureLoader();
@@ -373,7 +378,7 @@ export function GeoGlobeScene({
     loader.load('/data/geo/textures/earth-topology.png', (texture) => {
       texture.anisotropy = 4;
       material.bumpMap = texture;
-      material.bumpScale = 14;
+      material.bumpScale = 6;
       material.needsUpdate = true;
     });
     loader.load('/data/geo/textures/earth-water.png', (texture) => {
@@ -387,7 +392,7 @@ export function GeoGlobeScene({
       texture.anisotropy = 4;
       material.emissiveMap = texture;
       material.emissive = new Color('#ffc27a');
-      material.emissiveIntensity = 0.36;
+      material.emissiveIntensity = 0.2;
       material.needsUpdate = true;
     });
 
@@ -398,8 +403,59 @@ export function GeoGlobeScene({
   const [countries, setCountries] = useState<CountryFeature[]>([]);
   const [admin1, setAdmin1] = useState<Admin1Feature[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
-  const [hoverLabel, setHoverLabel] = useState<string | null>(null);
   const preloadedAdmin1Ref = useRef<Set<string>>(new Set());
+
+  const setHoverLabel = useCallback((label: string | null) => {
+    if (hoverLabelValueRef.current === label) return;
+    hoverLabelValueRef.current = label;
+
+    const badge = hoverBadgeRef.current;
+    if (!badge) return;
+
+    badge.textContent = label ?? '';
+    badge.style.opacity = label ? '1' : '0';
+    badge.style.pointerEvents = label ? 'auto' : 'none';
+    badge.style.transform = label ? 'translate3d(0,0,0)' : 'translate3d(0,-4px,0)';
+  }, []);
+
+  const scheduleAdmin1Preload = useCallback((isoA3: string) => {
+    if (preloadedAdmin1Ref.current.has(isoA3)) return;
+    if (admin1PreloadTimeoutRef.current !== null) {
+      window.clearTimeout(admin1PreloadTimeoutRef.current);
+    }
+
+    admin1PreloadTimeoutRef.current = window.setTimeout(() => {
+      preloadedAdmin1Ref.current.add(isoA3);
+      fetch(`/data/geo/admin1/${isoA3}.geojson`, { cache: 'force-cache' }).catch(() => {
+        preloadedAdmin1Ref.current.delete(isoA3);
+      });
+      admin1PreloadTimeoutRef.current = null;
+    }, 260);
+  }, []);
+
+  const pauseHybridAutoRotate = useCallback(() => {
+    const controls = globeRef.current?.controls();
+    if (controls) controls.autoRotate = false;
+    if (autoRotateResumeTimeoutRef.current !== null) {
+      window.clearTimeout(autoRotateResumeTimeoutRef.current);
+      autoRotateResumeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleHybridAutoRotate = useCallback((delay = 1800) => {
+    if (autoRotateResumeTimeoutRef.current !== null) {
+      window.clearTimeout(autoRotateResumeTimeoutRef.current);
+    }
+    autoRotateResumeTimeoutRef.current = window.setTimeout(() => {
+      const controls = globeRef.current?.controls();
+      if (controls) controls.autoRotate = true;
+      autoRotateResumeTimeoutRef.current = null;
+    }, delay);
+  }, []);
+
+  useEffect(() => {
+    setHoverLabel(hoverLabelValueRef.current);
+  }, [setHoverLabel]);
 
   useEffect(() => {
     const node = stageRef.current;
@@ -511,171 +567,79 @@ export function GeoGlobeScene({
     });
   }, [admin1, drilldown]);
 
-  const polygonMode = drilldown && layers.stateHeatmap && statePolygonData.length > 0 ? 'state' : 'country';
+  const polygonMode = drilldown && statePolygonData.length > 0 ? 'state' : 'country';
   const polygonData = polygonMode === 'state' ? statePolygonData : countryPolygonData;
 
-  const globeMarkers = useMemo<GlobeMarker[]>(() => {
-    if (!snapshot) return [];
+  const stateHeatPoints = useMemo<GeoSceneHeatPoint[]>(() => {
+    return statePolygonData
+      .filter(
+        (item) =>
+          item.count > 0 &&
+          item.feature.properties.latitude !== undefined &&
+          item.feature.properties.longitude !== undefined,
+      )
+      .map((item) => ({
+        id: item.id,
+        label: item.feature.properties.name,
+        lat: item.feature.properties.latitude ?? drilldown?.country.lat ?? 0,
+        lng: item.feature.properties.longitude ?? drilldown?.country.lng ?? 0,
+        weight: item.count,
+        intensity: item.intensity,
+      }));
+  }, [drilldown?.country.lat, drilldown?.country.lng, statePolygonData]);
 
-    const markers: GlobeMarker[] = [
-      {
-        id: snapshot.arrowOrigin.id,
-        kind: 'origin',
-        lat: snapshot.arrowOrigin.lat,
-        lng: snapshot.arrowOrigin.lng,
-        altitude: 0.015,
-        size: 1.4,
-        label: snapshot.arrowOrigin.label,
-      },
-    ];
+  const sceneModel = useMemo(
+    () =>
+      buildGeoSceneModel({
+        snapshot,
+        drilldown,
+        layers,
+        selectedDealer,
+        polygonMode,
+        stateHeatPoints,
+      }),
+    [drilldown, layers, polygonMode, selectedDealer, snapshot, stateHeatPoints],
+  );
 
-    if (layers.dealers) {
-      for (const dealer of snapshot.dealers) {
-        if (dealer.status === 'archived') continue;
-        const active = dealer.status === 'active';
-        const selected = dealer.id === selectedDealer?.id;
-        markers.push({
-          id: dealer.id,
-          kind: active ? 'dealer-active' : 'dealer-inactive',
-          lat: dealer.lat,
-          lng: dealer.lng,
-          altitude: 0.012,
-          size: selected ? 1.4 : active ? 1 : 0.7,
-          label: dealer.name,
-          dealer,
-        });
-      }
-    }
+  const globeMarkers = sceneModel.markers as GlobeMarker[];
+  const ringsData = sceneModel.rings as GlobeRing[];
+  const labelsData = sceneModel.labels as GlobeLabel[];
 
-    if (layers.contactCoverage && snapshot.topCities?.length) {
-      for (const city of snapshot.topCities.slice(0, 16)) {
-        markers.push({
-          id: `city:${city.key}`,
-          kind: 'city',
-          lat: city.lat,
-          lng: city.lng,
-          altitude: 0.008,
-          size: 0.6,
-          label: city.label,
-          count: city.count,
-        });
-      }
-    }
+  const dealerHeatPoints = useMemo<GeoSceneHeatPoint[]>(() => {
+    if (!snapshot || !layers.dealers) return [];
+    const activeDealers = snapshot.dealers.filter((dealer) => dealer.status === 'active');
+    const max = Math.max(
+      ...activeDealers.map((dealer) =>
+        Math.max(dealer.sameCityContacts * 2, dealer.sameStateContacts, Math.round(dealer.sameCountryContacts / 3), 1),
+      ),
+      1,
+    );
 
-    return markers;
-  }, [layers.contactCoverage, layers.dealers, selectedDealer?.id, snapshot]);
-
-  const ringsData = useMemo<GlobeRing[]>(() => {
-    if (!snapshot) return [];
-
-    if (!layers.dealers || !selectedDealer) return [];
-
-    const dealer = snapshot.dealers.find((d) => d.id === selectedDealer.id && d.status === 'active');
-    if (!dealer) return [];
-
-    return [
-      {
-        id: `ring:${dealer.id}`,
+    return activeDealers.map((dealer) => {
+      const weight = Math.max(
+        dealer.sameCityContacts * 2,
+        dealer.sameStateContacts,
+        Math.round(dealer.sameCountryContacts / 3),
+        1,
+      );
+      return {
+        id: `dealer-heat:${dealer.id}`,
+        label: dealer.name,
         lat: dealer.lat,
         lng: dealer.lng,
-        maxRadius: 2.6,
-        speed: 0.85,
-        repeat: 1400,
-        color: ['rgba(255,255,255,0.35)', 'rgba(244,63,94,0.0)'],
-      },
-    ];
-  }, [layers.dealers, selectedDealer?.id, snapshot]);
+        weight,
+        intensity: densityIntensity(weight, max),
+      };
+    });
+  }, [layers.dealers, snapshot]);
 
-  const labelsData = useMemo<GlobeLabel[]>(() => {
-    if (!snapshot) return [];
-
-    const labels: GlobeLabel[] = [];
-
-    if (polygonMode === 'state' && drilldown && statePolygonData.length > 0) {
-      for (const item of statePolygonData
-        .filter((i) => i.count > 0 && i.feature.properties.latitude !== undefined && i.feature.properties.longitude !== undefined)
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 6)) {
-        labels.push({
-          id: `state-label:${item.id}`,
-          lat: item.feature.properties.latitude ?? drilldown.country.lat,
-          lng: item.feature.properties.longitude ?? drilldown.country.lng,
-          text: item.feature.properties.name,
-          size: item.intensity > 0.45 ? 0.82 : 0.62,
-          color: 'rgba(248,250,252,0.92)',
-          altitude: 0.03 + item.intensity * 0.012,
-          dotRadius: 0.18,
-        });
-      }
-    } else {
-      for (const [index, bucket] of snapshot.countryBuckets
-        .filter((bucket) => bucket.lat !== undefined && bucket.lng !== undefined)
-        .slice(0, 6)
-        .entries()) {
-        labels.push({
-          id: `country-label:${bucket.key}`,
-          lat: bucket.lat ?? 0,
-          lng: bucket.lng ?? 0,
-          text: bucket.label,
-          size: index < 3 ? 0.92 : 0.72,
-          color: index < 3 ? 'rgba(248,250,252,0.96)' : 'rgba(226,232,240,0.82)',
-          altitude: 0.024,
-          dotRadius: 0.22,
-        });
-      }
-    }
-
-    if (layers.contactCoverage && snapshot.topCities?.length) {
-      for (const city of snapshot.topCities.slice(0, 14)) {
-        labels.push({
-          id: `city-label:${city.key}`,
-          lat: city.lat,
-          lng: city.lng,
-          text: city.label,
-          size: 0.5,
-          color: 'rgba(226,232,240,0.85)',
-          altitude: 0.018,
-          dotRadius: 0.14,
-        });
-      }
-    }
-
-    return labels;
-  }, [drilldown, layers.contactCoverage, polygonMode, snapshot, statePolygonData]);
-
-  const arcData = useMemo<GeoArc[]>(() => {
-    if (!snapshot) return [];
-    const arcs: GeoArc[] = [];
-    if (layers.dealerNetwork) arcs.push(...snapshot.dealerArcs.slice(0, 10));
-    if (layers.contactCoverage) arcs.push(...(snapshot.ecosystemArcs?.slice(0, 12) ?? []));
-    return arcs;
-  }, [layers.contactCoverage, layers.dealerNetwork, snapshot]);
-
-  const heatmapsData = useMemo<HeatDataset[]>(() => {
-    if (!layers.contactCoverage || !snapshot) return [];
-
-    if (polygonMode === 'state' && statePolygonData.length > 0) {
-      const points = statePolygonData
-        .filter((item) => item.count > 0 && item.feature.properties.latitude !== undefined && item.feature.properties.longitude !== undefined)
-        .map((item) => ({
-          lat: item.feature.properties.latitude ?? 0,
-          lng: item.feature.properties.longitude ?? 0,
-          weight: item.count,
-        }));
-
-      return points.length > 0 ? [{ id: 'state-contact-coverage', points }] : [];
-    }
-
-    const points = snapshot.countryBuckets
-      .filter((bucket) => bucket.count > 0 && bucket.lat !== undefined && bucket.lng !== undefined)
-      .map((bucket) => ({
-        lat: bucket.lat ?? 0,
-        lng: bucket.lng ?? 0,
-        weight: bucket.count,
-      }));
-
-    return points.length > 0 ? [{ id: 'country-contact-coverage', points }] : [];
-  }, [layers.contactCoverage, polygonMode, snapshot, statePolygonData]);
+  const threeSceneModel = useMemo(
+    () => ({
+      ...sceneModel,
+      heatPoints: dealerHeatPoints,
+    }),
+    [dealerHeatPoints, sceneModel],
+  );
 
   useEffect(() => {
     const globe = globeRef.current;
@@ -686,7 +650,7 @@ export function GeoGlobeScene({
     controls.enableZoom = true;
     controls.enablePan = false;
     controls.dampingFactor = 0.08;
-    controls.autoRotate = !interactedRef.current;
+    controls.autoRotate = true;
     controls.autoRotateSpeed = 0.14;
     controls.minDistance = 175;
     controls.maxDistance = 520;
@@ -695,13 +659,25 @@ export function GeoGlobeScene({
   }, [dimensions.height, dimensions.width]);
 
   useEffect(() => {
+    return () => {
+      if (admin1PreloadTimeoutRef.current !== null) {
+        window.clearTimeout(admin1PreloadTimeoutRef.current);
+        admin1PreloadTimeoutRef.current = null;
+      }
+      if (autoRotateResumeTimeoutRef.current !== null) {
+        window.clearTimeout(autoRotateResumeTimeoutRef.current);
+        autoRotateResumeTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!zoomCommand) return;
     const globe = globeRef.current;
     if (!globe) return;
 
     interactedRef.current = true;
-    const controls = globe.controls();
-    controls.autoRotate = false;
+    pauseHybridAutoRotate();
 
     const current = globe.pointOfView() as {
       lat?: number;
@@ -718,7 +694,8 @@ export function GeoGlobeScene({
       },
       650,
     );
-  }, [zoomCommand]);
+    scheduleHybridAutoRotate(1500);
+  }, [pauseHybridAutoRotate, scheduleHybridAutoRotate, zoomCommand]);
 
   useEffect(() => {
     const globe = globeRef.current;
@@ -726,16 +703,19 @@ export function GeoGlobeScene({
 
     if (selectedDealer) {
       globe.pointOfView({ lat: selectedDealer.lat, lng: selectedDealer.lng, altitude: 1.1 }, 1800);
+      scheduleHybridAutoRotate(2400);
       return;
     }
 
     if (drilldown) {
       globe.pointOfView(drilldown.cameraTarget, 1800);
+      scheduleHybridAutoRotate(2400);
       return;
     }
 
     globe.pointOfView({ lat: 24, lng: -10, altitude: 2.4 }, 1600);
-  }, [drilldown, selectedDealer]);
+    scheduleHybridAutoRotate(2100);
+  }, [drilldown, scheduleHybridAutoRotate, selectedDealer]);
 
   // Slowly rotate the cloud layer independently of the globe for a living-planet feel.
   useEffect(() => {
@@ -760,6 +740,8 @@ export function GeoGlobeScene({
     snapshot.summary.hubspotContactsMapped === 0;
   const countryPolygonDatum = (item: object) => item as CountryPolygonDatum;
   const statePolygonDatum = (item: object) => item as StatePolygonDatum;
+  const selectedArcId = selectedDealer ? `dealer-arc:${selectedDealer.id}` : null;
+  const polygonCurvatureResolution = polygonMode === 'state' || dimensions.width < 900 ? 2 : 3;
 
   return (
     <div
@@ -782,9 +764,10 @@ export function GeoGlobeScene({
         )}
         onPointerDown={() => {
           interactedRef.current = true;
-          const controls = globeRef.current?.controls();
-          if (controls) controls.autoRotate = false;
+          pauseHybridAutoRotate();
         }}
+        onPointerUp={() => scheduleHybridAutoRotate(1400)}
+        onPointerLeave={() => scheduleHybridAutoRotate(1800)}
       >
         {(loading || assetsLoading) && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#0b1222]/50 backdrop-blur-sm">
@@ -795,7 +778,19 @@ export function GeoGlobeScene({
           </div>
         )}
 
-        {dimensions.width > 0 && (
+        {dimensions.width > 0 && rendererMode === 'three' ? (
+          <GeoThreeGlobeScene
+            dimensions={dimensions}
+            sceneModel={threeSceneModel}
+            drilldown={drilldown}
+            selectedDealer={selectedDealer}
+            zoomCommand={zoomCommand}
+            onSelectDealer={(dealer) => startTransition(() => onSelectDealer(dealer))}
+            onHoverLabel={setHoverLabel}
+          />
+        ) : null}
+
+        {dimensions.width > 0 && rendererMode === 'hybrid' ? (
           <Globe
             ref={globeRef}
             width={dimensions.width}
@@ -809,7 +804,7 @@ export function GeoGlobeScene({
             pointLat="lat"
             pointLng="lng"
             pointAltitude="altitude"
-            pointRadius={() => 0}
+            pointRadius={zeroPointRadius}
             pointsTransitionDuration={0}
             pointLabel={(marker) => {
               const item = marker as GlobeMarker;
@@ -842,23 +837,31 @@ export function GeoGlobeScene({
               const coords = globe.getCoords(item.lat, item.lng, item.altitude);
               (obj as Group).position.set(coords.x, coords.y, coords.z);
             }}
-            arcsData={arcData}
+            arcsData={[]}
             arcStartLat="startLat"
             arcStartLng="startLng"
             arcEndLat="endLat"
             arcEndLng="endLng"
-            arcAltitudeAutoScale={0.48}
-            arcStroke={(arc: object) => ((arc as GeoArc).kind === 'ecosystem' ? 0.2 : 0.42)}
-            arcDashLength={0.38}
-            arcDashGap={2.0}
-            arcDashInitialGap={() => Math.random() * 2}
-            arcDashAnimateTime={(arc: object) => ((arc as GeoArc).kind === 'ecosystem' ? 0 : 2800)}
+            arcAltitudeAutoScale={0.38}
+            arcStroke={(arc: object) => {
+              const a = arc as GeoArc;
+              if (a.kind === 'ecosystem') return 0.12;
+              if (selectedArcId && a.id === selectedArcId) return 0.52;
+              return 0.3;
+            }}
+            arcDashLength={0.26}
+            arcDashGap={1.85}
+            arcDashInitialGap={(arc: object) => ((arc as GeoArc).id.length % 13) / 6}
+            arcDashAnimateTime={(arc: object) => ((arc as GeoArc).kind === 'ecosystem' ? 0 : 3400)}
             arcColor={(arc: object) => {
               const a = arc as GeoArc;
               if (a.kind === 'ecosystem') {
-                return ['rgba(248,113,133,0.02)', 'rgba(244,114,182,0.55)', 'rgba(251,191,36,0.02)'];
+                return ['rgba(248,113,133,0.01)', 'rgba(251,191,36,0.38)', 'rgba(251,191,36,0.01)'];
               }
-              return ['rgba(255,255,255,0.02)', 'rgba(244,63,94,0.98)', 'rgba(196,30,58,0.04)'];
+              if (selectedArcId && a.id !== selectedArcId) {
+                return ['rgba(255,255,255,0.01)', 'rgba(244,63,94,0.28)', 'rgba(196,30,58,0.01)'];
+              }
+              return ['rgba(255,255,255,0.02)', 'rgba(255,75,104,0.9)', 'rgba(196,30,58,0.02)'];
             }}
             arcLabel={(arc) => htmlTooltip((arc as { label: string }).label, 1, ((arc as GeoArc).kind === 'ecosystem' ? 'Contact ecosystem link' : 'Arrow network route'))}
             onArcHover={(arc) => setHoverLabel(arc ? (arc as { label: string }).label : null)}
@@ -876,9 +879,9 @@ export function GeoGlobeScene({
             labelSize="size"
             labelColor="color"
             labelAltitude="altitude"
-            labelIncludeDot={() => true}
+            labelIncludeDot={includeLabelDot}
             labelDotRadius={(label) => (label as GlobeLabel).dotRadius}
-            labelResolution={2}
+            labelResolution={dimensions.width < 760 ? 1 : 2}
             polygonsData={polygonData}
             polygonGeoJsonGeometry={(item) =>
               (item as CountryPolygonDatum | StatePolygonDatum).feature.geometry as unknown as {
@@ -888,38 +891,57 @@ export function GeoGlobeScene({
             }
             polygonCapColor={(item) => {
               const datum = item as CountryPolygonDatum | StatePolygonDatum;
-              const selected = drilldown && 'feature' in datum && 'isoA3' in datum.feature.properties && datum.feature.properties.isoA3 === drilldown.country.isoA3;
-              if (polygonMode === 'country' && !layers.countryHeatmap) {
-                return selected ? 'rgba(196,30,58,0.32)' : 'rgba(255,255,255,0.0)';
-              }
-              if (polygonMode === 'state' && !layers.stateHeatmap) {
-                return 'rgba(255,255,255,0.06)';
+              const selected =
+                polygonMode === 'country' &&
+                drilldown &&
+                'isoA3' in datum.feature.properties &&
+                datum.feature.properties.isoA3 === drilldown.country.isoA3;
+              const heatEnabled = polygonMode === 'state' ? layers.stateHeatmap : layers.countryHeatmap;
+
+              if (!heatEnabled) {
+                if (selected) return 'rgba(244,63,94,0.14)';
+                return polygonMode === 'state' ? 'rgba(255,255,255,0.018)' : 'rgba(255,255,255,0.004)';
               }
               if (datum.count === 0) return 'rgba(255,255,255,0.0)';
-              return heatColor(datum.intensity, 0.58 + datum.intensity * 0.32);
+              return heatColor(
+                datum.intensity,
+                polygonMode === 'state'
+                  ? 0.3 + datum.intensity * 0.34
+                  : 0.22 + datum.intensity * 0.3,
+              );
             }}
             polygonSideColor={(item) => {
               const datum = item as CountryPolygonDatum | StatePolygonDatum;
               if (datum.count <= 0) return 'rgba(255,255,255,0.0)';
-              return heatColor(datum.intensity, 0.52);
+              return heatColor(datum.intensity, polygonMode === 'state' ? 0.2 : 0.13);
             }}
             polygonStrokeColor={(item) => {
               const datum = item as CountryPolygonDatum | StatePolygonDatum;
-              if (datum.count > 0) return glowColor(datum.intensity, 0.78);
-              return 'rgba(255,255,255,0.08)';
+              const selected =
+                polygonMode === 'country' &&
+                drilldown &&
+                'isoA3' in datum.feature.properties &&
+                datum.feature.properties.isoA3 === drilldown.country.isoA3;
+              if (selected) return 'rgba(255,255,255,0.78)';
+              if (datum.count > 0) return glowColor(datum.intensity, polygonMode === 'state' ? 0.72 : 0.62);
+              return polygonMode === 'state' ? 'rgba(226,232,240,0.2)' : 'rgba(226,232,240,0.13)';
             }}
             polygonAltitude={(item) => {
               const datum = item as CountryPolygonDatum | StatePolygonDatum;
-              if (polygonMode === 'country' && !layers.countryHeatmap) {
-                return drilldown && 'isoA3' in datum.feature.properties && datum.feature.properties.isoA3 === drilldown.country.isoA3 ? 0.02 : 0.005;
-              }
-              if (polygonMode === 'state' && !layers.stateHeatmap) return 0.008;
+              const selected =
+                polygonMode === 'country' &&
+                drilldown &&
+                'isoA3' in datum.feature.properties &&
+                datum.feature.properties.isoA3 === drilldown.country.isoA3;
+              const heatEnabled = polygonMode === 'state' ? layers.stateHeatmap : layers.countryHeatmap;
+              if (selected) return 0.012;
+              if (!heatEnabled || datum.count <= 0) return polygonMode === 'state' ? 0.004 : 0.002;
               return polygonMode === 'state'
-                ? 0.006 + datum.intensity * 0.032
-                : 0.004 + datum.intensity * 0.026;
+                ? 0.004 + datum.intensity * 0.006
+                : 0.002 + datum.intensity * 0.004;
             }}
-            polygonCapCurvatureResolution={2}
-            polygonsTransitionDuration={500}
+            polygonCapCurvatureResolution={polygonCurvatureResolution}
+            polygonsTransitionDuration={360}
             polygonLabel={(item) => {
               if (polygonMode === 'state') {
                 const datum = statePolygonDatum(item);
@@ -943,12 +965,7 @@ export function GeoGlobeScene({
               setHoverLabel(datum.feature.properties.name);
               if (polygonMode === 'country' && 'isoA3' in datum.feature.properties) {
                 const iso = (datum as CountryPolygonDatum).feature.properties.isoA3;
-                if (!preloadedAdmin1Ref.current.has(iso)) {
-                  preloadedAdmin1Ref.current.add(iso);
-                  fetch(`/data/geo/admin1/${iso}.geojson`, { cache: 'force-cache' }).catch(() => {
-                    preloadedAdmin1Ref.current.delete(iso);
-                  });
-                }
+                scheduleAdmin1Preload(iso);
               }
             }}
             onPolygonClick={(item) => {
@@ -956,17 +973,6 @@ export function GeoGlobeScene({
               const datum = countryPolygonDatum(item);
               startTransition(() => onSelectCountry(datum.feature.properties.isoA3));
             }}
-            heatmapsData={heatmapsData}
-            heatmapPoints="points"
-            heatmapPointLat="lat"
-            heatmapPointLng="lng"
-            heatmapPointWeight="weight"
-            heatmapBandwidth={() => (polygonMode === 'state' ? 1.02 : 1.28)}
-            heatmapBaseAltitude={() => 0.008}
-            heatmapTopAltitude={() => (polygonMode === 'state' ? 0.058 : 0.044)}
-            heatmapColorSaturation={() => 0.72}
-            heatmapColorFn={() => (t: number) => heatColor(t, 0.18 + t * 0.34)}
-            heatmapsTransitionDuration={400}
             onGlobeReady={() => {
               const globe = globeRef.current;
               if (!globe) return;
@@ -974,11 +980,11 @@ export function GeoGlobeScene({
               scene.fog = new FogExp2('#0b1222', 0.001);
 
               const ambient = new AmbientLight('#dbeafe', 0.38);
-              const sun = new DirectionalLight('#fff2d2', 1.52);
+              const sun = new DirectionalLight('#fff2d2', 1.35);
               sun.position.set(-360, 220, 200);
-              const rim = new PointLight('#ff6b86', 0.42, 900);
+              const rim = new PointLight('#ff6b86', 0.32, 900);
               rim.position.set(420, 120, -260);
-              const fill = new PointLight('#5d92ff', 0.32, 900);
+              const fill = new PointLight('#5d92ff', 0.26, 900);
               fill.position.set(-360, -140, 220);
               globe.lights([ambient, sun, rim, fill]);
 
@@ -995,24 +1001,24 @@ export function GeoGlobeScene({
               });
 
               const controls = globe.controls();
-              controls.autoRotate = !interactedRef.current;
+              controls.autoRotate = true;
               controls.autoRotateSpeed = 0.14;
             }}
             onZoom={() => {
               interactedRef.current = true;
-              const controls = globeRef.current?.controls();
-              if (controls) controls.autoRotate = false;
+              pauseHybridAutoRotate();
+              scheduleHybridAutoRotate(1500);
             }}
-            showPointerCursor={(type) => type === 'polygon' || type === 'point' || type === 'arc'}
+            showPointerCursor={showPointerCursor}
           />
-        )}
+        ) : null}
 
         <div className="pointer-events-none absolute right-5 top-5 z-10 flex flex-wrap items-center justify-end gap-2">
-          {hoverLabel && (
-            <span className="pointer-events-auto rounded-full border border-white/18 bg-slate-900/75 px-3 py-1.5 text-xs text-white/90 shadow-[0_12px_30px_rgba(15,23,42,0.24)] backdrop-blur-sm">
-              {hoverLabel}
-            </span>
-          )}
+          <span
+            ref={hoverBadgeRef}
+            aria-live="polite"
+            className="pointer-events-none translate-y-[-4px] rounded-full border border-white/18 bg-slate-900/75 px-3 py-1.5 text-xs text-white/90 opacity-0 shadow-[0_12px_30px_rgba(15,23,42,0.24)] backdrop-blur-sm transition-[opacity,transform] duration-150"
+          />
           {!fullscreen ? (
             <button
               type="button"

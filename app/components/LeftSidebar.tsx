@@ -15,7 +15,7 @@ export function LeftSidebar({ activeApp, onAppChange, collapsed, onToggleCollaps
   return (
     <aside
       className={cn(
-        'border-r border-white/10 flex flex-col shrink-0 hub-sidebar-accent text-zinc-100 transition-[width] duration-200 ease-out',
+        'hidden border-r border-white/10 sm:flex flex-col shrink-0 hub-sidebar-accent text-zinc-100 transition-[width] duration-200 ease-out',
         collapsed ? 'w-[4.25rem]' : 'w-64'
       )}
     >

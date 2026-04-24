@@ -34,9 +34,10 @@ import type {
 } from '@/lib/geo-intelligence/types';
 import { GeoDealerSettingsPage } from './GeoDealerSettingsPage';
 import { GeoGlobeScene } from './GeoGlobeScene';
+import type { GeoRendererMode } from './geo-globe-model';
 
 type GeoPage = 'dashboard' | 'settings';
-type GeoViewMode = 'contacts' | 'dealers';
+const RENDERER_MODE_STORAGE_KEY = 'arrow.geo.rendererMode';
 
 const DEFAULT_FILTERS: GeoFilterState = {
   ownerId: '',
@@ -45,16 +46,15 @@ const DEFAULT_FILTERS: GeoFilterState = {
 };
 
 const DEFAULT_LAYERS: Record<GeoLayerKey, boolean> = {
-  dealers: true,
-  dealerNetwork: true,
+  dealers: false,
+  dealerNetwork: false,
   countryHeatmap: true,
   stateHeatmap: false,
-  contactCoverage: false,
+  contactCoverage: true,
 };
 
 export function GeoIntelligenceTab() {
   const [activePage, setActivePage] = useState<GeoPage>('dashboard');
-  const [viewMode, setViewMode] = useState<GeoViewMode>('contacts');
   const [filters, setFilters] = useState<GeoFilterState>(DEFAULT_FILTERS);
   const deferredFilters = useDeferredValue(filters);
   const [layers, setLayers] = useState<Record<GeoLayerKey, boolean>>(DEFAULT_LAYERS);
@@ -69,6 +69,18 @@ export function GeoIntelligenceTab() {
   const [error, setError] = useState<string | null>(null);
   const [showMissionControl, setShowMissionControl] = useState(true);
   const [zoomCommand, setZoomCommand] = useState<{ id: number; direction: 'in' | 'out' } | null>(null);
+  const [rendererMode, setRendererMode] = useState<GeoRendererMode>('hybrid');
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(RENDERER_MODE_STORAGE_KEY);
+    if (stored === 'hybrid' || stored === 'three') {
+      setRendererMode(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(RENDERER_MODE_STORAGE_KEY, rendererMode);
+  }, [rendererMode]);
 
   const loadDashboard = useCallback(async (activeFilters: GeoFilterState, quiet = false) => {
     if (!quiet) setLoadingDashboard(true);
@@ -167,7 +179,7 @@ export function GeoIntelligenceTab() {
   const topCountries = dashboard?.topCountries ?? [];
   const topStates = drilldown?.topStates ?? dashboard?.topStates ?? [];
   const activeHeatLegend = selectedCountryName && drilldown?.heatLegend ? drilldown.heatLegend : dashboard?.heatLegend;
-  const isDealersView = viewMode === 'dealers';
+  const isDealersView = rendererMode === 'three';
   const visibleLayers = useMemo(
     () =>
       isDealersView
@@ -181,6 +193,19 @@ export function GeoIntelligenceTab() {
         : layers,
     [isDealersView, layers],
   );
+  const handleRendererModeChange = useCallback((mode: GeoRendererMode) => {
+    setRendererMode(mode);
+    setSelectedCountryIsoA3(null);
+    setSelectedDealer(null);
+    setLayers((current) => ({ ...current, stateHeatmap: false }));
+    if (mode === 'three') {
+      setFilters((current) => ({
+        ...current,
+        ownerId: '',
+        leadStatus: '',
+      }));
+    }
+  }, []);
   const syncLabel = syncing
     ? 'Syncing'
     : !dashboard?.sync.hubspotConfigured
@@ -201,8 +226,17 @@ export function GeoIntelligenceTab() {
       dealers: dashboard?.summary.activeDealers ?? 0,
       routes: dashboard?.summary.dealerRoutes ?? dashboard?.dealerArcs.length ?? 0,
       countries: dashboard?.summary.countriesCovered ?? 0,
+      contacts: dashboard?.summary.hubspotContactsMapped ?? 0,
+      states: dashboard?.summary.statesCovered ?? 0,
     }),
-    [dashboard?.dealerArcs.length, dashboard?.summary.activeDealers, dashboard?.summary.countriesCovered, dashboard?.summary.dealerRoutes],
+    [
+      dashboard?.dealerArcs.length,
+      dashboard?.summary.activeDealers,
+      dashboard?.summary.countriesCovered,
+      dashboard?.summary.dealerRoutes,
+      dashboard?.summary.hubspotContactsMapped,
+      dashboard?.summary.statesCovered,
+    ],
   );
 
   if (activePage === 'settings') {
@@ -256,8 +290,8 @@ export function GeoIntelligenceTab() {
   }
 
   return (
-    <div className="relative h-full min-h-0 w-full overflow-hidden bg-[#0b1222] text-white">
-      <div className="relative h-full lg:absolute lg:inset-0">
+    <div className="relative h-full min-h-0 w-full overflow-hidden bg-[#02040a] text-white">
+      <div className="absolute inset-0 h-full">
         <GeoGlobeScene
           fullscreen
           snapshot={dashboard}
@@ -265,6 +299,7 @@ export function GeoIntelligenceTab() {
           layers={visibleLayers}
           loading={loadingDashboard}
           selectedDealer={selectedDealer}
+          rendererMode={rendererMode}
           onSelectCountry={(countryIsoA3) => {
             const nextCountry = selectedCountryIsoA3 === countryIsoA3 ? null : countryIsoA3;
             setSelectedDealer(null);
@@ -285,28 +320,28 @@ export function GeoIntelligenceTab() {
 
       <div className="pointer-events-none relative z-20 flex h-full min-h-0 flex-col">
         {/* Hero (top-left) — inspired by the reference "Every place has a story" composition */}
-        <section className="pointer-events-none px-6 pt-10 lg:px-10 lg:pt-14">
-          <div className="max-w-[28rem]">
+        <section className="pointer-events-none px-4 pt-24 sm:px-6 sm:pt-10 lg:px-10 lg:pt-14">
+          <div className="max-w-[24rem] sm:max-w-[28rem]">
             <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand/85">Arrow Geo Intelligence</p>
-            <h1 className="mt-5 text-[2.75rem] font-semibold leading-[1.02] tracking-tight text-white sm:text-[3.2rem]">
-              Every dealer.
+            <h1 className="mt-4 text-[2.25rem] font-semibold leading-[1.02] tracking-tight text-white sm:mt-5 sm:text-[3.2rem]">
+              Every partner.
               <br />
               <span className="text-white">Every contact.</span>{' '}
               <span className="text-brand">One globe.</span>
             </h1>
-            <p className="mt-5 max-w-[22rem] text-sm leading-6 text-slate-200/90">
-              Arrow&apos;s dealer network, HubSpot coverage, and territory density — rendered live on a single living map.
+            <p className="mt-4 max-w-[21rem] text-sm leading-6 text-slate-200/90 sm:mt-5">
+              Arrow&apos;s network partners, HubSpot coverage, and territory density rendered as one living global signal.
             </p>
-            <div className="mt-10 grid grid-cols-3 gap-8 sm:max-w-md sm:grid-cols-3">
-              <HeroStat value={heroStats.dealers} label="Dealers" />
-              <HeroStat value={heroStats.routes} label="Routes" />
+            <div className="mt-7 grid grid-cols-3 gap-5 sm:mt-10 sm:max-w-md sm:gap-8">
+              <HeroStat value={isDealersView ? heroStats.dealers : heroStats.contacts} label={isDealersView ? 'Partners' : 'Contacts'} />
+              <HeroStat value={isDealersView ? heroStats.routes : heroStats.states} label={isDealersView ? 'Routes' : 'States'} />
               <HeroStat value={heroStats.countries} label="Countries" />
             </div>
             {isDealersView ? (
               <div className="mt-9 max-w-xs border-t border-white/16 pt-5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300">Dealers</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300">Network partners</p>
                 <p className="mt-1 text-xs leading-5 text-slate-300/90">
-                  Dealer network view is intentionally clean for now: globe, pins, and Arrow routes only.
+                  Partner view keeps the scene focused: globe, endpoint beacons, and Arrow routes only.
                 </p>
               </div>
             ) : (
@@ -321,13 +356,14 @@ export function GeoIntelligenceTab() {
         </section>
 
         {/* Top-right chrome */}
-        <div className="pointer-events-auto absolute right-6 top-6 z-30 flex flex-wrap items-center justify-end gap-2 lg:right-10 lg:top-10">
+        <div className="pointer-events-auto absolute left-4 right-4 top-4 z-30 flex flex-wrap items-center justify-end gap-2 sm:left-auto sm:right-6 sm:top-6 lg:right-10 lg:top-10">
           <GlassBadge
             label={syncLabel}
             caption={syncCaption}
             tone={dashboard?.sync.hubspotConfigured ? 'brand' : 'neutral'}
           />
           {selectedCountryName && <GlassBadge label="Focus" caption={selectedCountryName} tone="green" />}
+          <RendererModeSwitch value={rendererMode} onChange={handleRendererModeChange} />
           <button
             type="button"
             onClick={() => setShowMissionControl((current) => !current)}
@@ -372,15 +408,13 @@ export function GeoIntelligenceTab() {
           <div className="max-h-[calc(100vh-13rem)] overflow-y-auto">
             <div className="space-y-3 pb-4">
               <OverlayPanel title="Layers & Filters" eyebrow="Live Controls">
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   {(isDealersView
                     ? [
-                        { key: 'dealers', label: 'Dealers' },
-                        { key: 'dealerNetwork', label: 'Dealer Network' },
+                        { key: 'dealers', label: 'Partners' },
+                        { key: 'dealerNetwork', label: 'Routes' },
                       ]
                     : [
-                        { key: 'dealers', label: 'Dealers' },
-                        { key: 'dealerNetwork', label: 'Dealer Network' },
                         { key: 'countryHeatmap', label: 'Country Heat' },
                         { key: 'stateHeatmap', label: 'State Heat' },
                         { key: 'contactCoverage', label: 'Contact Coverage' },
@@ -395,10 +429,10 @@ export function GeoIntelligenceTab() {
                           }))
                         }
                         className={cn(
-                          'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                          'rounded-md border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors',
                           visibleLayers[layer.key as GeoLayerKey]
-                            ? 'border-brand/50 bg-brand/20 text-white shadow-[0_0_20px_rgba(244,63,94,0.25)]'
-                            : 'border-white/16 bg-white/8 text-slate-300 hover:border-white/35 hover:bg-white/12 hover:text-white',
+                            ? 'border-brand/50 bg-brand/18 text-white shadow-[0_0_20px_rgba(244,63,94,0.18)]'
+                            : 'border-white/12 bg-white/6 text-slate-300 hover:border-white/28 hover:bg-white/10 hover:text-white',
                         )}
                       >
                         {layer.label}
@@ -410,21 +444,9 @@ export function GeoIntelligenceTab() {
                   <label className="block">
                     <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">View</span>
                     <select
-                      value={viewMode}
+                      value={isDealersView ? 'dealers' : 'contacts'}
                       onChange={(event) => {
-                        const next = event.target.value as GeoViewMode;
-                        setViewMode(next);
-                        setSelectedCountryIsoA3(null);
-                        setSelectedDealer(null);
-	                        setFilters((current) => ({
-	                          ...current,
-	                          ownerId: next === 'dealers' ? '' : current.ownerId,
-	                          leadStatus: next === 'dealers' ? '' : current.leadStatus,
-	                        }));
-                        setLayers((current) => ({
-                          ...current,
-                          stateHeatmap: false,
-                        }));
+                        handleRendererModeChange(event.target.value === 'dealers' ? 'three' : 'hybrid');
                       }}
                       className="w-full rounded-xl border border-white/20 bg-slate-900/75 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-brand/60"
                     >
@@ -432,22 +454,22 @@ export function GeoIntelligenceTab() {
                       <option value="dealers">Dealers</option>
                     </select>
                   </label>
-	                  {!isDealersView ? (
-	                    <>
-	                      <FilterSelect
-	                        label="Owner"
-	                        value={filters.ownerId}
-	                        onChange={(value) => setFilters((current) => ({ ...current, ownerId: value }))}
-	                        options={dashboard?.filters.owners ?? []}
-	                      />
-	                      <FilterSelect
-	                        label="Lead Status"
-	                        value={filters.leadStatus}
-	                        onChange={(value) => setFilters((current) => ({ ...current, leadStatus: value }))}
-	                        options={dashboard?.filters.leadStatuses ?? []}
-	                      />
-	                    </>
-	                  ) : null}
+                  {!isDealersView ? (
+                    <>
+                      <FilterSelect
+                        label="Owner"
+                        value={filters.ownerId}
+                        onChange={(value) => setFilters((current) => ({ ...current, ownerId: value }))}
+                        options={dashboard?.filters.owners ?? []}
+                      />
+                      <FilterSelect
+                        label="Lead Status"
+                        value={filters.leadStatus}
+                        onChange={(value) => setFilters((current) => ({ ...current, leadStatus: value }))}
+                        options={dashboard?.filters.leadStatuses ?? []}
+                      />
+                    </>
+                  ) : null}
                 </div>
 
                 <button
@@ -505,7 +527,7 @@ export function GeoIntelligenceTab() {
                     <>
                       <SnapshotLine label="Mapped contacts" value={formatNumber(drilldown?.summary.mappedContacts ?? 0)} />
                       <SnapshotLine label="States with signal" value={formatNumber(drilldown?.summary.statesWithCoverage ?? 0)} />
-                      <SnapshotLine label="Active dealers" value={formatNumber(drilldown?.summary.activeDealers ?? 0)} />
+                      <SnapshotLine label="Network partners" value={formatNumber(drilldown?.summary.activeDealers ?? 0)} />
                       <SnapshotLine
                         label="Boundary detail"
                         value={drilldown?.availableAdmin1 ? 'Admin1 polygons loaded' : 'Country-only focus'}
@@ -514,7 +536,14 @@ export function GeoIntelligenceTab() {
                   ) : (
                     <>
                       <SnapshotLine label="Arrow origin" value="Burlington, Ontario" />
-                      <SnapshotLine label="Dealer routes" value={formatNumber(dashboard?.dealerArcs.length ?? 0)} />
+                      {isDealersView ? (
+                        <SnapshotLine label="Partner routes" value={formatNumber(dashboard?.dealerArcs.length ?? 0)} />
+                      ) : (
+                        <SnapshotLine
+                          label="States covered"
+                          value={formatNumber(dashboard?.summary.statesCovered ?? 0)}
+                        />
+                      )}
                       <SnapshotLine
                         label="HubSpot snapshot"
                         value={dashboard?.sync.lastSyncedAt ? formatTimeAgo(dashboard.sync.lastSyncedAt) : 'Not synced'}
@@ -577,9 +606,9 @@ export function GeoIntelligenceTab() {
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
               <DetailCard title="Arrow Route">
                 <div className="rounded-xl border border-brand/25 bg-brand/12 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand">Live Network Pin</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand">Live Network Endpoint</p>
                   <p className="mt-2 text-sm leading-5 text-zinc-200">
-                    Rendered as a live globe beacon, receives an Arrow origin route, and contributes to territory context.
+                    Rendered as a refined globe beacon, receives an Arrow origin route, and contributes to territory context.
                   </p>
                 </div>
               </DetailCard>
@@ -647,10 +676,45 @@ export function GeoIntelligenceTab() {
   );
 }
 
+function RendererModeSwitch({
+  value,
+  onChange,
+}: {
+  value: GeoRendererMode;
+  onChange: (mode: GeoRendererMode) => void;
+}) {
+  const labels: Record<GeoRendererMode, string> = {
+    hybrid: 'Contacts',
+    three: 'Dealers',
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg border border-white/18 bg-black/32 p-1 shadow-[0_14px_35px_rgba(2,6,23,0.24)] backdrop-blur-md">
+      {(['hybrid', 'three'] as GeoRendererMode[]).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onChange(mode)}
+          className={cn(
+            'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
+            value === mode
+              ? 'bg-white text-neutral-950 shadow-[0_8px_20px_rgba(255,255,255,0.12)]'
+              : 'text-slate-300 hover:bg-white/10 hover:text-white',
+          )}
+          aria-pressed={value === mode}
+        >
+          {mode === 'hybrid' ? <Layers3 className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
+          {labels[mode]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function HeroStat({ value, label }: { value: number; label: string }) {
   return (
     <div>
-      <p className="text-[2.25rem] font-semibold leading-none tracking-tight text-brand sm:text-[2.5rem]">
+      <p className="text-[1.85rem] font-semibold leading-none tracking-tight text-brand sm:text-[2.5rem]">
         {formatNumber(value)}
       </p>
       <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-300">{label}</p>
@@ -698,11 +762,24 @@ function HeatLegendPanel({
           Based on {formatNumber(legend.totalContacts)} mapped HubSpot contacts.
         </p>
       ) : null}
+      <div className="mt-4 grid gap-2 border-t border-white/12 pt-4 text-xs text-slate-200">
+        <LegendLine swatchClass="bg-rose-300/70 shadow-[0_0_16px_rgba(251,113,133,0.35)]" label="Contact density" />
+        <LegendLine swatchClass="bg-white/80 shadow-[0_0_16px_rgba(255,255,255,0.35)]" label="Country / state borders" />
+      </div>
       {totalRecords > 0 && unmappedRecords > 0 ? (
         <p className="mt-1 text-[11px] leading-5 text-slate-400">
           {formatNumber(unmappedRecords)} of {formatNumber(totalRecords)} contacts had no recognizable contact country.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function LegendLine({ swatchClass, label }: { swatchClass: string; label: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className={cn('h-2.5 w-8 rounded-full border border-white/20', swatchClass)} />
+      <span>{label}</span>
     </div>
   );
 }
@@ -778,7 +855,7 @@ function OverlayPanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/16 bg-slate-900/78 p-3.5 text-white shadow-[0_18px_50px_rgba(2,6,23,0.34)] backdrop-blur-xl">
+    <div className="rounded-lg border border-white/12 bg-black/42 p-3.5 text-white shadow-[0_18px_50px_rgba(2,6,23,0.28)] backdrop-blur-xl">
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand/75">{eyebrow}</p>
       <h3 className="mt-1 text-base font-semibold tracking-tight text-white">{title}</h3>
       {description ? <p className="mt-1.5 text-xs text-slate-300/90">{description}</p> : null}
@@ -803,7 +880,7 @@ function GlassBadge({
   }[tone];
 
   return (
-    <div className={cn('rounded-full border px-3 py-1.5 backdrop-blur-md', toneClass)}>
+    <div className={cn('rounded-lg border px-3 py-1.5 backdrop-blur-md', toneClass)}>
       <p className="text-[9px] font-semibold uppercase tracking-[0.22em]">{label}</p>
       <p className="mt-0.5 text-xs font-medium text-white">{caption}</p>
     </div>
