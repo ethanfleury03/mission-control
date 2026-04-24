@@ -36,16 +36,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return isAllowedGoogleProfile(profile as any);
     },
     async jwt({ token, profile }) {
-      if (profile) {
-        (token as any).hd = (profile as any).hd;
-        (token as any).email = (profile as any).email;
+      if (profile && isAllowedGoogleProfile(profile as any)) {
+        const { upsertAppUserFromGoogleProfile } = await import('@/lib/auth/app-user');
+        const appUser = await upsertAppUserFromGoogleProfile(profile as any);
+        token.appUserId = appUser.id;
+        token.hd = appUser.hostedDomain;
+        token.email = appUser.email;
+        token.name = appUser.name || undefined;
+        token.picture = appUser.image || undefined;
+        return token;
+      }
+
+      if (typeof token.email === 'string' && !token.appUserId) {
+        const { getAppUserByEmail } = await import('@/lib/auth/app-user');
+        const appUser = await getAppUserByEmail(token.email);
+        if (appUser) {
+          token.appUserId = appUser.id;
+          token.hd = appUser.hostedDomain;
+          token.name = appUser.name || token.name;
+          token.picture = appUser.image || token.picture;
+        }
       }
       return token;
     },
     async session({ session, token }) {
-      (session as any).hd = (token as any).hd;
-      if (session.user && typeof (token as any).email === 'string') {
-        session.user.email = (token as any).email;
+      session.appUserId = typeof token.appUserId === 'string' ? token.appUserId : null;
+      session.hd = typeof token.hd === 'string' ? token.hd : null;
+      if (session.user && typeof token.email === 'string') {
+        session.user.email = token.email;
+      }
+      if (session.user && typeof token.name === 'string') {
+        session.user.name = token.name;
+      }
+      if (session.user && typeof token.picture === 'string') {
+        session.user.image = token.picture;
       }
       return session;
     },

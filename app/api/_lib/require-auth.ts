@@ -18,6 +18,7 @@ import {
 } from '@/lib/auth/bypass';
 
 export interface AuthedSession {
+  appUserId: string | null;
   email: string;
   hd: string | null;
 }
@@ -29,6 +30,7 @@ export async function requireAuth(): Promise<Allowed | Denied> {
   if (isAuthBypassEnabled()) {
     return {
       authed: {
+        appUserId: null,
         email: getAuthBypassEmail(),
         hd: getAuthBypassHd(),
       },
@@ -42,11 +44,12 @@ export async function requireAuth(): Promise<Allowed | Denied> {
     };
   }
   const email = typeof session.user.email === 'string' ? session.user.email : '';
-  const hd = typeof (session as any).hd === 'string' ? (session as any).hd : null;
+  const hd = typeof session.hd === 'string' ? session.hd : null;
+  const appUserId = typeof session.appUserId === 'string' ? session.appUserId : null;
   if (!email.toLowerCase().endsWith('@arrsys.com')) {
     return {
       response: NextResponse.json({ error: 'forbidden' }, { status: 403 }),
     };
   }
-  return { authed: { email, hd } };
+  return { authed: { appUserId, email, hd } };
 }

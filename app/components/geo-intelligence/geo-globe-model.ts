@@ -129,7 +129,7 @@ function curateDealerArcs(snapshot: GeoDashboardSnapshot, selectedDealer: GeoDea
     return (b.weight ?? 0) - (a.weight ?? 0) || a.label.localeCompare(b.label);
   });
 
-  const cap = selectedDealer ? 14 : 10;
+  const cap = selectedDealer ? 24 : Math.max(24, snapshot.summary.activeDealers);
   return dealerArcs.slice(0, cap);
 }
 

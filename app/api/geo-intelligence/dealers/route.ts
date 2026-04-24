@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { ARROW_ORIGIN } from '@/lib/geo-intelligence/constants';
 import { prismaGeoDealerToDomain } from '@/lib/geo-intelligence/db-mappers';
+import { resolveCountryRecord } from '@/lib/geo-intelligence/boundaries';
 import { buildCountryIdentity } from '@/lib/geo-intelligence/normalize';
 import { ensureGeoIntelligenceSchema } from '@/lib/geo-intelligence/schema';
 import type { GeoDealerStatus } from '@/lib/geo-intelligence/types';
@@ -16,6 +18,46 @@ function validateStatus(status?: string): GeoDealerStatus {
 function parseLatLng(value: unknown) {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function isArrowOrigin(lat: number, lng: number) {
+  return Math.abs(lat - ARROW_ORIGIN.lat) < 0.000001 && Math.abs(lng - ARROW_ORIGIN.lng) < 0.000001;
+}
+
+function resolveDealerCoordinates({
+  lat,
+  lng,
+  countryInput,
+  countryCode,
+}: {
+  lat: number;
+  lng: number;
+  countryInput: string;
+  countryCode?: string;
+}) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { lat, lng };
+  }
+
+  if (!isArrowOrigin(lat, lng)) {
+    return { lat, lng };
+  }
+
+  const country = resolveCountryRecord(countryInput, countryCode);
+  if (!country) {
+    return { lat, lng };
+  }
+
+  // If the user never moved the default Burlington pin, place the dealer on the
+  // entered country's centroid so every dealer appears somewhere meaningful.
+  if (country.isoA3 !== 'CAN') {
+    return {
+      lat: country.labelLat,
+      lng: country.labelLng,
+    };
+  }
+
+  return { lat, lng };
 }
 
 async function parseBody(request: NextRequest) {
@@ -39,6 +81,12 @@ function mapDealerData(body: Record<string, unknown>) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { error: 'lat and lng are required' };
 
   const country = buildCountryIdentity(countryInput);
+  const coords = resolveDealerCoordinates({
+    lat,
+    lng,
+    countryInput,
+    countryCode: country.countryCode,
+  });
 
   return {
     data: {
@@ -51,8 +99,8 @@ function mapDealerData(body: Record<string, unknown>) {
       country: country.country || countryInput,
       countryCode: country.countryCode,
       countryIsoA3: country.countryIsoA3,
-      lat,
-      lng,
+      lat: coords.lat,
+      lng: coords.lng,
       status: validateStatus(typeof body.status === 'string' ? body.status : undefined),
       notes: typeof body.notes === 'string' ? body.notes.trim() : '',
     },

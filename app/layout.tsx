@@ -1,4 +1,8 @@
 import type { Metadata } from 'next';
+
+import { auth } from '@/auth';
+
+import { AppProviders } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -6,14 +10,18 @@ export const metadata: Metadata = {
   description: 'Internal company hub — Arrow Systems, Inc. (arrsys.com)',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <AppProviders session={session}>{children}</AppProviders>
+      </body>
     </html>
   );
 }

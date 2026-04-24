@@ -241,8 +241,8 @@ export function GeoIntelligenceTab() {
 
   if (activePage === 'settings') {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-[#f4f7fb]">
-        <div className="sticky top-0 z-20 border-b border-neutral-200 bg-white/90 backdrop-blur">
+      <div className="relative h-full overflow-y-auto bg-[#f4f7fb]">
+        <div className="sticky top-0 z-20 shrink-0 border-b border-neutral-200 bg-white/90 backdrop-blur">
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Geo Intelligence</p>
@@ -274,17 +274,19 @@ export function GeoIntelligenceTab() {
           </div>
         </div>
 
-        <GeoDealerSettingsPage
-          dealers={dealers}
-          loading={loadingDealers}
-          syncing={syncing}
-          syncMeta={dashboard?.sync ?? null}
-          selectedDealer={selectedDealer}
-          onSelectDealer={setSelectedDealer}
-          onSave={handleSaveDealer}
-          onDelete={handleDeleteDealer}
-          onSyncHubSpot={handleSync}
-        />
+        <div>
+          <GeoDealerSettingsPage
+            dealers={dealers}
+            loading={loadingDealers}
+            syncing={syncing}
+            syncMeta={dashboard?.sync ?? null}
+            selectedDealer={selectedDealer}
+            onSelectDealer={setSelectedDealer}
+            onSave={handleSaveDealer}
+            onDelete={handleDeleteDealer}
+            onSyncHubSpot={handleSync}
+          />
+        </div>
       </div>
     );
   }
@@ -329,7 +331,7 @@ export function GeoIntelligenceTab() {
               <span className="text-white">Every contact.</span>{' '}
               <span className="text-brand">One globe.</span>
             </h1>
-            <p className="mt-4 max-w-[21rem] text-sm leading-6 text-slate-200/90 sm:mt-5">
+            <p className="mt-4 max-w-[21rem] text-sm leading-6 text-slate-100 sm:mt-5">
               Arrow&apos;s network partners, HubSpot coverage, and territory density rendered as one living global signal.
             </p>
             <div className="mt-7 grid grid-cols-3 gap-5 sm:mt-10 sm:max-w-md sm:gap-8">
@@ -339,8 +341,8 @@ export function GeoIntelligenceTab() {
             </div>
             {isDealersView ? (
               <div className="mt-9 max-w-xs border-t border-white/16 pt-5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300">Network partners</p>
-                <p className="mt-1 text-xs leading-5 text-slate-300/90">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-200">Network partners</p>
+                <p className="mt-1 text-xs leading-5 text-slate-100/90">
                   Partner view keeps the scene focused: globe, endpoint beacons, and Arrow routes only.
                 </p>
               </div>
@@ -367,7 +369,7 @@ export function GeoIntelligenceTab() {
           <button
             type="button"
             onClick={() => setShowMissionControl((current) => !current)}
-            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-900/70 px-4 py-2 text-xs font-medium text-white/90 shadow-[0_14px_35px_rgba(2,6,23,0.26)] backdrop-blur-md transition-colors hover:border-brand/50 hover:bg-brand/20 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-white/24 bg-slate-800/58 px-4 py-2 text-xs font-medium text-white shadow-[0_14px_35px_rgba(2,6,23,0.2)] backdrop-blur-md transition-colors hover:border-brand/50 hover:bg-brand/20 hover:text-white"
           >
             <Layers3 className="h-3.5 w-3.5" />
             {showMissionControl ? 'Hide Stats' : 'Show Stats'}
@@ -375,7 +377,7 @@ export function GeoIntelligenceTab() {
           <button
             type="button"
             onClick={() => setActivePage('settings')}
-            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-900/70 px-4 py-2 text-xs font-medium text-white/90 shadow-[0_14px_35px_rgba(2,6,23,0.26)] backdrop-blur-md transition-colors hover:border-brand/50 hover:bg-brand/20 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-white/24 bg-slate-800/58 px-4 py-2 text-xs font-medium text-white shadow-[0_14px_35px_rgba(2,6,23,0.2)] backdrop-blur-md transition-colors hover:border-brand/50 hover:bg-brand/20 hover:text-white"
           >
             <Settings className="h-3.5 w-3.5" />
             Dealers
@@ -392,7 +394,7 @@ export function GeoIntelligenceTab() {
         </div>
 
         {error && (
-          <div className="pointer-events-auto mx-6 mt-4 rounded-2xl border border-rose-500/25 bg-rose-950/75 px-4 py-3 text-sm text-rose-100 backdrop-blur-md lg:mx-10">
+          <div className="pointer-events-auto mx-6 mt-4 rounded-2xl border border-rose-300/35 bg-rose-900/60 px-4 py-3 text-sm text-rose-50 backdrop-blur-md lg:mx-10">
             {error}
           </div>
         )}
@@ -582,7 +584,7 @@ export function GeoIntelligenceTab() {
       </div>
 
       {selectedDealer && (
-        <div className="absolute inset-y-0 right-0 z-30 w-full max-w-[22.5rem] border-l border-brand/40 bg-[#101827]/95 shadow-[-24px_0_60px_rgba(3,4,7,0.42)] backdrop-blur-xl">
+        <div className="absolute inset-y-0 right-0 z-30 w-full max-w-[22.5rem] border-l border-white/12 bg-[#172236]/88 shadow-[-24px_0_60px_rgba(3,4,7,0.32)] backdrop-blur-xl">
           <div className="flex h-full flex-col">
             <div className="border-b border-white/10 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
@@ -796,17 +798,17 @@ function MiniKpi({
   tone?: 'amber';
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-full border border-white/18 bg-slate-900/70 px-3.5 py-2 shadow-[0_16px_40px_rgba(2,6,23,0.26)] backdrop-blur-md">
+    <div className="flex items-center gap-3 rounded-full border border-white/22 bg-slate-800/56 px-3.5 py-2 shadow-[0_16px_40px_rgba(2,6,23,0.18)] backdrop-blur-md">
       <span
         className={cn(
           'flex h-7 w-7 items-center justify-center rounded-full',
-          tone === 'amber' ? 'bg-amber-400/20 text-amber-200' : 'bg-white/10 text-white',
+          tone === 'amber' ? 'bg-amber-300/22 text-amber-100' : 'bg-white/14 text-white',
         )}
       >
         <Icon className="h-3.5 w-3.5" />
       </span>
       <div>
-        <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-300">{label}</p>
+        <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-200">{label}</p>
         <p className="text-sm font-semibold text-white">{value}</p>
       </div>
     </div>
@@ -826,11 +828,11 @@ function FilterSelect({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">{label}</span>
+      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/20 bg-slate-900/75 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-brand/60"
+        className="w-full rounded-xl border border-white/22 bg-slate-800/62 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-brand/60"
       >
         <option value="">All</option>
         {options.map((option) => (
@@ -855,10 +857,10 @@ function OverlayPanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-white/12 bg-black/42 p-3.5 text-white shadow-[0_18px_50px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+    <div className="rounded-lg border border-white/16 bg-slate-900/48 p-3.5 text-white shadow-[0_18px_50px_rgba(2,6,23,0.22)] backdrop-blur-xl">
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand/75">{eyebrow}</p>
       <h3 className="mt-1 text-base font-semibold tracking-tight text-white">{title}</h3>
-      {description ? <p className="mt-1.5 text-xs text-slate-300/90">{description}</p> : null}
+      {description ? <p className="mt-1.5 text-xs text-slate-200/95">{description}</p> : null}
       <div className="mt-3">{children}</div>
     </div>
   );
@@ -874,9 +876,9 @@ function GlassBadge({
   tone: 'brand' | 'green' | 'neutral';
 }) {
   const toneClass = {
-    brand: 'border-brand/45 bg-brand/18 text-white shadow-[0_14px_35px_rgba(196,30,58,0.18)]',
-    green: 'border-emerald-300/45 bg-emerald-500/18 text-emerald-50 shadow-[0_14px_35px_rgba(16,185,129,0.12)]',
-    neutral: 'border-white/24 bg-slate-900/75 text-slate-100',
+    brand: 'border-brand/45 bg-brand/20 text-white shadow-[0_14px_35px_rgba(196,30,58,0.16)]',
+    green: 'border-emerald-300/45 bg-emerald-500/20 text-emerald-50 shadow-[0_14px_35px_rgba(16,185,129,0.1)]',
+    neutral: 'border-white/24 bg-slate-800/62 text-slate-50',
   }[tone];
 
   return (

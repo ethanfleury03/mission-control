@@ -1,0 +1,58 @@
+[
+  {
+    "test_case_definition_id": "test_case_55e776901d5a",
+    "name": "Cold Call Demo V3 - Qualified Prospect Books Slot"
+  },
+  {
+    "test_case_definition_id": "test_case_f2ec7139f6a7",
+    "name": "Cold Call Demo V3 - Wrong Person Routes To Operations"
+  },
+  {
+    "test_case_definition_id": "test_case_80c828fbd5b3",
+    "name": "Cold Call Demo V3 - Gatekeeper Screens The Call"
+  },
+  {
+    "test_case_definition_id": "test_case_f8951e6be032",
+    "name": "Cold Call Demo V3 - Prospect Asks What Arrow Does"
+  },
+  {
+    "test_case_definition_id": "test_case_1225eb0a03e3",
+    "name": "Cold Call Demo V3 - Prospect Already Has A Printer"
+  },
+  {
+    "test_case_definition_id": "test_case_7353e8e8287f",
+    "name": "Cold Call Demo V3 - Prospect Outsources Today"
+  },
+  {
+    "test_case_definition_id": "test_case_50ad7732c8e4",
+    "name": "Cold Call Demo V3 - Budget Objection"
+  },
+  {
+    "test_case_definition_id": "test_case_fa88c87a54cf",
+    "name": "Cold Call Demo V3 - Direct Price Question"
+  },
+  {
+    "test_case_definition_id": "test_case_c64f1710124b",
+    "name": "Cold Call Demo V3 - Send Me Some Information"
+  },
+  {
+    "test_case_definition_id": "test_case_d9bce6701ede",
+    "name": "Cold Call Demo V3 - Too Busy Right Now"
+  },
+  {
+    "test_case_definition_id": "test_case_8194252092ec",
+    "name": "Cold Call Demo V3 - Prospect Asks If Caller Is AI"
+  },
+  {
+    "test_case_definition_id": "test_case_6a561724dead",
+    "name": "Cold Call Demo V3 - Material Capability Question"
+  },
+  {
+    "test_case_definition_id": "test_case_7feb3167b787",
+    "name": "Cold Call Demo V3 - Voicemail Detection"
+  },
+  {
+    "test_case_definition_id": "test_case_737fe15e26b7",
+    "name": "Cold Call Demo V3 - Opt Out Request"
+  }
+]

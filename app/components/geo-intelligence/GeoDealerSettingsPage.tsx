@@ -133,7 +133,7 @@ export function GeoDealerSettingsPage({
   }, [dealers]);
 
   return (
-    <div className="px-6 py-5">
+    <div className="px-4 py-4 sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-3 rounded-2xl border border-brand/15 bg-white px-4 py-3 shadow-sm">
@@ -170,8 +170,8 @@ export function GeoDealerSettingsPage({
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <div className="space-y-4">
+      <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
           <div className="rounded-[28px] border border-hub-border bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -196,14 +196,14 @@ export function GeoDealerSettingsPage({
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-hub-border bg-white p-3 shadow-sm">
+          <div className="flex flex-col rounded-[28px] border border-hub-border bg-white p-3 shadow-sm">
             <div className="px-2 pb-3 pt-1">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Dealers</p>
               <p className="mt-1 text-sm text-neutral-500">
                 Select a dealer to edit its metadata, status, notes, and exact map coordinates.
               </p>
             </div>
-            <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+            <div className="max-h-[32rem] min-h-[14rem] space-y-2 overflow-y-auto pr-1">
               {loading ? (
                 <div className="rounded-2xl border border-dashed border-neutral-200 px-4 py-8 text-center text-sm text-neutral-500">
                   Loading dealer registry…
@@ -249,8 +249,8 @@ export function GeoDealerSettingsPage({
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="rounded-[28px] border border-hub-border bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4">
+          <div className="rounded-[28px] border border-hub-border bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Editor</p>
@@ -273,7 +273,7 @@ export function GeoDealerSettingsPage({
             </div>
 
             <form
-              className="mt-5 space-y-5"
+              className="mt-5 space-y-4"
               onSubmit={async (event) => {
                 event.preventDefault();
                 setSaving(true);
@@ -358,7 +358,7 @@ export function GeoDealerSettingsPage({
                 </Field>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_16rem]">
                 <GeoPointPicker
                   lat={Number(form.lat) || 0}
                   lng={Number(form.lng) || 0}
@@ -369,8 +369,9 @@ export function GeoDealerSettingsPage({
                       lng: coords.lng.toFixed(5),
                     }))
                   }
+                  className="min-h-[16rem]"
                 />
-                <div className="space-y-4">
+                <div className="grid content-start gap-4">
                   <Field label="Latitude" required>
                     <input
                       value={form.lat}
@@ -389,7 +390,7 @@ export function GeoDealerSettingsPage({
                     <textarea
                       value={form.notes}
                       onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                      className="geo-input min-h-[184px] resize-none"
+                      className="geo-input min-h-[120px] resize-none"
                       placeholder="Territory notes, channel fit, specialization, or rollout context."
                     />
                   </Field>

@@ -29,7 +29,8 @@ HTTPS_FORWARDING_RULE="${NAME_PREFIX}-https-fr"
 HTTP_FORWARDING_RULE="${NAME_PREFIX}-http-fr"
 DNS_AUTH="${NAME_PREFIX}-dns-auth"
 CERT_NAME="${NAME_PREFIX}-cert"
-CERT_PATH="projects/${PROJECT_ID}/locations/global/certificates/${CERT_NAME}"
+CERT_MAP="${NAME_PREFIX}-cert-map"
+CERT_MAP_ENTRY="${NAME_PREFIX}-cert-entry"
 
 command -v gcloud >/dev/null 2>&1 || die "gcloud not installed"
 gcloud config set project "$PROJECT_ID" >/dev/null
@@ -116,17 +117,37 @@ if ! gcloud certificate-manager certificates describe "$CERT_NAME" --location=gl
 fi
 CERT_STATE="$(gcloud certificate-manager certificates describe "$CERT_NAME" --location=global --format='value(managed.state)')"
 
+info "Ensuring certificate map ${CERT_MAP}"
+if ! gcloud certificate-manager maps describe "$CERT_MAP" --location=global >/dev/null 2>&1; then
+  gcloud certificate-manager maps create "$CERT_MAP" --location=global >/dev/null
+fi
+
+info "Ensuring certificate map entry ${CERT_MAP_ENTRY}"
+if ! gcloud certificate-manager maps entries describe "$CERT_MAP_ENTRY" --map="$CERT_MAP" --location=global >/dev/null 2>&1; then
+  gcloud certificate-manager maps entries create "$CERT_MAP_ENTRY" \
+    --map="$CERT_MAP" \
+    --location=global \
+    --hostname="$CUSTOM_DOMAIN" \
+    --certificates="$CERT_NAME" >/dev/null
+else
+  gcloud certificate-manager maps entries update "$CERT_MAP_ENTRY" \
+    --map="$CERT_MAP" \
+    --location=global \
+    --hostname="$CUSTOM_DOMAIN" \
+    --certificates="$CERT_NAME" >/dev/null
+fi
+
 info "Ensuring HTTPS proxy ${HTTPS_PROXY}"
 if ! gcloud compute target-https-proxies describe "$HTTPS_PROXY" --global >/dev/null 2>&1; then
   gcloud compute target-https-proxies create "$HTTPS_PROXY" \
     --global \
     --url-map="$HTTPS_URL_MAP" \
-    --certificate-manager-certificates="$CERT_PATH" >/dev/null
+    --certificate-map="$CERT_MAP" >/dev/null
 else
   gcloud compute target-https-proxies update "$HTTPS_PROXY" \
     --global \
     --url-map="$HTTPS_URL_MAP" \
-    --certificate-manager-certificates="$CERT_PATH" >/dev/null
+    --certificate-map="$CERT_MAP" >/dev/null
 fi
 
 info "Ensuring HTTP redirect URL map ${HTTP_REDIRECT_URL_MAP}"

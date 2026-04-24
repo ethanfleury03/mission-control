@@ -99,6 +99,21 @@ model OrgSnapshot {
   @@map("org_snapshots")
 }
 
+model AppUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String   @default("")
+  image        String   @default("")
+  googleSub    String   @unique
+  hostedDomain String   @default("")
+  lastLoginAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([hostedDomain])
+  @@map("app_users")
+}
+
 // Directory Scraper — persisted jobs (SQLite today; swap DATABASE_URL for Postgres later)
 model DirectoryScrapeJob {
   id         String    @id @default(uuid())
@@ -522,6 +537,37 @@ model ImageGenerationRun {
 
   @@index([createdAt])
   @@map("image_generation_runs")
+}
+
+model ImageGenerationVideoRun {
+  id                  String   @id @default(cuid())
+  userPrompt          String   @default("")
+  assistantReply      String   @default("")
+  sourceKind          String
+  sourceImageRunId    String?
+  sourceImageFileName String
+  sourceImageMimeType String
+  sourceImageByteSize Int
+  sourceImageBytes    Bytes
+  videoModel          String   @default("")
+  openrouterJobId     String   @default("")
+  openrouterGenerationId String?
+  status              String   @default("pending")
+  errorMessage        String?
+  durationSeconds     Int
+  resolution          String   @default("720p")
+  aspectRatio         String   @default("16:9")
+  videoFileName       String?
+  videoMimeType       String?
+  videoByteSize       Int?
+  videoBytes          Bytes?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([openrouterJobId])
+  @@map("image_generation_video_runs")
 }
 
 model ImageGenerationMachine {
