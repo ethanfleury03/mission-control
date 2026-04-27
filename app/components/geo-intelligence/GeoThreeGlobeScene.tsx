@@ -227,7 +227,7 @@ export function GeoThreeGlobeScene({
     host.appendChild(renderer.domElement);
 
     const scene = new Scene();
-    scene.fog = new FogExp2('#02040a', 0.018);
+    scene.fog = new FogExp2('#13213a', 0.013);
 
     const camera = new PerspectiveCamera(34, dimensions.width / dimensions.height, 0.1, 90);
     camera.position.copy(latLngToVector3(24, -10, DEFAULT_CAMERA_DISTANCE));
@@ -276,12 +276,12 @@ export function GeoThreeGlobeScene({
 
     runtimeRef.current = { camera, controls, setFocus, zoom, clearFocus, scheduleAutoRotate };
 
-    const ambient = new AmbientLight('#dce9ff', 0.36);
-    const sun = new DirectionalLight('#fff3d0', 2.2);
+    const ambient = new AmbientLight('#eef4ff', 0.54);
+    const sun = new DirectionalLight('#fff6de', 2.9);
     sun.position.set(-4.5, 2.8, 3.2);
-    const rim = new DirectionalLight('#ff5d75', 0.7);
+    const rim = new DirectionalLight('#ff7a8f', 0.92);
     rim.position.set(4.4, 1.2, -4.2);
-    const fill = new DirectionalLight('#5d8dff', 0.44);
+    const fill = new DirectionalLight('#88abff', 0.68);
     fill.position.set(-3.2, -2.1, 3.2);
     scene.add(ambient, sun, rim, fill);
 
@@ -332,7 +332,7 @@ export function GeoThreeGlobeScene({
       new MeshBasicMaterial({
         color: '#ff6a7f',
         transparent: true,
-        opacity: 0.14,
+        opacity: 0.19,
         side: BackSide,
         blending: AdditiveBlending,
         depthWrite: false,

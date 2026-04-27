@@ -3,6 +3,7 @@ import type { ImageStudioPromptSet } from './types';
 export const IMAGE_STUDIO_PROVIDER = 'openrouter' as const;
 export const DEFAULT_IMAGE_STUDIO_CHAT_MODEL = 'deepseek/deepseek-chat-v3.1';
 export const DEFAULT_IMAGE_STUDIO_IMAGE_MODEL = 'openai/gpt-5.4-image-2';
+export const DEFAULT_IMAGE_STUDIO_VIDEO_MODEL = 'google/veo-3.1-fast';
 
 export const DEFAULT_IMAGE_STUDIO_PROMPTS: ImageStudioPromptSet = {
   assistantGoalPrompt: `You are Arrow Systems Image Studio, the AI assistant inside the Image Studio section of Arrow Hub.

@@ -1,4 +1,7 @@
 export type ImageTypeValue = 'linkedin_ad' | 'youtube_thumbnail' | 'blog_image';
+export type VideoDurationSeconds = 4 | 6 | 8;
+export type VideoGenerationStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+export type VideoSourceKind = 'upload' | 'generated';
 
 export type ImageStudioSettingsTab = 'prompts' | 'machines' | 'kb';
 
@@ -54,6 +57,7 @@ export interface ImageStudioSettings {
   provider: 'openrouter';
   chatModel: string;
   imageModel: string;
+  videoModel: string;
   prompts: ImageStudioPromptSet;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +69,7 @@ export interface ImageStudioSettingsResponse extends ImageStudioSettings {
   promptUsage: Record<ImageStudioPromptKey, string>;
   chatModelStatus: ImageStudioModelStatus;
   imageModelStatus: ImageStudioModelStatus;
+  videoModelStatus: ImageStudioModelStatus;
 }
 
 export interface ImageStudioSettingsUpdate {
@@ -101,7 +106,8 @@ export interface ImageBrief {
 }
 
 export interface GeneratedImage {
-  dataUrl: string;
+  dataUrl?: string;
+  url?: string;
   mimeType: string;
   alt: string;
 }
@@ -135,4 +141,35 @@ export interface ImageGenerationHistoryRun {
   machineTitle?: string | null;
   imageType: ImageTypeValue;
   createdAt: string;
+}
+
+export interface GeneratedVideoClip {
+  fileName: string;
+  mimeType: string;
+  byteSize: number;
+  durationSeconds: VideoDurationSeconds;
+  resolution: string;
+  aspectRatio: string;
+}
+
+export interface VideoGenerationRunSummary {
+  id: string;
+  userPrompt: string;
+  assistantReply: string;
+  sourceKind: VideoSourceKind;
+  sourceImageRunId?: string | null;
+  sourceImageFileName: string;
+  sourceImageMimeType: string;
+  sourceImageByteSize: number;
+  videoModel: string;
+  openrouterJobId: string;
+  openrouterGenerationId?: string | null;
+  status: VideoGenerationStatus;
+  errorMessage?: string | null;
+  durationSeconds: VideoDurationSeconds;
+  resolution: string;
+  aspectRatio: string;
+  video?: GeneratedVideoClip;
+  createdAt: string;
+  updatedAt: string;
 }

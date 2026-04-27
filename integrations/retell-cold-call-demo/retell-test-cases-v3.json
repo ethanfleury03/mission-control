@@ -1,0 +1,276 @@
+[
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Qualified Prospect Books Slot",
+    "dynamic_variables": {
+      "prospect_first_name": "Alex",
+      "industry_segment": "manufacturing",
+      "suspected_pain": "short-run labels and turnaround",
+      "reason_for_call": "Arrow Systems helps teams bring short-run label and packaging production in-house."
+    },
+    "metrics": [
+      "Confirm the agent opened as Sasha from Arrow Systems, identified Arrow as a manufacturer of digital label printing and finishing equipment, and asked a right-person question.",
+      "Confirm the agent completed one discovery exchange before asking for a meeting.",
+      "Confirm the agent booked only one of the allowed April 28 to May 4 mock slots and closed cleanly."
+    ],
+    "user_prompt": "## Identity\nYou are Alex, an operations manager at a midsize manufacturer.\n\n## Goal\nYou want to quickly understand whether the call is relevant. If it sounds relevant, you will accept one of the offered demo times.\n\n## Personality\nBusy but polite. You currently outsource some shorter-run labels and care about turnaround."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Wrong Person Routes To Operations",
+    "dynamic_variables": {
+      "prospect_first_name": "Chris",
+      "contact_role": "office manager"
+    },
+    "metrics": [
+      "Confirm the agent acknowledges the wrong-person answer, asks who handles printing equipment decisions, and does not push for a meeting.",
+      "Confirm the agent closes politely once routing help is provided."
+    ],
+    "user_prompt": "## Identity\nYou are Chris, an office manager who does not handle printing equipment decisions.\n\n## Goal\nPoint the caller to the right group if asked respectfully.\n\n## Personality\nHelpful but brief."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Gatekeeper Screens The Call",
+    "dynamic_variables": {
+      "company_name": "North Ridge Packaging"
+    },
+    "metrics": [
+      "Confirm the agent gives a one-sentence reason for the call grounded in Arrow equipment, not AI or vague software language.",
+      "Confirm the agent asks for the best contact or follow-up path without over-pitching."
+    ],
+    "user_prompt": "## Identity\nYou are the receptionist at North Ridge Packaging.\n\n## Goal\nUnderstand why the caller is calling before deciding whether to route it.\n\n## Personality\nProfessional and screening-focused."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Prospect Asks What Arrow Does",
+    "dynamic_variables": {
+      "prospect_first_name": "Jordan",
+      "industry_segment": "consumer packaging"
+    },
+    "metrics": [
+      "Confirm the agent explains Arrow Systems in simple manufacturer language for labels and packaging.",
+      "Confirm the answer stays concrete and does not drift into AI, automation, or unsupported claims.",
+      "Confirm the agent asks one fit question after the explanation."
+    ],
+    "user_prompt": "## Identity\nYou are Jordan, a plant manager.\n\n## Goal\nYou do not know Arrow Systems and want a plain-English answer to what the company does.\n\n## Personality\nDirect and practical."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Prospect Already Has A Printer",
+    "dynamic_variables": {
+      "industry_segment": "labels",
+      "current_equipment_hint": "digital label press"
+    },
+    "metrics": [
+      "Confirm the agent acknowledges the existing setup and asks how short-run label jobs are handled or what could still be improved.",
+      "Confirm the agent keeps the tone low pressure and grounded in printing operations."
+    ],
+    "user_prompt": "## Identity\nYou are Pat, a production lead who already has a digital printer in-house.\n\n## Goal\nOnly continue if the caller sounds knowledgeable about real printing bottlenecks.\n\n## Personality\nSkeptical but willing to answer one question."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Prospect Outsources Today",
+    "dynamic_variables": {
+      "industry_segment": "industrial labeling",
+      "suspected_pain": "outsourced short runs"
+    },
+    "metrics": [
+      "Confirm the agent asks whether the prospect has looked at bringing short runs in-house using qualitative control or turnaround language.",
+      "Confirm the agent does not use ROI math or claim outsourcing costs 3x more."
+    ],
+    "user_prompt": "## Identity\nYou are Morgan, a manufacturing operations manager who currently outsources most short-run label work.\n\n## Goal\nSee whether the caller understands why some teams consider bringing short runs in-house.\n\n## Personality\nOpen but not sold."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Budget Objection",
+    "dynamic_variables": {
+      "industry_segment": "flexible packaging"
+    },
+    "metrics": [
+      "Confirm the agent acknowledges the budget concern and asks about a budget range without using ROI or payback language.",
+      "Confirm the agent frames the next step as a short fit conversation with Sasha."
+    ],
+    "user_prompt": "## Identity\nYou are Taylor, a director who is cautious on capital spend.\n\n## Goal\nPush back on budget and only continue if the caller handles it professionally.\n\n## Personality\nGuarded but reasonable."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Direct Price Question",
+    "dynamic_variables": {
+      "industry_segment": "pharma labels"
+    },
+    "metrics": [
+      "Confirm the agent only gives pricing because the prospect asked directly.",
+      "Confirm the agent uses the approved ranges of about $75,000 to $600,000 for printers and about $10,000 to $200,000+ for finishers.",
+      "Confirm the agent does not mention ink pricing and asks one follow-up question."
+    ],
+    "user_prompt": "## Identity\nYou are Riley, a prospect who wants a quick sanity check on price before taking a meeting.\n\n## Goal\nAsk directly what the printers cost and judge whether the answer is clean and realistic.\n\n## Personality\nEfficient and numbers-oriented."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Send Me Some Information",
+    "dynamic_variables": {
+      "prospect_first_name": "Jamie",
+      "industry_segment": "manufacturing"
+    },
+    "metrics": [
+      "Confirm the agent first asks for the best email address or whether to use the address on file.",
+      "Confirm the agent then asks for a callback time using only the allowed mock slots.",
+      "Confirm the agent does not end the call immediately after agreeing to send information."
+    ],
+    "user_prompt": "## Identity\nYou are Jamie, a plant manager who would rather get material first.\n\n## Goal\nAsk for information by email and see how the caller handles follow-up.\n\n## Personality\nPolite but trying to keep the call short."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Too Busy Right Now",
+    "dynamic_variables": {
+      "prospect_first_name": "Sam"
+    },
+    "metrics": [
+      "Confirm the agent acknowledges timing and moves directly to the allowed slot options without re-pitching.",
+      "Confirm the agent keeps the tone concise and low pressure."
+    ],
+    "user_prompt": "## Identity\nYou are Sam, a busy operations leader walking into a meeting.\n\n## Goal\nYou do not have time for a pitch, but you might take a short follow-up slot if the caller is efficient.\n\n## Personality\nCurt but not rude."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Prospect Asks If Caller Is AI",
+    "dynamic_variables": {
+      "company_name": "West Peak Labels"
+    },
+    "metrics": [
+      "Confirm the agent admits it is AI only when asked directly.",
+      "Confirm the disclosure keeps the company description grounded in Arrow equipment and asks whether to keep going."
+    ],
+    "user_prompt": "## Identity\nYou are the prospect and you are suspicious of AI callers.\n\n## Goal\nAsk whether the caller is AI and continue only if the answer is honest and concise.\n\n## Personality\nWary but fair."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Material Capability Question",
+    "dynamic_variables": {
+      "industry_segment": "specialty packaging"
+    },
+    "metrics": [
+      "Confirm the agent says Arrow can print on most pre-coated papers and films and that substrate fit should be confirmed through testing.",
+      "Confirm the agent does not claim Arrow can print on any material."
+    ],
+    "user_prompt": "## Identity\nYou are a prospect evaluating equipment for specialty packaging.\n\n## Goal\nAsk whether the machines can print on your materials and listen for overclaiming.\n\n## Personality\nTechnical and cautious."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Voicemail Detection",
+    "dynamic_variables": {},
+    "metrics": [
+      "Confirm the agent leaves one concise voicemail that positions Arrow as a manufacturer of digital label printers, finishing systems, and packaging print equipment.",
+      "Confirm the voicemail includes sasha@arrsys.com and ends without extra conversation."
+    ],
+    "user_prompt": "## Identity\nYou are a voicemail system.\n\n## Goal\nPlay a normal business voicemail greeting and then remain silent.\n\n## Personality\nNot applicable."
+  },
+  {
+    "response_engine": {
+      "type": "conversation-flow",
+      "conversation_flow_id": "conversation_flow_c8cb3e685e49",
+      "version": 0
+    },
+    "type": "simulation",
+    "tool_mocks": [],
+    "llm_model": "gpt-5.4",
+    "name": "Cold Call Demo V3 - Opt Out Request",
+    "dynamic_variables": {},
+    "metrics": [
+      "Confirm the agent apologizes briefly and ends immediately when the user asks to be removed or not called again.",
+      "Confirm the agent does not reopen the conversation after the opt-out."
+    ],
+    "user_prompt": "## Identity\nYou are a prospect who does not want sales calls.\n\n## Goal\nTell the caller to take you off the list and see whether the caller stops immediately.\n\n## Personality\nFirm."
+  }
+]

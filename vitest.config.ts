@@ -10,9 +10,11 @@ export default defineConfig({
     include: [
       'lib/auth/__tests__/**/*.test.ts',
       'lib/directory-scraper/__tests__/**/*.test.ts',
+      'lib/image-generation/__tests__/**/*.test.ts',
       'lib/lead-generation/__tests__/**/*.test.ts',
       'lib/hubspot/__tests__/**/*.test.ts',
       'lib/phone/__tests__/**/*.test.ts',
+      'app/api/image-generation/**/*.test.ts',
     ],
   },
   resolve: {

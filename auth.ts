@@ -33,19 +33,80 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async signIn({ profile }) {
-      return isAllowedGoogleProfile(profile as any);
+      const email =
+        typeof profile?.email === 'string' ? profile.email.trim().toLowerCase() : '';
+      if (!isAllowedGoogleProfile(profile as any)) {
+        const { recordAuthEvent } = await import('@/lib/auth/audit-log');
+        await recordAuthEvent({
+          type: 'login_rejected_domain',
+          actorEmail: email,
+          targetEmail: email,
+          action: 'google_sign_in',
+          detail: {
+            hd: typeof profile?.hd === 'string' ? profile.hd : '',
+            emailVerified: profile?.email_verified === true,
+          },
+        });
+        return false;
+      }
+
+      const { isExistingAppUserDisabled } = await import('@/lib/auth/app-user');
+      if (await isExistingAppUserDisabled(email)) {
+        const { recordAuthEvent } = await import('@/lib/auth/audit-log');
+        await recordAuthEvent({
+          type: 'login_rejected_disabled',
+          actorEmail: email,
+          targetEmail: email,
+          action: 'google_sign_in',
+        });
+        return false;
+      }
+
+      return true;
     },
     async jwt({ token, profile }) {
-      if (profile) {
-        (token as any).hd = (profile as any).hd;
-        (token as any).email = (profile as any).email;
+      if (profile && isAllowedGoogleProfile(profile as any)) {
+        const { upsertAppUserFromGoogleProfile } = await import('@/lib/auth/app-user');
+        const { recordAuthEvent } = await import('@/lib/auth/audit-log');
+        const appUser = await upsertAppUserFromGoogleProfile(profile as any);
+        await recordAuthEvent({
+          type: 'login_success',
+          actorEmail: appUser.email,
+          targetEmail: appUser.email,
+          action: 'google_sign_in',
+          detail: { appUserId: appUser.id, loginCount: appUser.loginCount },
+        });
+        token.appUserId = appUser.id;
+        token.hd = appUser.hostedDomain;
+        token.email = appUser.email;
+        token.name = appUser.name || undefined;
+        token.picture = appUser.image || undefined;
+        return token;
+      }
+
+      if (typeof token.email === 'string' && !token.appUserId) {
+        const { getAppUserByEmail } = await import('@/lib/auth/app-user');
+        const appUser = await getAppUserByEmail(token.email);
+        if (appUser) {
+          token.appUserId = appUser.id;
+          token.hd = appUser.hostedDomain;
+          token.name = appUser.name || token.name;
+          token.picture = appUser.image || token.picture;
+        }
       }
       return token;
     },
     async session({ session, token }) {
-      (session as any).hd = (token as any).hd;
-      if (session.user && typeof (token as any).email === 'string') {
-        session.user.email = (token as any).email;
+      session.appUserId = typeof token.appUserId === 'string' ? token.appUserId : null;
+      session.hd = typeof token.hd === 'string' ? token.hd : null;
+      if (session.user && typeof token.email === 'string') {
+        session.user.email = token.email;
+      }
+      if (session.user && typeof token.name === 'string') {
+        session.user.name = token.name;
+      }
+      if (session.user && typeof token.picture === 'string') {
+        session.user.image = token.picture;
       }
       return session;
     },

@@ -1,6 +1,7 @@
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 
 export function isAuthBypassEnabled(): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
   const raw = process.env.AUTH_BYPASS_LOGIN?.trim().toLowerCase();
   return raw ? TRUE_VALUES.has(raw) : false;
 }

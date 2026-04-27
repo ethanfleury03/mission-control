@@ -92,14 +92,14 @@ export function GeoPointPicker({ lat, lng, onChange, disabled, className }: GeoP
   );
 
   return (
-    <div className={cn('geo-point-picker overflow-hidden rounded-2xl border border-white/10', className)}>
-      <div className="border-b border-white/10 px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">Point Picker</p>
-        <p className="mt-1 text-xs text-zinc-500">Click anywhere on the world silhouette to place the dealer pin.</p>
+    <div className={cn('geo-point-picker overflow-hidden rounded-2xl border border-hub-border bg-neutral-50', className)}>
+      <div className="border-b border-neutral-200 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Point Picker</p>
+        <p className="mt-1 text-xs text-neutral-500">Click anywhere on the world silhouette to place the dealer pin.</p>
       </div>
       <svg
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-        className={cn('block h-56 w-full cursor-crosshair bg-transparent', disabled && 'cursor-not-allowed opacity-70')}
+        className={cn('block h-44 w-full cursor-crosshair bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(255,244,246,0.88)_42%,_rgba(248,250,252,0.96)_100%)] sm:h-48', disabled && 'cursor-not-allowed opacity-70')}
         role="img"
         aria-label="Dealer point picker world map"
         onClick={(event) => {
@@ -132,7 +132,7 @@ export function GeoPointPicker({ lat, lng, onChange, disabled, className }: GeoP
               key={path.id}
               d={path.d}
               fill="url(#geo-point-picker-fill)"
-              stroke="rgba(255,255,255,0.12)"
+              stroke="rgba(163,163,163,0.22)"
               strokeWidth="0.8"
             />
           ))}
@@ -141,14 +141,14 @@ export function GeoPointPicker({ lat, lng, onChange, disabled, className }: GeoP
         <circle cx={projectLng(lng)} cy={projectLat(lat)} r="5.5" fill="#ffffff" />
         <circle cx={projectLng(lng)} cy={projectLat(lat)} r="3.5" fill="#c41e3a" />
       </svg>
-      <div className="grid grid-cols-2 gap-3 border-t border-white/10 px-4 py-3 text-xs text-zinc-400">
+      <div className="grid grid-cols-2 gap-3 border-t border-neutral-200 bg-white/80 px-4 py-3 text-xs text-neutral-500">
         <div>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-zinc-500">Latitude</span>
-          <span className="mt-1 block font-mono text-zinc-100">{lat.toFixed(5)}</span>
+          <span className="block text-[11px] uppercase tracking-[0.16em] text-neutral-400">Latitude</span>
+          <span className="mt-1 block font-mono text-neutral-900">{lat.toFixed(5)}</span>
         </div>
         <div>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-zinc-500">Longitude</span>
-          <span className="mt-1 block font-mono text-zinc-100">{lng.toFixed(5)}</span>
+          <span className="block text-[11px] uppercase tracking-[0.16em] text-neutral-400">Longitude</span>
+          <span className="mt-1 block font-mono text-neutral-900">{lng.toFixed(5)}</span>
         </div>
       </div>
     </div>

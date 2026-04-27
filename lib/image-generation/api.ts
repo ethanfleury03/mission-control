@@ -8,6 +8,9 @@ import type {
   ImageStudioSettingsUpdate,
   KBAssetSummary,
   KBColorEntry,
+  VideoDurationSeconds,
+  VideoGenerationRunSummary,
+  VideoSourceKind,
 } from './types';
 
 const BASE = '/api/image-generation';
@@ -51,10 +54,52 @@ export async function sendImageGenerationPrompt(input: {
   return readJson<ImageGenerationChatResponse>(response);
 }
 
-export async function fetchImageGenerationHistory(): Promise<ImageGenerationHistoryRun[]> {
-  const response = await fetch(`${BASE}/history`, { cache: 'no-store' });
+export async function fetchImageGenerationHistory(limit?: number): Promise<ImageGenerationHistoryRun[]> {
+  const search = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  const response = await fetch(`${BASE}/history${search}`, { cache: 'no-store' });
   const payload = await readJson<{ runs: ImageGenerationHistoryRun[] }>(response);
   return payload.runs;
+}
+
+export async function createVideoRun(input: {
+  prompt: string;
+  duration: VideoDurationSeconds;
+  sourceKind: VideoSourceKind;
+  sourceFile?: File | null;
+  sourceImageRunId?: string | null;
+  messages: ImageConversationMessage[];
+}): Promise<VideoGenerationRunSummary> {
+  const form = new FormData();
+  form.set('prompt', input.prompt);
+  form.set('duration', String(input.duration));
+  form.set('sourceKind', input.sourceKind);
+  form.set('messagesJson', JSON.stringify(input.messages));
+
+  if (input.sourceKind === 'upload' && input.sourceFile) {
+    form.set('sourceFile', input.sourceFile);
+  }
+  if (input.sourceKind === 'generated' && input.sourceImageRunId) {
+    form.set('sourceImageRunId', input.sourceImageRunId);
+  }
+
+  const response = await fetch(`${BASE}/videos`, {
+    method: 'POST',
+    body: form,
+  });
+
+  return readJson<VideoGenerationRunSummary>(response);
+}
+
+export async function fetchVideoRuns(limit?: number): Promise<VideoGenerationRunSummary[]> {
+  const search = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  const response = await fetch(`${BASE}/videos${search}`, { cache: 'no-store' });
+  const payload = await readJson<{ runs: VideoGenerationRunSummary[] }>(response);
+  return payload.runs;
+}
+
+export async function fetchVideoRun(id: string): Promise<VideoGenerationRunSummary> {
+  const response = await fetch(`${BASE}/videos/${encodeURIComponent(id)}`, { cache: 'no-store' });
+  return readJson<VideoGenerationRunSummary>(response);
 }
 
 export async function fetchImageGenerationMachines(): Promise<ImageGenerationMachineSummary[]> {
@@ -183,4 +228,16 @@ export function getImageGenerationMachineImageUrl(imageId: string): string {
 
 export function getImageGenerationKbAssetUrl(assetId: string): string {
   return `${BASE}/kb/assets/${assetId}`;
+}
+
+export function getImageGenerationRunImageUrl(runId: string): string {
+  return `${BASE}/history/${runId}/image`;
+}
+
+export function getVideoRunContentUrl(runId: string): string {
+  return `${BASE}/videos/${runId}/content`;
+}
+
+export function getVideoRunSourceImageUrl(runId: string): string {
+  return `${BASE}/videos/${runId}/source-image`;
 }

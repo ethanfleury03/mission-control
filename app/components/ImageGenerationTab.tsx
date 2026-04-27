@@ -11,6 +11,7 @@ import {
   Database,
   FilePlus2,
   FileText,
+  Film,
   ImagePlus,
   Layers3,
   LayoutDashboard,
@@ -26,6 +27,7 @@ import remarkGfm from 'remark-gfm';
 
 import {
   addImageGenerationMachineImages,
+  createVideoRun,
   createImageGenerationMachine,
   createImageStudioKBAsset,
   createImageStudioKBPostAssets,
@@ -35,8 +37,13 @@ import {
   fetchImageGenerationMachines,
   fetchImageStudioKB,
   fetchImageStudioSettings,
+  fetchVideoRun,
+  fetchVideoRuns,
   getImageGenerationKbAssetUrl,
   getImageGenerationMachineImageUrl,
+  getImageGenerationRunImageUrl,
+  getVideoRunContentUrl,
+  getVideoRunSourceImageUrl,
   sendImageGenerationPrompt,
   updateImageGenerationMachine,
   updateImageStudioKBColor,
@@ -58,13 +65,18 @@ import type {
   ImageTypeValue,
   KBAssetSummary,
   KBColorEntry,
+  GeneratedVideoClip,
+  VideoDurationSeconds,
+  VideoGenerationRunSummary,
+  VideoSourceKind,
 } from '@/lib/image-generation/types';
 
 import { cn } from '../lib/utils';
 
 type ImageGenPage = 'home' | 'generate' | 'gallery' | 'settings';
-type GalleryTab = 'machines' | 'images';
+type GalleryTab = 'machines' | 'images' | 'videos';
 type KBSection = 'logos' | 'posts' | 'colors';
+type GenerationMode = 'chat' | 'image' | 'video';
 
 type ChatMessage = {
   id: string;
@@ -72,6 +84,9 @@ type ChatMessage = {
   text: string;
   status?: 'idle' | 'sending' | 'error';
   image?: GeneratedImage;
+  video?: GeneratedVideoClip;
+  videoRunId?: string;
+  videoStatus?: VideoGenerationRunSummary['status'];
   planner?: ImagePlannerResult;
   meta?: string;
 };
@@ -169,12 +184,19 @@ export function ImageGenerationTab() {
 
   const [historyRuns, setHistoryRuns] = useState<ImageGenerationHistoryRun[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [videoRuns, setVideoRuns] = useState<VideoGenerationRunSummary[]>([]);
+  const [videoLoading, setVideoLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
   const [isSending, setIsSending] = useState(false);
 
   const [imageType, setImageType] = useState<ImageTypeValue>('linkedin_ad');
-  const [imageMode, setImageMode] = useState(false);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('chat');
   const [draft, setDraft] = useState('');
+  const [videoSourceKind, setVideoSourceKind] = useState<VideoSourceKind>('upload');
+  const [videoSourceFile, setVideoSourceFile] = useState<File | null>(null);
+  const [videoSourcePreviewUrl, setVideoSourcePreviewUrl] = useState<string | null>(null);
+  const [selectedSourceImageRunId, setSelectedSourceImageRunId] = useState<string | null>(null);
+  const [selectedVideoDuration, setSelectedVideoDuration] = useState<VideoDurationSeconds | null>(null);
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -255,15 +277,27 @@ export function ImageGenerationTab() {
     }
   };
 
-  const loadHistory = async () => {
+  const loadHistory = async (limit?: number) => {
     setHistoryLoading(true);
     try {
-      const runs = await fetchImageGenerationHistory();
+      const runs = await fetchImageGenerationHistory(limit);
       setHistoryRuns(runs);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Could not load saved images.');
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const loadVideoRuns = async (limit?: number) => {
+    setVideoLoading(true);
+    try {
+      const runs = await fetchVideoRuns(limit);
+      setVideoRuns(runs);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Could not load saved videos.');
+    } finally {
+      setVideoLoading(false);
     }
   };
 
@@ -284,9 +318,39 @@ export function ImageGenerationTab() {
     }
 
     if (activePage === 'gallery' && galleryTab === 'images') {
-      void loadHistory();
+      void loadHistory(24);
+    }
+
+    if (activePage === 'gallery' && galleryTab === 'videos') {
+      void loadVideoRuns(24);
     }
   }, [activePage, galleryTab]);
+
+  useEffect(() => {
+    if (generationMode === 'video' || videoSourceKind === 'generated') {
+      void loadHistory(24);
+    }
+  }, [generationMode, videoSourceKind]);
+
+  useEffect(() => {
+    if (!videoSourceFile) {
+      setVideoSourcePreviewUrl((current) => {
+        if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+        return null;
+      });
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(videoSourceFile);
+    setVideoSourcePreviewUrl((current) => {
+      if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+      return previewUrl;
+    });
+
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [videoSourceFile]);
 
   useEffect(() => {
     if (!managedMachine) return;
@@ -294,10 +358,130 @@ export function ImageGenerationTab() {
     setManageMachineNotes(managedMachine.notes);
   }, [managedMachine?.id]);
 
+  const handleGenerationModeChange = (value: GenerationMode) => {
+    setGenerationMode(value);
+  };
+
+  const handleVideoSourceKindChange = (value: VideoSourceKind) => {
+    setVideoSourceKind(value);
+    if (value === 'upload') {
+      setSelectedSourceImageRunId(null);
+      return;
+    }
+    setVideoSourceFile(null);
+  };
+
+  const handleVideoSourceFileChange = (file: File | null) => {
+    setVideoSourceFile(file);
+    if (file) {
+      setSelectedSourceImageRunId(null);
+    }
+  };
+
+  const handleSourceImageRunChange = (runId: string | null) => {
+    setSelectedSourceImageRunId(runId);
+    if (runId) {
+      setVideoSourceFile(null);
+    }
+  };
+
+  const upsertVideoRun = (run: VideoGenerationRunSummary) => {
+    setVideoRuns((current) =>
+      [run, ...current.filter((entry) => entry.id !== run.id)].sort(
+        (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      ),
+    );
+  };
+
+  const pollVideoRunUntilSettled = async (runId: string, pendingId: string) => {
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+
+      try {
+        const run = await fetchVideoRun(runId);
+        upsertVideoRun(run);
+
+        if (run.status === 'completed') {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === pendingId
+                ? {
+                    ...message,
+                    text: run.assistantReply,
+                    video: run.video,
+                    videoRunId: run.id,
+                    videoStatus: run.status,
+                    status: 'idle',
+                  }
+                : message,
+            ),
+          );
+          return;
+        }
+
+        if (run.status === 'failed') {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === pendingId
+                ? {
+                    ...message,
+                    text: run.errorMessage ?? run.assistantReply,
+                    videoRunId: run.id,
+                    videoStatus: run.status,
+                    status: 'error',
+                  }
+                : message,
+            ),
+          );
+          return;
+        }
+
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  text: run.assistantReply,
+                  videoRunId: run.id,
+                  videoStatus: run.status,
+                  status: 'sending',
+                }
+              : message,
+          ),
+        );
+      } catch (error) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  text: error instanceof Error ? error.message : 'Video generation failed while polling.',
+                  status: 'error',
+                }
+              : message,
+          ),
+        );
+        return;
+      }
+    }
+
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === pendingId
+          ? {
+              ...message,
+              text: 'Video generation is still in progress. Check the Videos gallery for the latest status.',
+              status: 'error',
+            }
+          : message,
+      ),
+    );
+  };
+
   const handleSubmitPrompt = async () => {
     const trimmedPrompt = draft.trim();
     if (!trimmedPrompt || isSending) return;
-    if (imageMode && imageType === 'linkedin_ad' && (!selectedMachine || selectedMachine.images.length === 0)) {
+    if (generationMode === 'image' && imageType === 'linkedin_ad' && (!selectedMachine || selectedMachine.images.length === 0)) {
       setStatusMessage(LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE);
       setMessages((current) => [
         ...current,
@@ -310,7 +494,30 @@ export function ImageGenerationTab() {
       ]);
       return;
     }
+
+    if (generationMode === 'video' && !selectedVideoDuration) {
+      setStatusMessage('Select a video duration before generating.');
+      return;
+    }
+
+    if (generationMode === 'video' && videoSourceKind === 'upload' && !videoSourceFile) {
+      setStatusMessage('Upload an image before generating a video.');
+      return;
+    }
+
+    if (generationMode === 'video' && videoSourceKind === 'generated' && !selectedSourceImageRunId) {
+      setStatusMessage('Select a generated image before generating a video.');
+      return;
+    }
+
     const pendingId = `pending-${Date.now()}`;
+    const modeLabel =
+      generationMode === 'image' ? 'Image mode on' : generationMode === 'video' ? 'Video mode on' : 'Chat only';
+    const userMeta =
+      generationMode === 'video'
+        ? `Context: Video • ${selectedVideoDuration ?? '?'}s • ${videoSourceKind === 'upload' ? 'Uploaded image' : 'Generated image'}`
+        : `Context: ${getMachineLabel(selectedMachine)} • ${getImageTypeLabel(imageType)} • ${modeLabel}`;
+
     setMessages((current) => [
       ...current,
       {
@@ -318,24 +525,77 @@ export function ImageGenerationTab() {
         role: 'user',
         text: trimmedPrompt,
         status: 'idle',
-        meta: `Context: ${getMachineLabel(selectedMachine)} • ${getImageTypeLabel(imageType)} • ${imageMode ? 'Image mode on' : 'Image mode off'}`,
+        meta: userMeta,
       },
       {
         id: pendingId,
         role: 'assistant',
-        text: '',
+        text: generationMode === 'video' ? 'Queuing your video...' : '',
         status: 'sending',
       },
     ]);
     setDraft('');
     setIsSending(true);
 
+    if (generationMode === 'video' && selectedVideoDuration) {
+      try {
+        const run = await createVideoRun({
+          prompt: trimmedPrompt,
+          duration: selectedVideoDuration,
+          sourceKind: videoSourceKind,
+          sourceFile: videoSourceKind === 'upload' ? videoSourceFile : null,
+          sourceImageRunId: videoSourceKind === 'generated' ? selectedSourceImageRunId : null,
+          messages: messages.filter((message) => message.status !== 'sending').map((message) => ({
+            role: message.role,
+            text: message.text,
+          })) as ImageConversationMessage[],
+        });
+
+        upsertVideoRun(run);
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  text: run.assistantReply,
+                  videoRunId: run.id,
+                  videoStatus: run.status,
+                  video: run.video,
+                  status: run.status === 'failed' ? 'error' : run.status === 'completed' ? 'idle' : 'sending',
+                }
+              : message,
+          ),
+        );
+        setStatusMessage(null);
+        setIsSending(false);
+        void loadVideoRuns(24);
+
+        if (run.status === 'pending' || run.status === 'in_progress') {
+          void pollVideoRunUntilSettled(run.id, pendingId);
+        }
+      } catch (error) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  text: error instanceof Error ? error.message : 'Video generation failed.',
+                  status: 'error',
+                }
+              : message,
+          ),
+        );
+        setIsSending(false);
+      }
+      return;
+    }
+
     try {
       const payload = await sendImageGenerationPrompt({
         prompt: trimmedPrompt,
         machineId: selectedMachine?.id ?? null,
         imageType,
-        imageMode,
+        imageMode: generationMode === 'image',
         messages: messages.filter((message) => message.status !== 'sending').map((message) => ({
           role: message.role,
           text: message.text,
@@ -357,7 +617,7 @@ export function ImageGenerationTab() {
       );
 
       if (payload.mode === 'generate') {
-        void loadHistory();
+        void loadHistory(24);
       }
     } catch (error) {
       setMessages((current) =>
@@ -609,14 +869,25 @@ export function ImageGenerationTab() {
                   selectedMachine={selectedMachine}
                   selectedMachineId={selectedMachineId}
                   imageType={imageType}
-                  imageMode={imageMode}
+                  generationMode={generationMode}
                   draft={draft}
                   messages={messages}
                   isSending={isSending}
+                  historyRuns={historyRuns}
+                  historyLoading={historyLoading}
+                  videoSourceKind={videoSourceKind}
+                  videoSourceFile={videoSourceFile}
+                  videoSourcePreviewUrl={videoSourcePreviewUrl}
+                  selectedSourceImageRunId={selectedSourceImageRunId}
+                  selectedVideoDuration={selectedVideoDuration}
                   onMachineChange={setSelectedMachineId}
                   onImageTypeChange={setImageType}
-                  onImageModeToggle={() => setImageMode((current) => !current)}
+                  onGenerationModeChange={handleGenerationModeChange}
                   onDraftChange={setDraft}
+                  onVideoSourceKindChange={handleVideoSourceKindChange}
+                  onVideoSourceFileChange={handleVideoSourceFileChange}
+                  onSourceImageRunChange={handleSourceImageRunChange}
+                  onVideoDurationChange={setSelectedVideoDuration}
                   onSubmitPrompt={handleSubmitPrompt}
                 />
               ) : activePage === 'gallery' ? (
@@ -626,6 +897,8 @@ export function ImageGenerationTab() {
                   selectedMachineId={selectedMachineId}
                   historyRuns={historyRuns}
                   historyLoading={historyLoading}
+                  videoRuns={videoRuns}
+                  videoLoading={videoLoading}
                   galleryTab={galleryTab}
                   onGalleryTabChange={setGalleryTab}
                   onMachineChange={setSelectedMachineId}
@@ -797,39 +1070,77 @@ function GenerateView({
   selectedMachine,
   selectedMachineId,
   imageType,
-  imageMode,
+  generationMode,
   draft,
   messages,
   isSending,
+  historyRuns,
+  historyLoading,
+  videoSourceKind,
+  videoSourceFile,
+  videoSourcePreviewUrl,
+  selectedSourceImageRunId,
+  selectedVideoDuration,
   onMachineChange,
   onImageTypeChange,
-  onImageModeToggle,
+  onGenerationModeChange,
   onDraftChange,
+  onVideoSourceKindChange,
+  onVideoSourceFileChange,
+  onSourceImageRunChange,
+  onVideoDurationChange,
   onSubmitPrompt,
 }: {
   machines: ImageGenerationMachineSummary[];
   selectedMachine: ImageGenerationMachineSummary | null;
   selectedMachineId: string;
   imageType: ImageTypeValue;
-  imageMode: boolean;
+  generationMode: GenerationMode;
   draft: string;
   messages: ChatMessage[];
   isSending: boolean;
+  historyRuns: ImageGenerationHistoryRun[];
+  historyLoading: boolean;
+  videoSourceKind: VideoSourceKind;
+  videoSourceFile: File | null;
+  videoSourcePreviewUrl: string | null;
+  selectedSourceImageRunId: string | null;
+  selectedVideoDuration: VideoDurationSeconds | null;
   onMachineChange: (value: string) => void;
   onImageTypeChange: (value: ImageTypeValue) => void;
-  onImageModeToggle: () => void;
+  onGenerationModeChange: (value: GenerationMode) => void;
   onDraftChange: (value: string) => void;
+  onVideoSourceKindChange: (value: VideoSourceKind) => void;
+  onVideoSourceFileChange: (file: File | null) => void;
+  onSourceImageRunChange: (runId: string | null) => void;
+  onVideoDurationChange: (value: VideoDurationSeconds) => void;
   onSubmitPrompt: () => Promise<void>;
 }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const selectedGeneratedImageRun =
+    historyRuns.find((run) => run.id === selectedSourceImageRunId) ?? null;
+  const generatedSourceOptions = historyRuns.slice().reverse();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages]);
 
   const linkedinNeedsMachineReference =
-    imageMode && imageType === 'linkedin_ad' && (!selectedMachine || selectedMachine.images.length === 0);
-  const submitDisabled = isSending || !draft.trim() || linkedinNeedsMachineReference;
+    generationMode === 'image' && imageType === 'linkedin_ad' && (!selectedMachine || selectedMachine.images.length === 0);
+  const videoNeedsSource =
+    generationMode === 'video' &&
+    ((videoSourceKind === 'upload' && !videoSourceFile) ||
+      (videoSourceKind === 'generated' && !selectedSourceImageRunId));
+  const videoNeedsDuration = generationMode === 'video' && !selectedVideoDuration;
+  const submitDisabled = isSending || !draft.trim() || linkedinNeedsMachineReference || videoNeedsSource || videoNeedsDuration;
+  const modeSummary =
+    generationMode === 'image' ? 'Image On' : generationMode === 'video' ? 'Video On' : 'Chat Only';
+  const draftPlaceholder =
+    generationMode === 'image'
+      ? 'Describe the image you want to create...'
+      : generationMode === 'video'
+        ? 'Describe how the selected image should animate...'
+        : 'Ask how to improve a prompt or how to use Image Studio...';
 
   return (
     <div className="grid h-full min-h-0 overflow-hidden grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -841,13 +1152,15 @@ function GenerateView({
               <p className="mt-1 text-sm text-stone-600">{getMachineLabel(selectedMachine)} session</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs', imageMode ? 'border-brand/20 bg-brand/10 text-brand' : 'border-stone-200 bg-white text-stone-500')}>
-                <ImagePlus className="h-3.5 w-3.5" />
-                {imageMode ? 'Image On' : 'Chat Only'}
+              <div className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs',
+                generationMode === 'chat' ? 'border-stone-200 bg-white text-stone-500' : 'border-brand/20 bg-brand/10 text-brand')}>
+                {generationMode === 'video' ? <Film className="h-3.5 w-3.5" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                {modeSummary}
               </div>
-              <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-500">
+              <div className={cn('flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-500',
+                generationMode !== 'image' && 'opacity-60')}>
                 <Sparkles className="h-3.5 w-3.5 text-brand" />
-                {getImageTypeLabel(imageType)}
+                {generationMode === 'video' ? '720p • 16:9' : getImageTypeLabel(imageType)}
               </div>
             </div>
           </div>
@@ -871,7 +1184,7 @@ function GenerateView({
                         ? 'bg-red-50 text-red-900 ring-red-200'
                         : 'bg-white text-stone-800 ring-stone-200/80')}>
                     {message.status === 'sending' ? (
-                      <p className="text-sm leading-7 text-stone-800">Working...</p>
+                      <p className="text-sm leading-7 text-stone-800">{message.text || 'Working...'}</p>
                     ) : message.role === 'assistant' ? (
                       <AssistantMarkdown content={message.text} />
                     ) : (
@@ -888,6 +1201,23 @@ function GenerateView({
                           <p className="mt-2 text-sm leading-6 text-stone-600">{message.planner.summary}</p>
                         </div>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {message.video && message.videoRunId ? (
+                    <div className="mt-4 w-full max-w-4xl overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_10px_30px_rgba(0,0,0,0.05)]">
+                      <video
+                        controls
+                        src={getVideoRunContentUrl(message.videoRunId)}
+                        className="block max-h-[30rem] w-full bg-[#f8f1eb]"
+                      />
+                      <div className="border-t border-stone-200 bg-[#fffaf5] px-5 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand">
+                          {message.video.durationSeconds}s video
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-stone-600">
+                          {message.video.resolution} • {message.video.aspectRatio} • {message.video.fileName}
+                        </p>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -911,39 +1241,58 @@ function GenerateView({
                     }
                   }}
                   rows={2}
-                  placeholder="Describe the image you want to create..."
+                  placeholder={draftPlaceholder}
                   className="w-full resize-none border-0 bg-transparent text-[15px] leading-6 text-stone-800 placeholder:text-stone-400 focus:outline-none"
                 />
               </div>
               <div className="border-t border-stone-200 px-5 py-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <SelectField
-                      label="Machine"
-                      value={selectedMachineId}
-                      onChange={onMachineChange}
-                      options={[
-                        { value: NO_MACHINE_VALUE, label: 'No Machine' },
-                        ...machines.map((machine) => ({ value: machine.id, label: machine.title })),
-                      ]}
-                    />
-                    <SelectField
-                      label="Image Type"
-                      value={imageType}
-                      onChange={(value) => onImageTypeChange(value as ImageTypeValue)}
-                      options={IMAGE_TYPE_OPTIONS}
-                    />
-                    <div className="sm:min-w-[132px]">
+                    {generationMode === 'image' ? (
+                      <>
+                        <SelectField
+                          label="Machine"
+                          value={selectedMachineId}
+                          onChange={onMachineChange}
+                          options={[
+                            { value: NO_MACHINE_VALUE, label: 'No Machine' },
+                            ...machines.map((machine) => ({ value: machine.id, label: machine.title })),
+                          ]}
+                        />
+                        <SelectField
+                          label="Image Type"
+                          value={imageType}
+                          onChange={(value) => onImageTypeChange(value as ImageTypeValue)}
+                          options={IMAGE_TYPE_OPTIONS}
+                        />
+                      </>
+                    ) : null}
+                    <div className="sm:min-w-[220px]">
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Mode</p>
-                      <button
-                        type="button"
-                        onClick={onImageModeToggle}
-                        className={cn('inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition-colors',
-                          imageMode ? 'border-brand/20 bg-brand/12 text-brand shadow-[0_10px_24px_rgba(196,30,58,0.14)]' : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300')}
-                      >
-                        <ImagePlus className="h-4 w-4" />
-                        Image
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onGenerationModeChange(generationMode === 'image' ? 'chat' : 'image')}
+                          className={cn('inline-flex h-[46px] items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition-colors',
+                            generationMode === 'image'
+                              ? 'border-brand/20 bg-brand/12 text-brand shadow-[0_10px_24px_rgba(196,30,58,0.14)]'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300')}
+                        >
+                          <ImagePlus className="h-4 w-4" />
+                          Image
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onGenerationModeChange(generationMode === 'video' ? 'chat' : 'video')}
+                          className={cn('inline-flex h-[46px] items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition-colors',
+                            generationMode === 'video'
+                              ? 'border-brand/20 bg-brand/12 text-brand shadow-[0_10px_24px_rgba(196,30,58,0.14)]'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300')}
+                        >
+                          <Film className="h-4 w-4" />
+                          Video
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -953,12 +1302,16 @@ function GenerateView({
                     disabled={submitDisabled}
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand to-red-700 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(196,30,58,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSending ? 'Working...' : imageMode ? 'Generate' : 'Send'}
+                    {isSending ? 'Working...' : generationMode === 'image' ? 'Generate Image' : generationMode === 'video' ? 'Generate Video' : 'Send'}
                     <SendHorizontal className="h-4 w-4" />
                   </button>
                 </div>
                 {linkedinNeedsMachineReference ? (
                   <p className="mt-3 text-sm font-medium text-red-700">{LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE}</p>
+                ) : generationMode === 'video' ? (
+                  <p className="mt-3 text-sm text-stone-600">
+                    {selectedVideoDuration ? `${selectedVideoDuration}s selected` : 'Pick 4s, 6s, or 8s'} • 720p • 16:9 • source image becomes the first frame
+                  </p>
                 ) : selectedMachine && selectedMachine.images.length > 0 ? (
                   <p className="mt-3 text-sm text-stone-600">
                     {selectedMachine.images.length} machine reference image(s) will be sent as authoritative visual inputs.
@@ -972,27 +1325,131 @@ function GenerateView({
 
       <aside className="min-h-0 overflow-hidden bg-[linear-gradient(180deg,rgba(255,252,248,0.98),rgba(249,240,232,0.98))]">
         <div className="flex h-full min-h-0 flex-col overflow-y-auto px-4 py-4 sm:px-5 lg:px-5">
-          <SidebarCard eyebrow="Selected Machine" title={getMachineLabel(selectedMachine)} icon={Layers3} footer={selectedMachine ? `${selectedMachine.images.length} machine image(s)` : 'Machine context is optional'}>
-            {selectedMachine ? (
-              <div className="space-y-3 text-sm text-stone-600">
-                {selectedMachine.notes ? <p className="max-h-64 overflow-y-auto pr-1 leading-6">{selectedMachine.notes}</p> : <p>No machine notes added yet.</p>}
-                {selectedMachine.images.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {selectedMachine.images.slice(0, 4).map((image) => (
-                      <img
-                        key={image.id}
-                        src={getImageGenerationMachineImageUrl(image.id)}
-                        alt={image.label}
-                        className="h-24 w-full rounded-2xl border border-stone-200 bg-[#f8f1eb] object-cover"
-                      />
-                    ))}
-                  </div>
-                ) : null}
+          {generationMode === 'video' ? (
+            <SidebarCard eyebrow="Video Source" title="Required image input" icon={Film} footer="Upload or choose a saved image before generating.">
+              <div className="inline-flex w-full rounded-full border border-stone-200 bg-white p-1 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => onVideoSourceKindChange('upload')}
+                  className={cn('flex-1 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+                    videoSourceKind === 'upload' ? 'bg-brand text-white' : 'text-stone-600 hover:text-stone-950')}
+                >
+                  Upload
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onVideoSourceKindChange('generated')}
+                  className={cn('flex-1 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+                    videoSourceKind === 'generated' ? 'bg-brand text-white' : 'text-stone-600 hover:text-stone-950')}
+                >
+                  Generated
+                </button>
               </div>
-            ) : (
-              <p className="text-sm leading-6 text-stone-600">No machine is selected. The Brand KB and your prompt will still guide the generation.</p>
-            )}
-          </SidebarCard>
+
+              {videoSourceKind === 'upload' ? (
+                <div className="mt-4 space-y-3">
+                  <label className="block rounded-[22px] border border-dashed border-stone-300 bg-white px-4 py-4 text-sm text-stone-600">
+                    <span className="block font-semibold text-stone-900">Upload start-frame image</span>
+                    <span className="mt-1 block">Choose one image from your computer.</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="mt-3 block w-full text-sm text-stone-600"
+                      onChange={(event) => onVideoSourceFileChange(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {videoSourcePreviewUrl ? (
+                    <div className="overflow-hidden rounded-[22px] border border-stone-200 bg-white">
+                      <img src={videoSourcePreviewUrl} alt={videoSourceFile?.name ?? 'Uploaded source'} className="h-52 w-full bg-[#f8f1eb] object-contain" />
+                      <div className="border-t border-stone-200 px-4 py-3 text-sm text-stone-600">
+                        {videoSourceFile?.name ?? 'Uploaded source'}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-6 text-stone-600">No upload selected yet.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {historyLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-stone-600">
+                      <Loader2 className="h-4 w-4 animate-spin text-stone-400" />
+                      Loading generated images...
+                    </div>
+                  ) : generatedSourceOptions.length === 0 ? (
+                    <p className="text-sm leading-6 text-stone-600">Generate an image first, then it will appear here as a video source option.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {generatedSourceOptions.map((run) => (
+                        <button
+                          key={run.id}
+                          type="button"
+                          onClick={() => onSourceImageRunChange(run.id)}
+                          className={cn('flex w-full items-center gap-3 rounded-[22px] border bg-white p-3 text-left transition-colors',
+                            selectedSourceImageRunId === run.id ? 'border-brand/30 shadow-[0_10px_24px_rgba(196,30,58,0.14)]' : 'border-stone-200 hover:border-stone-300')}
+                        >
+                      <img src={run.image.url ?? getImageGenerationRunImageUrl(run.id)} alt={run.image.alt} className="h-20 w-20 rounded-2xl border border-stone-200 bg-[#f8f1eb] object-contain" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-stone-950">
+                              {run.planner?.title ?? getImageTypeLabel(run.imageType)}
+                            </span>
+                            <span className="mt-1 block text-sm text-stone-600">{run.userPrompt}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {selectedGeneratedImageRun ? (
+                    <div className="rounded-[22px] border border-stone-200 bg-[#fffaf5] px-4 py-3 text-sm text-stone-600">
+                      Selected source: {selectedGeneratedImageRun.planner?.title ?? getImageTypeLabel(selectedGeneratedImageRun.imageType)}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="mt-5">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Duration</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([4, 6, 8] as VideoDurationSeconds[]).map((duration) => (
+                    <button
+                      key={duration}
+                      type="button"
+                      onClick={() => onVideoDurationChange(duration)}
+                      className={cn('inline-flex h-[46px] items-center justify-center rounded-2xl border text-sm font-semibold transition-colors',
+                        selectedVideoDuration === duration
+                          ? 'border-brand/20 bg-brand/12 text-brand shadow-[0_10px_24px_rgba(196,30,58,0.14)]'
+                          : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300')}
+                    >
+                      {duration}s
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-sm leading-6 text-stone-600">Fixed output: 720p • 16:9 • the source image becomes the first frame.</p>
+              </div>
+            </SidebarCard>
+          ) : (
+            <SidebarCard eyebrow="Selected Machine" title={getMachineLabel(selectedMachine)} icon={Layers3} footer={selectedMachine ? `${selectedMachine.images.length} machine image(s)` : 'Machine context is optional'}>
+              {selectedMachine ? (
+                <div className="space-y-3 text-sm text-stone-600">
+                  {selectedMachine.notes ? <p className="max-h-64 overflow-y-auto pr-1 leading-6">{selectedMachine.notes}</p> : <p>No machine notes added yet.</p>}
+                  {selectedMachine.images.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedMachine.images.slice(0, 4).map((image) => (
+                        <img
+                          key={image.id}
+                          src={getImageGenerationMachineImageUrl(image.id)}
+                          alt={image.label}
+                          className="h-24 w-full rounded-2xl border border-stone-200 bg-[#f8f1eb] object-cover"
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-sm leading-6 text-stone-600">No machine is selected. The Brand KB and your prompt will still guide the generation.</p>
+              )}
+            </SidebarCard>
+          )}
         </div>
       </aside>
     </div>
@@ -1005,6 +1462,8 @@ function GalleryView({
   selectedMachineId,
   historyRuns,
   historyLoading,
+  videoRuns,
+  videoLoading,
   galleryTab,
   onGalleryTabChange,
   onMachineChange,
@@ -1015,6 +1474,8 @@ function GalleryView({
   selectedMachineId: string;
   historyRuns: ImageGenerationHistoryRun[];
   historyLoading: boolean;
+  videoRuns: VideoGenerationRunSummary[];
+  videoLoading: boolean;
   galleryTab: GalleryTab;
   onGalleryTabChange: (value: GalleryTab) => void;
   onMachineChange: (value: string) => void;
@@ -1028,8 +1489,8 @@ function GalleryView({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand">Gallery</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-stone-950">Machines and saved image outputs</h2>
-            <p className="mt-3 text-sm leading-6 text-stone-600">Browse machine reference sets or review generated outputs that were saved from the chat workflow.</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-stone-950">Machines and saved studio outputs</h2>
+            <p className="mt-3 text-sm leading-6 text-stone-600">Browse machine reference sets, saved images, and generated videos from the chat workflow.</p>
           </div>
 
           <div className="inline-flex rounded-full border border-stone-200 bg-white p-1 shadow-sm">
@@ -1038,6 +1499,9 @@ function GalleryView({
             </button>
             <button type="button" onClick={() => onGalleryTabChange('images')} className={cn('rounded-full px-4 py-2 text-sm font-semibold transition-colors', galleryTab === 'images' ? 'bg-brand text-white' : 'text-stone-600 hover:text-stone-950')}>
               Images
+            </button>
+            <button type="button" onClick={() => onGalleryTabChange('videos')} className={cn('rounded-full px-4 py-2 text-sm font-semibold transition-colors', galleryTab === 'videos' ? 'bg-brand text-white' : 'text-stone-600 hover:text-stone-950')}>
+              Videos
             </button>
           </div>
         </div>
@@ -1085,7 +1549,7 @@ function GalleryView({
             </section>
           </div>
         ) : null
-      ) : historyLoading ? (
+      ) : galleryTab === 'images' ? historyLoading ? (
         <section className="mt-5 rounded-[30px] border border-stone-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3 text-sm text-stone-600">
             <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
@@ -1109,9 +1573,68 @@ function GalleryView({
                   <span className="shrink-0 text-xs text-stone-500">{formatDate(run.createdAt)}</span>
                 </div>
               </div>
-              <img src={run.image.dataUrl} alt={run.image.alt} className="block h-[22rem] w-full bg-[#f8f1eb] object-contain" />
+              <img src={run.image.url ?? getImageGenerationRunImageUrl(run.id)} alt={run.image.alt} className="block h-[22rem] w-full bg-[#f8f1eb] object-contain" />
               <div className="space-y-3 px-5 py-4">
                 <p className="text-sm leading-6 text-stone-600">{run.replyText}</p>
+                <div className="rounded-[20px] border border-stone-200 bg-[#fffaf5] px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Original Prompt</p>
+                  <p className="mt-2 text-sm leading-6 text-stone-700">{run.userPrompt}</p>
+                </div>
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : videoLoading ? (
+        <section className="mt-5 rounded-[30px] border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-3 text-sm text-stone-600">
+            <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
+            Loading saved videos...
+          </div>
+        </section>
+      ) : videoRuns.length === 0 ? (
+        <section className="mt-5 rounded-[30px] border border-stone-200 bg-white p-6 shadow-sm">
+          <EmptyState icon={Film} title="No saved videos yet" detail="Generate a video in the chat and it will appear here automatically." />
+        </section>
+      ) : (
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          {videoRuns.map((run) => (
+            <section key={run.id} className="overflow-hidden rounded-[30px] border border-stone-200 bg-white shadow-sm">
+              <div className="border-b border-stone-200 bg-[#fffaf5] px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand">
+                      {run.durationSeconds}s video • {run.status.replace('_', ' ')}
+                    </p>
+                    <h3 className="mt-2 truncate text-lg font-semibold tracking-tight text-stone-950">
+                      {run.sourceKind === 'generated' ? 'Generated Image Source' : 'Uploaded Image Source'}
+                    </h3>
+                  </div>
+                  <span className="shrink-0 text-xs text-stone-500">{formatDate(run.createdAt)}</span>
+                </div>
+              </div>
+
+              {run.status === 'completed' && run.video ? (
+                <video controls src={getVideoRunContentUrl(run.id)} className="block h-[22rem] w-full bg-[#f8f1eb]" />
+              ) : (
+                <div className="flex h-[22rem] items-center justify-center bg-[#f8f1eb] px-6 text-center text-sm text-stone-600">
+                  {run.status === 'failed'
+                    ? run.errorMessage ?? 'Video generation failed.'
+                    : 'Video generation is still processing.'}
+                </div>
+              )}
+
+              <div className="space-y-3 px-5 py-4">
+                <div className="overflow-hidden rounded-[22px] border border-stone-200 bg-white">
+                  <img
+                    src={getVideoRunSourceImageUrl(run.id)}
+                    alt={run.sourceImageFileName}
+                    className="h-48 w-full bg-[#f8f1eb] object-contain"
+                  />
+                  <div className="border-t border-stone-200 px-4 py-3 text-sm text-stone-600">
+                    {run.sourceImageFileName}
+                  </div>
+                </div>
+                <p className="text-sm leading-6 text-stone-600">{run.status === 'failed' ? run.errorMessage ?? run.assistantReply : run.assistantReply}</p>
                 <div className="rounded-[20px] border border-stone-200 bg-[#fffaf5] px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Original Prompt</p>
                   <p className="mt-2 text-sm leading-6 text-stone-700">{run.userPrompt}</p>
@@ -1298,6 +1821,7 @@ function SettingsView(props: {
               <div className="space-y-3 text-sm text-stone-600">
                 <InfoRow label="Chat model" value={settingsData?.chatModel ?? 'Loading...'} />
                 <InfoRow label="Image model" value={settingsData?.imageModel ?? 'Loading...'} />
+                <InfoRow label="Video model" value={settingsData?.videoModel ?? 'Loading...'} />
                 <InfoRow label="Updated" value={settingsData?.updatedAt ? formatDate(settingsData.updatedAt) : 'Not loaded'} />
               </div>
               <div className="mt-4 flex flex-col gap-3">

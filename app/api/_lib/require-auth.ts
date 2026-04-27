@@ -18,6 +18,7 @@ import {
 } from '@/lib/auth/bypass';
 
 export interface AuthedSession {
+  appUserId: string | null;
   email: string;
   hd: string | null;
 }
@@ -29,6 +30,7 @@ export async function requireAuth(): Promise<Allowed | Denied> {
   if (isAuthBypassEnabled()) {
     return {
       authed: {
+        appUserId: null,
         email: getAuthBypassEmail(),
         hd: getAuthBypassHd(),
       },
@@ -42,11 +44,47 @@ export async function requireAuth(): Promise<Allowed | Denied> {
     };
   }
   const email = typeof session.user.email === 'string' ? session.user.email : '';
-  const hd = typeof (session as any).hd === 'string' ? (session as any).hd : null;
+  const hd = typeof session.hd === 'string' ? session.hd : null;
+  const appUserId = typeof session.appUserId === 'string' ? session.appUserId : null;
   if (!email.toLowerCase().endsWith('@arrsys.com')) {
     return {
       response: NextResponse.json({ error: 'forbidden' }, { status: 403 }),
     };
   }
-  return { authed: { email, hd } };
+
+  let resolvedAppUserId = appUserId;
+  try {
+    const { prisma } = await import('@/lib/prisma');
+    const appUser = appUserId
+      ? await prisma.appUser.findUnique({ where: { id: appUserId } })
+      : await prisma.appUser.findUnique({ where: { email: email.toLowerCase() } });
+    if (appUser?.status === 'disabled') {
+      const { recordAuthEvent } = await import('@/lib/auth/audit-log');
+      await recordAuthEvent({
+        type: 'api_rejected_disabled',
+        actorEmail: appUser.email,
+        targetEmail: appUser.email,
+        action: 'require_auth',
+      });
+      return {
+        response: NextResponse.json({ error: 'account_disabled' }, { status: 403 }),
+      };
+    }
+
+    if (appUser) {
+      resolvedAppUserId = appUser.id;
+      const stale =
+        !appUser.lastSeenAt || Date.now() - appUser.lastSeenAt.getTime() > 5 * 60 * 1000;
+      if (stale) {
+        await prisma.appUser.update({
+          where: { id: appUser.id },
+          data: { lastSeenAt: new Date() },
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('App user session metadata lookup failed', error);
+  }
+
+  return { authed: { appUserId: resolvedAppUserId, email, hd } };
 }

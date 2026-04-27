@@ -16,6 +16,7 @@ COPY . .
 RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_ENABLE_BLOGS=${NEXT_PUBLIC_ENABLE_BLOGS}
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 # Prisma CLI only needs a valid SQLite URL for generate (schema is sqlite).
 ENV DATABASE_URL="file:./prisma/dev.db"
 RUN npx prisma generate && npm run build

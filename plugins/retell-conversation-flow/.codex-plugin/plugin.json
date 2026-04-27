@@ -1,0 +1,43 @@
+{
+  "name": "retell-conversation-flow",
+  "version": "0.1.0",
+  "description": "Create, inspect, validate, and update Retell AI conversation flows from Codex.",
+  "author": {
+    "name": "OpenClaw Mission Control",
+    "url": "https://docs.retellai.com/"
+  },
+  "homepage": "https://docs.retellai.com/build/conversation-flow/overview",
+  "repository": "https://docs.retellai.com/api-references/create-conversation-flow",
+  "license": "MIT",
+  "keywords": [
+    "retell",
+    "conversation-flow",
+    "voice-ai",
+    "agent",
+    "telephony"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Retell Conversation Flow",
+    "shortDescription": "Create and update Retell conversation flows from Codex",
+    "longDescription": "Use a Codex skill plus a local Retell API CLI to create, inspect, validate, and update Retell AI conversation flows without leaving your workspace.",
+    "developerName": "OpenClaw Mission Control",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://docs.retellai.com/",
+    "privacyPolicyURL": "https://www.retellai.com/legal/privacy-policy",
+    "termsOfServiceURL": "https://www.retellai.com/legal/terms-of-service",
+    "defaultPrompt": [
+      "Create a new Retell conversation flow from this JSON spec",
+      "Update this Retell conversation flow with the revised node graph",
+      "Validate this Retell flow payload before I push it to Retell"
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/retell-flow-icon.svg",
+    "logo": "./assets/retell-flow-icon.svg",
+    "screenshots": []
+  }
+}

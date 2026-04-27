@@ -265,11 +265,11 @@ body {
 
 .geo-stage {
   background-image:
-    radial-gradient(circle at 24% 26%, rgba(76, 107, 167, 0.18), transparent 31%),
-    radial-gradient(circle at 76% 21%, rgba(196, 30, 58, 0.12), transparent 28%),
-    radial-gradient(circle at 62% 76%, rgba(82, 109, 158, 0.12), transparent 34%),
+    radial-gradient(circle at 24% 26%, rgba(116, 155, 224, 0.3), transparent 34%),
+    radial-gradient(circle at 76% 21%, rgba(196, 30, 58, 0.18), transparent 31%),
+    radial-gradient(circle at 62% 76%, rgba(132, 164, 222, 0.2), transparent 38%),
     url('/data/geo/textures/night-sky.png'),
-    linear-gradient(135deg, #010309 0%, #050914 44%, #090d17 100%);
+    linear-gradient(135deg, #06101f 0%, #0b1730 44%, #111c34 100%);
   background-position:
     center,
     center,
@@ -282,11 +282,11 @@ body {
     auto,
     cover,
     auto;
-  background-blend-mode: screen, screen, screen, soft-light, normal;
+  background-blend-mode: screen, screen, screen, lighten, normal;
 }
 
 .geo-stage-stars {
-  opacity: 0.34;
+  opacity: 0.46;
   background-image:
     radial-gradient(circle, rgba(255, 255, 255, 0.62) 0 1px, transparent 1.45px),
     radial-gradient(circle, rgba(248, 113, 133, 0.22) 0 1px, transparent 1.6px),
@@ -305,8 +305,8 @@ body {
 
 .geo-stage-vignette {
   background:
-    radial-gradient(circle at 52% 46%, transparent 0%, transparent 39%, rgba(2, 5, 12, 0.35) 72%, rgba(1, 3, 8, 0.78) 100%),
-    linear-gradient(90deg, rgba(1, 4, 12, 0.44), transparent 28%, transparent 72%, rgba(1, 4, 12, 0.46));
+    radial-gradient(circle at 52% 46%, transparent 0%, transparent 42%, rgba(7, 14, 28, 0.22) 74%, rgba(3, 7, 18, 0.52) 100%),
+    linear-gradient(90deg, rgba(6, 12, 25, 0.22), transparent 24%, transparent 76%, rgba(6, 12, 25, 0.24));
 }
 
 @keyframes geo-stars-drift {
@@ -346,4 +346,37 @@ body {
 .status-error {
   background: var(--accent-red);
   box-shadow: 0 0 6px var(--accent-red);
+}
+
+.geo-input {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  background: #ffffff;
+  color: var(--text-primary);
+  padding: 0.85rem 0.95rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+
+.geo-input::placeholder {
+  color: #9ca3af;
+}
+
+.geo-input:hover {
+  border-color: rgba(196, 30, 58, 0.18);
+}
+
+.geo-input:focus {
+  border-color: rgba(196, 30, 58, 0.42);
+  box-shadow: 0 0 0 4px rgba(196, 30, 58, 0.1);
+}
+
+select.geo-input {
+  appearance: auto;
 }

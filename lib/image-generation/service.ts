@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   DEFAULT_IMAGE_STUDIO_CHAT_MODEL,
   DEFAULT_IMAGE_STUDIO_IMAGE_MODEL,
+  DEFAULT_IMAGE_STUDIO_VIDEO_MODEL,
   DEFAULT_IMAGE_STUDIO_PROMPTS,
   IMAGE_STUDIO_PROMPT_USAGE,
   IMAGE_STUDIO_PROVIDER,
@@ -30,6 +31,7 @@ import type {
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_MODELS_API_URL = 'https://openrouter.ai/api/v1/models';
+const OPENROUTER_VIDEO_MODELS_API_URL = 'https://openrouter.ai/api/v1/videos/models';
 const TEXT_REQUEST_TIMEOUT_MS = 120_000;
 const IMAGE_REQUEST_TIMEOUT_MS = 240_000;
 const MODEL_STATUS_TIMEOUT_MS = 12_000;
@@ -107,6 +109,31 @@ const IMAGE_GENERATION_SCHEMA_STATEMENTS = [
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
+  `CREATE TABLE IF NOT EXISTS "image_generation_video_runs" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userPrompt" TEXT NOT NULL DEFAULT '',
+    "assistantReply" TEXT NOT NULL DEFAULT '',
+    "sourceKind" TEXT NOT NULL,
+    "sourceImageRunId" TEXT,
+    "sourceImageFileName" TEXT NOT NULL,
+    "sourceImageMimeType" TEXT NOT NULL,
+    "sourceImageByteSize" INTEGER NOT NULL,
+    "sourceImageBytes" BLOB NOT NULL,
+    "videoModel" TEXT NOT NULL DEFAULT '',
+    "openrouterJobId" TEXT NOT NULL DEFAULT '',
+    "openrouterGenerationId" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "errorMessage" TEXT,
+    "durationSeconds" INTEGER NOT NULL,
+    "resolution" TEXT NOT NULL DEFAULT '720p',
+    "aspectRatio" TEXT NOT NULL DEFAULT '16:9',
+    "videoFileName" TEXT,
+    "videoMimeType" TEXT,
+    "videoByteSize" INTEGER,
+    "videoBytes" BLOB,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
   `CREATE INDEX IF NOT EXISTS "image_generation_runs_createdAt_idx" ON "image_generation_runs"("createdAt")`,
   `CREATE INDEX IF NOT EXISTS "image_generation_machines_title_idx" ON "image_generation_machines"("title")`,
   `CREATE INDEX IF NOT EXISTS "image_generation_machines_updatedAt_idx" ON "image_generation_machines"("updatedAt")`,
@@ -114,6 +141,9 @@ const IMAGE_GENERATION_SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "image_generation_kb_assets_category_idx" ON "image_generation_kb_assets"("category")`,
   `CREATE INDEX IF NOT EXISTS "image_generation_kb_assets_updatedAt_idx" ON "image_generation_kb_assets"("updatedAt")`,
   `CREATE INDEX IF NOT EXISTS "image_generation_kb_colors_updatedAt_idx" ON "image_generation_kb_colors"("updatedAt")`,
+  `CREATE INDEX IF NOT EXISTS "image_generation_video_runs_createdAt_idx" ON "image_generation_video_runs"("createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "image_generation_video_runs_status_idx" ON "image_generation_video_runs"("status")`,
+  `CREATE INDEX IF NOT EXISTS "image_generation_video_runs_openrouterJobId_idx" ON "image_generation_video_runs"("openrouterJobId")`,
 ].map((statement) => statement.replace(/\s+/g, ' ').trim());
 
 let imageGenerationSchemaReady = false;
@@ -123,10 +153,12 @@ let cachedModelStatuses:
       value: {
         chatModelStatus: ImageStudioModelStatus;
         imageModelStatus: ImageStudioModelStatus;
+        videoModelStatus: ImageStudioModelStatus;
       };
       expiresAt: number;
       chatModel: string;
       imageModel: string;
+      videoModel: string;
     }
   | null = null;
 
@@ -183,6 +215,10 @@ function getConfiguredImageModel(): string {
   return process.env.IMAGE_OPENROUTER_IMAGE_MODEL?.trim() || DEFAULT_IMAGE_STUDIO_IMAGE_MODEL;
 }
 
+function getConfiguredVideoModel(): string {
+  return process.env.IMAGE_OPENROUTER_VIDEO_MODEL?.trim() || DEFAULT_IMAGE_STUDIO_VIDEO_MODEL;
+}
+
 function getOpenRouterApiKey(): string | null {
   return process.env.IMAGE_OPENROUTER_API_KEY?.trim() || null;
 }
@@ -200,7 +236,7 @@ async function getTableColumns(tableName: string): Promise<Set<string>> {
   return new Set(rows.map((row) => row.name).filter((value): value is string => Boolean(value)));
 }
 
-async function ensureImageGenerationSchema(): Promise<void> {
+export async function ensureImageGenerationSchema(): Promise<void> {
   if (imageGenerationSchemaReady) return;
   if (imageGenerationSchemaPromise) {
     await imageGenerationSchemaPromise;
@@ -405,6 +441,14 @@ function toImageDataUrl(bytes: Uint8Array, mimeType: string): string {
   return `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
+function parseImageBytesFromDataUrl(dataUrl: string): Uint8Array {
+  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (!match?.[1]) {
+    throw new Error('Stored image data is invalid.');
+  }
+  return new Uint8Array(Buffer.from(match[1], 'base64'));
+}
+
 function formatContentPreview(content: unknown): string | null {
   const text = extractTextContent(content);
   if (!text) return null;
@@ -512,12 +556,14 @@ function formatSettingsResponse(input: {
   };
   chatModelStatus: ImageStudioModelStatus;
   imageModelStatus: ImageStudioModelStatus;
+  videoModelStatus: ImageStudioModelStatus;
 }): ImageStudioSettingsResponse {
   return {
     id: input.row.id,
     provider: IMAGE_STUDIO_PROVIDER,
     chatModel: getConfiguredChatModel(),
     imageModel: getConfiguredImageModel(),
+    videoModel: getConfiguredVideoModel(),
     prompts: parsePromptsJson(input.row.promptsJson),
     createdAt: input.row.createdAt.toISOString(),
     updatedAt: input.row.updatedAt.toISOString(),
@@ -528,6 +574,7 @@ function formatSettingsResponse(input: {
     promptUsage: { ...IMAGE_STUDIO_PROMPT_USAGE },
     chatModelStatus: input.chatModelStatus,
     imageModelStatus: input.imageModelStatus,
+    videoModelStatus: input.videoModelStatus,
   };
 }
 
@@ -536,6 +583,7 @@ function buildRuntimeSettings(row: { promptsJson: string }) {
     prompts: parsePromptsJson(row.promptsJson),
     chatModel: getConfiguredChatModel(),
     imageModel: getConfiguredImageModel(),
+    videoModel: getConfiguredVideoModel(),
   };
 }
 
@@ -956,34 +1004,66 @@ async function getOpenRouterModelStatus(input: {
   }
 }
 
+async function getOpenRouterVideoModelStatus(model: string): Promise<ImageStudioModelStatus> {
+  const checkedAt = new Date().toISOString();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MODEL_STATUS_TIMEOUT_MS);
+  try {
+    const response = await fetch(OPENROUTER_VIDEO_MODELS_API_URL, {
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const payload = (await response.json().catch(() => ({}))) as { data?: Array<Record<string, unknown>> };
+    if (!response.ok || !Array.isArray(payload.data)) {
+      return { state: 'unknown', detail: 'Could not verify video model availability right now.', checkedAt };
+    }
+    const found = payload.data.some((entry) => {
+      const id = (typeof entry.id === 'string' && entry.id) || (typeof entry.canonical_slug === 'string' && entry.canonical_slug) || '';
+      return id === model;
+    });
+    return found
+      ? { state: 'available', detail: 'Listed in the OpenRouter video model catalog.', checkedAt }
+      : { state: 'unavailable', detail: 'Not currently listed in the OpenRouter video model catalog.', checkedAt };
+  } catch {
+    return { state: 'unknown', detail: 'Could not verify video model availability right now.', checkedAt };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function resolveModelStatuses(): Promise<{
   chatModelStatus: ImageStudioModelStatus;
   imageModelStatus: ImageStudioModelStatus;
+  videoModelStatus: ImageStudioModelStatus;
 }> {
   const chatModel = getConfiguredChatModel();
   const imageModel = getConfiguredImageModel();
+  const videoModel = getConfiguredVideoModel();
   const now = Date.now();
 
   if (
     cachedModelStatuses &&
     cachedModelStatuses.expiresAt > now &&
     cachedModelStatuses.chatModel === chatModel &&
-    cachedModelStatuses.imageModel === imageModel
+    cachedModelStatuses.imageModel === imageModel &&
+    cachedModelStatuses.videoModel === videoModel
   ) {
     return cachedModelStatuses.value;
   }
 
-  const [chatModelStatus, imageModelStatus] = await Promise.all([
+  const [chatModelStatus, imageModelStatus, videoModelStatus] = await Promise.all([
     getOpenRouterModelStatus({ model: chatModel, outputModality: 'text' }),
     getOpenRouterModelStatus({ model: imageModel, outputModality: 'image' }),
+    getOpenRouterVideoModelStatus(videoModel),
   ]);
 
-  const value = { chatModelStatus, imageModelStatus };
+  const value = { chatModelStatus, imageModelStatus, videoModelStatus };
   cachedModelStatuses = {
     value,
     expiresAt: now + MODEL_STATUS_CACHE_TTL_MS,
     chatModel,
     imageModel,
+    videoModel,
   };
   return value;
 }
@@ -1270,11 +1350,11 @@ function mapImageGenerationRun(row: {
   plannerJson: string;
   machineId: string | null;
   imageType: string;
-  imageDataUrl: string;
+  imageDataUrl?: string;
   imageMimeType: string;
   imageAlt: string;
   createdAt: Date;
-}, machineTitle?: string | null): ImageGenerationHistoryRun {
+}, machineTitle?: string | null, options?: { includeDataUrl?: boolean }): ImageGenerationHistoryRun {
   const planner = parsePlannerJson(row.plannerJson);
   return {
     id: row.id,
@@ -1288,7 +1368,8 @@ function mapImageGenerationRun(row: {
         }
       : undefined,
     image: {
-      dataUrl: row.imageDataUrl,
+      ...(options?.includeDataUrl ? { dataUrl: row.imageDataUrl } : {}),
+      url: `/api/image-generation/history/${row.id}/image`,
       mimeType: row.imageMimeType,
       alt: row.imageAlt,
     },
@@ -1315,8 +1396,8 @@ export async function ensureImageStudioSettingsRow() {
 
 export async function getImageStudioSettingsResponse(): Promise<ImageStudioSettingsResponse> {
   const row = await ensureImageStudioSettingsRow();
-  const { chatModelStatus, imageModelStatus } = await resolveModelStatuses();
-  return formatSettingsResponse({ row, chatModelStatus, imageModelStatus });
+  const { chatModelStatus, imageModelStatus, videoModelStatus } = await resolveModelStatuses();
+  return formatSettingsResponse({ row, chatModelStatus, imageModelStatus, videoModelStatus });
 }
 
 export async function updateImageStudioSettings(patch: ImageStudioSettingsUpdate): Promise<ImageStudioSettingsResponse> {
@@ -1332,8 +1413,8 @@ export async function updateImageStudioSettings(patch: ImageStudioSettingsUpdate
       orchestratorModel: getConfiguredChatModel(),
     },
   });
-  const { chatModelStatus, imageModelStatus } = await resolveModelStatuses();
-  return formatSettingsResponse({ row: updated, chatModelStatus, imageModelStatus });
+  const { chatModelStatus, imageModelStatus, videoModelStatus } = await resolveModelStatuses();
+  return formatSettingsResponse({ row: updated, chatModelStatus, imageModelStatus, videoModelStatus });
 }
 
 export async function getImageGenerationMachines(): Promise<ImageGenerationMachineSummary[]> {
@@ -1628,7 +1709,7 @@ async function persistImageGenerationRun(input: {
       imageAlt: input.image.alt,
     },
   });
-  return mapImageGenerationRun(created);
+  return mapImageGenerationRun(created, null, { includeDataUrl: true });
 }
 
 export async function getImageGenerationHistory(limit: number = HISTORY_LIMIT): Promise<ImageGenerationHistoryRun[]> {
@@ -1636,6 +1717,17 @@ export async function getImageGenerationHistory(limit: number = HISTORY_LIMIT): 
   const rows = await prisma.imageGenerationRun.findMany({
     orderBy: { createdAt: 'desc' },
     take: limit,
+    select: {
+      id: true,
+      userPrompt: true,
+      assistantReply: true,
+      plannerJson: true,
+      machineId: true,
+      imageType: true,
+      imageMimeType: true,
+      imageAlt: true,
+      createdAt: true,
+    },
   });
   const machineIds = Array.from(new Set(rows.map((row) => row.machineId).filter((id): id is string => Boolean(id))));
   const machineRows = machineIds.length
@@ -1646,6 +1738,29 @@ export async function getImageGenerationHistory(limit: number = HISTORY_LIMIT): 
     : [];
   const machineTitleById = new Map(machineRows.map((row) => [row.id, row.title]));
   return rows.reverse().map((row) => mapImageGenerationRun(row, row.machineId ? machineTitleById.get(row.machineId) ?? null : null));
+}
+
+export async function getImageGenerationRunImage(runId: string): Promise<{
+  fileName: string;
+  mimeType: string;
+  bytes: Uint8Array;
+} | null> {
+  await ensureImageGenerationSchema();
+  const row = await prisma.imageGenerationRun.findUnique({
+    where: { id: runId },
+    select: {
+      imageDataUrl: true,
+      imageMimeType: true,
+      imageType: true,
+    },
+  });
+  if (!row?.imageDataUrl) return null;
+
+  return {
+    fileName: `${row.imageType || 'generated-image'}-${runId}.${row.imageMimeType === 'image/jpeg' ? 'jpg' : 'png'}`,
+    mimeType: row.imageMimeType || parseMimeTypeFromDataUrl(row.imageDataUrl),
+    bytes: parseImageBytesFromDataUrl(row.imageDataUrl),
+  };
 }
 
 export function isImageTypeValue(value: unknown): value is ImageTypeValue {
