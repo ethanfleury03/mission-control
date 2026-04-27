@@ -2,7 +2,7 @@
 
 import { ExternalLink, LogOut, Search } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
-import { HUB_APPS, type HubAppId } from '../lib/hubApps';
+import { getHubApps, type HubAppId } from '../lib/hubApps';
 
 interface HeaderProps {
   activeApp: HubAppId;
@@ -16,12 +16,20 @@ function getUserInitials(name: string | null | undefined, email: string | null |
 }
 
 export function Header({ activeApp }: HeaderProps) {
-  const current = HUB_APPS.find((a) => a.id === activeApp);
+  const current = getHubApps({ includeAdmin: true }).find((a) => a.id === activeApp);
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? null;
   const name = session?.user?.name ?? null;
   const image = session?.user?.image ?? null;
   const initials = getUserInitials(name, email);
+  const handleSignOut = async () => {
+    try {
+      await fetch('/api/auth/logout-event', { method: 'POST' });
+    } catch {
+      /* Sign-out should still continue if audit logging is unavailable. */
+    }
+    await signOut({ callbackUrl: '/signin' });
+  };
 
   return (
     <header className="h-14 bg-white border-b border-hub-border flex items-center px-4 gap-4 shrink-0 hub-header-bar">
@@ -92,7 +100,7 @@ export function Header({ activeApp }: HeaderProps) {
           </div>
           <button
             type="button"
-            onClick={() => void signOut({ callbackUrl: '/signin' })}
+            onClick={() => void handleSignOut()}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-neutral-200 bg-white px-4 text-xs font-semibold text-neutral-700 transition-colors hover:border-brand/40 hover:text-brand"
           >
             <LogOut className="h-3.5 w-3.5" />

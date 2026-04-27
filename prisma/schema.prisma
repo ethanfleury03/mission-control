@@ -106,12 +106,40 @@ model AppUser {
   image        String   @default("")
   googleSub    String   @unique
   hostedDomain String   @default("")
+  status       String   @default("active")
+  role         String   @default("user")
+  loginCount   Int      @default(0)
   lastLoginAt  DateTime @default(now())
+  lastSeenAt   DateTime?
+  lastLoginIp  String   @default("")
+  lastUserAgent String  @default("")
+  disabledAt   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([hostedDomain])
+  @@index([status])
+  @@index([role])
   @@map("app_users")
+}
+
+model AuthEventLog {
+  id          String   @id @default(cuid())
+  type        String
+  actorEmail  String   @default("")
+  targetEmail String   @default("")
+  ip          String   @default("")
+  userAgent   String   @default("")
+  route       String   @default("")
+  action      String   @default("")
+  detailJson  String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([type])
+  @@index([actorEmail])
+  @@index([targetEmail])
+  @@index([createdAt])
+  @@map("auth_event_logs")
 }
 
 // Directory Scraper — persisted jobs (SQLite today; swap DATABASE_URL for Postgres later)

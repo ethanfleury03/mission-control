@@ -123,6 +123,18 @@ That verifies `https://support.arrsys.com/api/healthz`, updates `NEXTAUTH_URL`, 
 
 ## Re-deploying a single service
 
+### Turso / Prisma schema migrations
+
+`mc-web` stores the dashboard, auth, Image Studio, and Geo Intelligence data in Turso. Before deploying a revision that adds Prisma tables or columns, apply the matching SQL in `prisma/migrations/*/migration.sql` to the production Turso database.
+
+For the Admin Console V1 release, apply:
+
+```bash
+prisma/migrations/20260427100000_admin_user_management/migration.sql
+```
+
+This migration extends `app_users` and creates `auth_event_logs`. Deploying the code before applying this SQL can make login or admin pages fail because the app expects those columns/tables to exist.
+
 ```bash
 # mc-web only (after UI/code changes):
 gcloud builds submit . \

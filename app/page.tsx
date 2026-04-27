@@ -2,6 +2,8 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+import { AdminTab } from './components/AdminTab';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
 import { BottomBar } from './components/BottomBar';
@@ -11,8 +13,9 @@ import { ImageGenerationTab } from './components/ImageGenerationTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
 import { ManualsTab } from './components/ManualsTab';
 import { PhoneTab } from './components/PhoneTab';
-import type { HubAppId } from './lib/hubApps';
+import { DEFAULT_HUB_APP, getHubApps, type HubAppId } from './lib/hubApps';
 import { BLOGS_ENABLED } from '@/lib/features';
+import { isAdminEmail } from '@/lib/auth/constants';
 
 const SIDEBAR_COLLAPSED_KEY = 'mc_sidebar_collapsed';
 
@@ -29,10 +32,16 @@ const GeoIntelligenceEntry = dynamic(
 );
 
 export default function ArrowHub() {
-  const [activeApp, setActiveApp] = useState<HubAppId>('IMAGE_GEN');
+  const { data: session } = useSession();
+  const [activeApp, setActiveApp] = useState<HubAppId>(DEFAULT_HUB_APP);
   const [mounted, setMounted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const resolvedActiveApp = activeApp === 'BLOGS' && !BLOGS_ENABLED ? 'IMAGE_GEN' : activeApp;
+  const isAdmin = isAdminEmail(session?.user?.email);
+  const availableApps = getHubApps({ includeAdmin: isAdmin });
+  const resolvedActiveApp =
+    (activeApp === 'BLOGS' && !BLOGS_ENABLED) || (activeApp === 'ADMIN' && !isAdmin)
+      ? DEFAULT_HUB_APP
+      : activeApp;
 
   useEffect(() => {
     setMounted(true);
@@ -69,9 +78,12 @@ export default function ArrowHub() {
           onAppChange={setActiveApp}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={toggleSidebarCollapsed}
+          apps={availableApps}
         />
 
-        {resolvedActiveApp === 'BLOGS' ? (
+        {resolvedActiveApp === 'ADMIN' ? (
+          <AdminTab />
+        ) : resolvedActiveApp === 'BLOGS' ? (
           <BlogsTab />
         ) : resolvedActiveApp === 'SCRAPER' ? (
           <DirectoryScraperTab />
@@ -88,7 +100,9 @@ export default function ArrowHub() {
         ) : resolvedActiveApp === 'MANUALS' ? (
           <ManualsTab />
         ) : (
-          <ImageGenerationTab />
+          <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-[#0b1222]">
+            <GeoIntelligenceEntry />
+          </main>
         )}
       </div>
 

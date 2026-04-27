@@ -7,11 +7,22 @@ import {
   Target,
   ImagePlus,
   Phone,
+  Shield,
 } from 'lucide-react';
 
 import { BLOGS_ENABLED } from '@/lib/features';
 
-export type HubAppId = 'BLOGS' | 'SCRAPER' | 'LEAD_GEN' | 'IMAGE_GEN' | 'GEO_INTELLIGENCE' | 'PHONE' | 'MANUALS';
+export type HubAppId =
+  | 'BLOGS'
+  | 'SCRAPER'
+  | 'LEAD_GEN'
+  | 'IMAGE_GEN'
+  | 'GEO_INTELLIGENCE'
+  | 'PHONE'
+  | 'MANUALS'
+  | 'ADMIN';
+
+export const DEFAULT_HUB_APP: HubAppId = 'GEO_INTELLIGENCE';
 
 export interface HubApp {
   id: HubAppId;
@@ -63,8 +74,20 @@ const ALL_HUB_APPS: HubApp[] = [
     description: 'Internal manual library',
     icon: BookOpen,
   },
+  {
+    id: 'ADMIN',
+    label: 'Admin',
+    description: 'Users & security logs',
+    icon: Shield,
+  },
 ];
 
-export const HUB_APPS: HubApp[] = ALL_HUB_APPS.filter(
-  (app) => app.id !== 'BLOGS' || BLOGS_ENABLED,
-);
+export function getHubApps(options: { includeAdmin?: boolean } = {}): HubApp[] {
+  return ALL_HUB_APPS.filter((app) => {
+    if (app.id === 'BLOGS' && !BLOGS_ENABLED) return false;
+    if (app.id === 'ADMIN' && !options.includeAdmin) return false;
+    return true;
+  });
+}
+
+export const HUB_APPS: HubApp[] = getHubApps();

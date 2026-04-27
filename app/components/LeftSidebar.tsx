@@ -2,16 +2,23 @@
 
 import { PanelLeftClose, PanelLeft } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { HUB_APPS, type HubAppId } from '../lib/hubApps';
+import { HUB_APPS, type HubApp, type HubAppId } from '../lib/hubApps';
 
 interface LeftSidebarProps {
   activeApp: HubAppId;
   onAppChange: (id: HubAppId) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  apps?: HubApp[];
 }
 
-export function LeftSidebar({ activeApp, onAppChange, collapsed, onToggleCollapsed }: LeftSidebarProps) {
+export function LeftSidebar({
+  activeApp,
+  onAppChange,
+  collapsed,
+  onToggleCollapsed,
+  apps = HUB_APPS,
+}: LeftSidebarProps) {
   return (
     <aside
       className={cn(
@@ -41,7 +48,7 @@ export function LeftSidebar({ activeApp, onAppChange, collapsed, onToggleCollaps
           </button>
         </div>
         <nav className="flex flex-col gap-1">
-          {HUB_APPS.map((app) => {
+          {apps.map((app) => {
             const Icon = app.icon;
             const isActive = activeApp === app.id;
             return (

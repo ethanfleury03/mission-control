@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma';
 
+import { recordAuthEvent } from './audit-log';
+import { ADMIN_EMAIL, isAdminEmail } from './constants';
 import { ALLOWED_HD, type GoogleProfileShape } from './hd-guard';
 
 type GoogleIdentityProfile = GoogleProfileShape & {
@@ -34,6 +36,17 @@ export async function upsertAppUserFromGoogleProfile(profile: GoogleIdentityProf
   });
 
   if (existing) {
+    if (existing.status === 'disabled') {
+      await recordAuthEvent({
+        type: 'login_rejected_disabled',
+        actorEmail: email,
+        targetEmail: email,
+        action: 'google_sign_in',
+        detail: { appUserId: existing.id },
+      });
+      throw new Error('This Arrow Hub account is disabled.');
+    }
+
     return prisma.appUser.update({
       where: { id: existing.id },
       data: {
@@ -43,6 +56,9 @@ export async function upsertAppUserFromGoogleProfile(profile: GoogleIdentityProf
         name,
         image,
         lastLoginAt: new Date(),
+        lastSeenAt: new Date(),
+        loginCount: { increment: 1 },
+        role: isAdminEmail(email) ? 'admin' : existing.role || 'user',
       },
     });
   }
@@ -54,7 +70,11 @@ export async function upsertAppUserFromGoogleProfile(profile: GoogleIdentityProf
       hostedDomain,
       name,
       image,
+      status: 'active',
+      role: isAdminEmail(email) ? 'admin' : 'user',
+      loginCount: 1,
       lastLoginAt: new Date(),
+      lastSeenAt: new Date(),
     },
   });
 }
@@ -63,4 +83,9 @@ export async function getAppUserByEmail(email: string) {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return null;
   return prisma.appUser.findUnique({ where: { email: normalized } });
+}
+
+export async function isExistingAppUserDisabled(email: string): Promise<boolean> {
+  const user = await getAppUserByEmail(email);
+  return user?.status === 'disabled' && user.email !== ADMIN_EMAIL;
 }
