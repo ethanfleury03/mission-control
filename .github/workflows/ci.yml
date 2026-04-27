@@ -12,17 +12,35 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
-  test-and-build:
-    name: Test and build
+  web-postgres-tests:
+    name: Web Postgres tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: missioncontrol_app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d missioncontrol_app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
 
     env:
       AUTH_SECRET: ci-only-auth-secret-for-next-build
       AUTH_TRUST_HOST: "true"
-      DATABASE_URL: file:./data/ci.db
-      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/missioncontrol_app_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/missioncontrol_app_test
 
     steps:
       - name: Checkout
@@ -40,8 +58,129 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run tests
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Deploy Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run Vitest
         run: npm test
+
+  web-build:
+    name: Web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      AUTH_SECRET: ci-only-auth-secret-for-next-build
+      AUTH_TRUST_HOST: "true"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/missioncontrol_app_test
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8080
+      API_URL: http://127.0.0.1:8080
+      MISSION_CONTROL_API_URL: http://127.0.0.1:8080
+      ENABLE_BLOGS: "false"
+      NEXT_PUBLIC_ENABLE_BLOGS: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
 
       - name: Build
         run: npm run build
+
+  server-build-and-tests:
+    name: Server build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: missioncontrol_api_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d missioncontrol_api_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/missioncontrol_api_test
+      REQUIRE_POSTGRES: "true"
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Prepare integration database
+        run: npm run ci:setup-db
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+  docker-builds:
+    name: Docker builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build web image
+        run: docker build -f Dockerfile .
+
+      - name: Build scraper image
+        run: docker build -f Dockerfile.scraper .
+
+      - name: Build API image
+        run: docker build -f server/Dockerfile server
+
+  gcp-config-check:
+    name: GCP config check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate GCP deployment config
+        run: npm run ci:gcp-config

@@ -66,9 +66,10 @@ async function testTeamStatusTransition() {
     runtime: 'gpt-4',
   });
   await registry.addTeamManager(team.id, agent.id, 0);
-  await registry.setTeamStatus(team.id, 'active', team.version);
+  const managedTeam = await registry.getTeam(team.id);
+  const active = await registry.setTeamStatus(team.id, 'active', managedTeam!.version);
 
-  let paused = await registry.setTeamStatus(team.id, 'paused', 2);
+  let paused = await registry.setTeamStatus(team.id, 'paused', active!.version);
   console.assert(paused?.status === 'paused', 'Active -> Paused');
 
   const reactivated = await registry.setTeamStatus(team.id, 'active', paused!.version);

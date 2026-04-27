@@ -173,7 +173,7 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
           <h3 className="text-sm font-semibold text-neutral-900 mb-3">Current State</h3>
           <div className="space-y-2">
             {[
-              { label: 'Prisma markets + accounts (SQLite)', status: 'done' },
+              { label: 'Prisma markets + accounts (Postgres)', status: 'done' },
               { label: 'Market CRUD + Directory Scraper → Lead Gen import', status: 'done' },
               { label: 'Typed data model (TypeScript)', status: 'done' },
               { label: 'Manual imports + empty-state-first database behavior', status: 'done' },

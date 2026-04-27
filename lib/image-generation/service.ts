@@ -41,113 +41,7 @@ const MODEL_STATUS_CACHE_TTL_MS = 5 * 60_000;
 export const LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE =
   'Select a machine with uploaded reference images before generating a LinkedIn ad.';
 
-const IMAGE_GENERATION_SCHEMA_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS "image_generation_settings" (
-    "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'default',
-    "provider" TEXT NOT NULL DEFAULT 'openrouter',
-    "orchestratorModel" TEXT NOT NULL DEFAULT 'deepseek/deepseek-chat-v3.1',
-    "promptsJson" TEXT NOT NULL DEFAULT '{}',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE TABLE IF NOT EXISTS "image_generation_runs" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "userPrompt" TEXT NOT NULL DEFAULT '',
-    "assistantReply" TEXT NOT NULL DEFAULT '',
-    "plannerJson" TEXT NOT NULL DEFAULT '{}',
-    "finalImagePrompt" TEXT NOT NULL DEFAULT '',
-    "chatModel" TEXT NOT NULL DEFAULT '',
-    "imageModel" TEXT NOT NULL DEFAULT '',
-    "machineId" TEXT,
-    "imageType" TEXT NOT NULL DEFAULT 'linkedin_ad',
-    "imageDataUrl" TEXT NOT NULL DEFAULT '',
-    "imageMimeType" TEXT NOT NULL DEFAULT 'image/png',
-    "imageAlt" TEXT NOT NULL DEFAULT '',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE TABLE IF NOT EXISTS "image_generation_machines" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "title" TEXT NOT NULL,
-    "notes" TEXT NOT NULL DEFAULT '',
-    "brochureFilename" TEXT,
-    "brochureMimeType" TEXT,
-    "brochureByteSize" INTEGER,
-    "brochurePdf" BLOB,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE TABLE IF NOT EXISTS "image_generation_machine_images" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "machineId" TEXT NOT NULL,
-    "label" TEXT NOT NULL DEFAULT 'Reference image',
-    "fileName" TEXT NOT NULL,
-    "mimeType" TEXT NOT NULL,
-    "byteSize" INTEGER NOT NULL,
-    "imageBytes" BLOB NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "image_generation_machine_images_machineId_fkey"
-      FOREIGN KEY ("machineId") REFERENCES "image_generation_machines"("id") ON DELETE CASCADE ON UPDATE CASCADE
-  )`,
-  `CREATE TABLE IF NOT EXISTS "image_generation_kb_assets" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "category" TEXT NOT NULL,
-    "label" TEXT NOT NULL,
-    "fileName" TEXT NOT NULL,
-    "mimeType" TEXT NOT NULL,
-    "byteSize" INTEGER NOT NULL,
-    "imageBytes" BLOB NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE TABLE IF NOT EXISTS "image_generation_kb_colors" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "name" TEXT NOT NULL,
-    "hex" TEXT NOT NULL,
-    "notes" TEXT NOT NULL DEFAULT '',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE TABLE IF NOT EXISTS "image_generation_video_runs" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "userPrompt" TEXT NOT NULL DEFAULT '',
-    "assistantReply" TEXT NOT NULL DEFAULT '',
-    "sourceKind" TEXT NOT NULL,
-    "sourceImageRunId" TEXT,
-    "sourceImageFileName" TEXT NOT NULL,
-    "sourceImageMimeType" TEXT NOT NULL,
-    "sourceImageByteSize" INTEGER NOT NULL,
-    "sourceImageBytes" BLOB NOT NULL,
-    "videoModel" TEXT NOT NULL DEFAULT '',
-    "openrouterJobId" TEXT NOT NULL DEFAULT '',
-    "openrouterGenerationId" TEXT,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "errorMessage" TEXT,
-    "durationSeconds" INTEGER NOT NULL,
-    "resolution" TEXT NOT NULL DEFAULT '720p',
-    "aspectRatio" TEXT NOT NULL DEFAULT '16:9',
-    "videoFileName" TEXT,
-    "videoMimeType" TEXT,
-    "videoByteSize" INTEGER,
-    "videoBytes" BLOB,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_runs_createdAt_idx" ON "image_generation_runs"("createdAt")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_machines_title_idx" ON "image_generation_machines"("title")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_machines_updatedAt_idx" ON "image_generation_machines"("updatedAt")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_machine_images_machineId_idx" ON "image_generation_machine_images"("machineId")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_kb_assets_category_idx" ON "image_generation_kb_assets"("category")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_kb_assets_updatedAt_idx" ON "image_generation_kb_assets"("updatedAt")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_kb_colors_updatedAt_idx" ON "image_generation_kb_colors"("updatedAt")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_video_runs_createdAt_idx" ON "image_generation_video_runs"("createdAt")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_video_runs_status_idx" ON "image_generation_video_runs"("status")`,
-  `CREATE INDEX IF NOT EXISTS "image_generation_video_runs_openrouterJobId_idx" ON "image_generation_video_runs"("openrouterJobId")`,
-].map((statement) => statement.replace(/\s+/g, ' ').trim());
-
 let imageGenerationSchemaReady = false;
-let imageGenerationSchemaPromise: Promise<void> | null = null;
 let cachedModelStatuses:
   | {
       value: {
@@ -231,38 +125,9 @@ function generateId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
 
-async function getTableColumns(tableName: string): Promise<Set<string>> {
-  const rows = (await prisma.$queryRawUnsafe(`PRAGMA table_info("${tableName}")`)) as Array<{ name?: string }>;
-  return new Set(rows.map((row) => row.name).filter((value): value is string => Boolean(value)));
-}
-
 export async function ensureImageGenerationSchema(): Promise<void> {
   if (imageGenerationSchemaReady) return;
-  if (imageGenerationSchemaPromise) {
-    await imageGenerationSchemaPromise;
-    return;
-  }
-
-  imageGenerationSchemaPromise = (async () => {
-    for (const statement of IMAGE_GENERATION_SCHEMA_STATEMENTS) {
-      await prisma.$executeRawUnsafe(statement);
-    }
-
-    const machineColumns = await getTableColumns('image_generation_machines');
-    if (!machineColumns.has('notes')) {
-      await prisma.$executeRawUnsafe(
-        `ALTER TABLE "image_generation_machines" ADD COLUMN "notes" TEXT NOT NULL DEFAULT ''`,
-      );
-    }
-
-    imageGenerationSchemaReady = true;
-  })();
-
-  try {
-    await imageGenerationSchemaPromise;
-  } finally {
-    imageGenerationSchemaPromise = null;
-  }
+  imageGenerationSchemaReady = true;
 }
 
 function shouldUpgradeLegacyLinkedInAdPrompt(value: string): boolean {

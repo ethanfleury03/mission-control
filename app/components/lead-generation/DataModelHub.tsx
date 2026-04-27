@@ -124,8 +124,8 @@ export function DataModelHub() {
             <code className="text-2xs bg-neutral-100 px-1 py-0.5 rounded">lib/lead-generation/mock-data.ts</code>.
           </p>
           <p>
-            <strong>Next step:</strong> Add Prisma schema models aligned with these types. The existing app uses SQLite via Prisma
-            for directory scraper entities, so the same pattern can extend to lead-gen entities.
+            <strong>Current state:</strong> Prisma schema models are aligned with these types and run on the configured Postgres
+            database alongside the directory scraper entities.
           </p>
           <p>
             <strong>Scoring:</strong> Scaffold in{' '}

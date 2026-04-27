@@ -10,7 +10,10 @@
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit --project tsconfig.typecheck.json",
     "test": "vitest run",
+    "ci:gcp-config": "bash scripts/check-gcp-ci-config.sh",
+    "grok:voice:test": "tsx ./scripts/grok-voice-sandbox.ts",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:seed:geo": "tsx ./scripts/seed-geo-local.ts",
@@ -20,8 +23,6 @@
     "worker:phone-campaign": "tsx ./scripts/phone-campaign-worker.ts"
   },
   "dependencies": {
-    "@libsql/client": "^0.8.0",
-    "@prisma/adapter-libsql": "^5.22.0",
     "@types/dagre": "^0.7.53",
     "@types/three": "^0.184.0",
     "@xyflow/react": "^12.10.0",
@@ -45,6 +46,7 @@
     "tailwind-merge": "^2.6.1",
     "three": "^0.184.0",
     "uuid": "^13.0.0",
+    "ws": "^8.20.0",
     "zustand": "^5.0.11"
   },
   "prisma": {

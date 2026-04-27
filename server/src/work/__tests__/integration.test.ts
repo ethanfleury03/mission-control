@@ -16,6 +16,7 @@ async function withTestDb<T>(fn: (db: Pool) => Promise<T>): Promise<T> {
     ssl: false
   });
   try {
+    await pool.query('TRUNCATE work_events, work_items RESTART IDENTITY CASCADE');
     return await fn(pool);
   } finally {
     await pool.end();
@@ -57,11 +58,11 @@ async function testSkipLocked(): Promise<{ passed: boolean; error?: string }> {
     const repo = new WorkRepository(db);
     
     // Create test work items
-    const items = await Promise.all([
-      db.query(`INSERT INTO work_items (team_id, input, status) 
-        VALUES ('00000000-0000-0000-0000-000000000001', '{}', 'queued') RETURNING id`),
-      db.query(`INSERT INTO work_items (team_id, input, status) 
-        VALUES ('00000000-0000-0000-0000-000000000001', '{}', 'queued') RETURNING id`)
+    await Promise.all([
+      db.query(`INSERT INTO work_items (team_id, input, status, requested_by_type)
+        VALUES ('00000000-0000-0000-0000-000000000001', '{}', 'queued', 'system') RETURNING id`),
+      db.query(`INSERT INTO work_items (team_id, input, status, requested_by_type)
+        VALUES ('00000000-0000-0000-0000-000000000001', '{}', 'queued', 'system') RETURNING id`)
     ]);
     
     // Simulate concurrent claims from two workers
@@ -154,8 +155,8 @@ async function testMaxAttempts(): Promise<{ passed: boolean; error?: string }> {
     
     // Create work item with max_attempts = 1
     const result = await db.query(
-      `INSERT INTO work_items (team_id, input, status, max_attempts, attempt_count)
-       VALUES ('00000000-0000-0000-0000-000000000001', '{}', 'failed', 1, 1)
+      `INSERT INTO work_items (team_id, input, status, requested_by_type, max_attempts, attempt_count)
+       VALUES ('00000000-0000-0000-0000-000000000001', '{}', 'failed', 'system', 1, 1)
        RETURNING id`
     );
     const itemId = result.rows[0].id;

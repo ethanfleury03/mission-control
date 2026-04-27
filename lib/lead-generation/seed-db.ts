@@ -26,7 +26,7 @@ async function performSeed(): Promise<SeedResult> {
 
   let marketsTouched = 0;
   for (const m of SEED_MARKETS) {
-    // Avoid prisma.upsert here: Turso + driver adapter can return HTTP 400 on UPSERT/RETURNING batches.
+    // Keep explicit create/update behavior so seeding remains easy to reason about.
     const existing = await prisma.leadGenMarket.findUnique({ where: { slug: m.slug } });
     const row = existing
       ? await prisma.leadGenMarket.update({

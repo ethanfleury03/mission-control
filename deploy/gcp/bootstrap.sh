@@ -4,13 +4,6 @@
 # Usage:
 #   bash deploy/gcp/bootstrap.sh <PROJECT_ID> [REGION] [CUSTOM_DOMAIN]
 #
-# Required env (Turso stays as the dashboard DB per plan):
-#   TURSO_DATABASE_URL
-#   TURSO_AUTH_TOKEN
-#
-# If these are only in the repo-root .env (not exported in the shell), the
-# script loads .env automatically before checking.
-#
 # Optional env (any you skip simply don't get wired to Cloud Run):
 #   OPENROUTER_API_KEY, FIRECRAWL_API_KEY, SERPER_API_KEY,
 #   HUBSPOT_ACCESS_TOKEN, HUBSPOT_PORTAL_ID,
@@ -21,8 +14,7 @@
 # Idempotent: re-runs reuse existing resources.
 #
 # Do NOT enable `set -u` (nounset) before sourcing .env: many .env files reference
-# optional vars (${FOO}) or include lines that break under nounset, which prevents
-# TURSO_* from ever being assigned even when present in the file.
+# optional vars (${FOO}) or include lines that break under nounset.
 
 set -eo pipefail
 
@@ -33,6 +25,7 @@ CUSTOM_DOMAIN="${3:-${MISSION_CONTROL_DOMAIN:-support.arrsys.com}}"
 AR_REPO="mission-control"
 SQL_INSTANCE="mc-sql"
 SQL_DATABASE="missioncontrol"
+APP_SQL_DATABASE="missioncontrol_app"
 SQL_USER="mcapp"
 WEB_SA="mc-web-sa"
 API_SA="mc-api-sa"
@@ -78,19 +71,6 @@ gcloud config set run/region "$REGION" >/dev/null
 # .../locations/us-central1/builds returns 404 NOT_FOUND on many new projects
 # until Google provisions workers there — do not depend on it for bootstrap.
 gcloud config unset builds/region >/dev/null 2>&1 || true
-
-if [ -z "${TURSO_DATABASE_URL:-}" ] || [ -z "${TURSO_AUTH_TOKEN:-}" ]; then
-  die "TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set (non-empty).
-
-Bootstrap only auto-loads REPO_ROOT/.env — current REPO_ROOT:
-  ${REPO_ROOT}
-
-If you ran this from a different clone (e.g. OpenClaw workspace), that .env may not include Turso.
-Fix: copy Turso lines into that file, or export both vars in the shell, then re-run:
-  export TURSO_DATABASE_URL='libsql://...'
-  export TURSO_AUTH_TOKEN='...'
-  bash deploy/gcp/bootstrap.sh ${PROJECT_ID} ${REGION}"
-fi
 
 # Cloud SQL Auth Proxy (used by apply-pg-schema.sh) needs Application Default Credentials,
 # not only 'gcloud auth login'. Fail fast with a clear message.
@@ -224,6 +204,11 @@ if ! gcloud sql databases describe "$SQL_DATABASE" --instance="$SQL_INSTANCE" >/
   gcloud sql databases create "$SQL_DATABASE" --instance="$SQL_INSTANCE"
 fi
 
+if ! gcloud sql databases describe "$APP_SQL_DATABASE" --instance="$SQL_INSTANCE" >/dev/null 2>&1; then
+  info "Creating database '$APP_SQL_DATABASE'"
+  gcloud sql databases create "$APP_SQL_DATABASE" --instance="$SQL_INSTANCE"
+fi
+
 # Password handling: store once, re-use thereafter from Secret Manager.
 if gcloud secrets describe mc-api-db-password >/dev/null 2>&1; then
   info "Reusing existing mc-api-db-password"
@@ -248,6 +233,7 @@ CLOUD_SQL_CONN="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 SQL_USER_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$SQL_USER")"
 SQL_PASS_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$SQL_PASS")"
 DATABASE_URL="postgresql://${SQL_USER_ENC}:${SQL_PASS_ENC}@127.0.0.1/${SQL_DATABASE}?host=/cloudsql/${CLOUD_SQL_CONN}"
+APP_DATABASE_URL="postgresql://${SQL_USER_ENC}:${SQL_PASS_ENC}@127.0.0.1/${APP_SQL_DATABASE}?host=/cloudsql/${CLOUD_SQL_CONN}"
 
 # -------------------------------------------------------------------------------------------------
 # 4. Service accounts
@@ -300,8 +286,7 @@ upsert_secret() {
 
 info "Writing secrets to Secret Manager"
 upsert_secret mc-api-db-url     "$DATABASE_URL"
-upsert_secret mc-turso-url      "$TURSO_DATABASE_URL"
-upsert_secret mc-turso-token    "$TURSO_AUTH_TOKEN"
+upsert_secret mc-app-db-url     "$APP_DATABASE_URL"
 upsert_secret mc-openrouter     "${OPENROUTER_API_KEY:-}"
 upsert_secret mc-image-openrouter "${IMAGE_OPENROUTER_API_KEY:-}"
 upsert_secret mc-firecrawl      "${FIRECRAWL_API_KEY:-}"
@@ -368,7 +353,7 @@ bind_secret_access() {
 }
 
 info "Granting Secret Manager access to service accounts"
-for S in mc-auth-secret mc-google-client-id mc-google-client-secret mc-turso-url mc-turso-token \
+for S in mc-auth-secret mc-google-client-id mc-google-client-secret mc-app-db-url \
          mc-openrouter mc-firecrawl mc-serper mc-hubspot-token mc-hubspot-portal \
          mc-google-sa-email mc-google-sa-key; do
   bind_secret_access "$WEB_SA" "$S"
@@ -376,14 +361,16 @@ done
 for S in mc-api-db-url mc-webhook-url mc-webhook-secret; do
   bind_secret_access "$API_SA" "$S"
 done
-for S in mc-turso-url mc-turso-token mc-openrouter mc-firecrawl mc-serper; do
+for S in mc-app-db-url mc-openrouter mc-firecrawl mc-serper; do
   bind_secret_access "$SCRAPER_SA" "$S"
 done
 
-info "Granting Cloud SQL Client to $API_SA"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${API_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role=roles/cloudsql.client --condition=None >/dev/null 2>&1 || true
+info "Granting Cloud SQL Client to runtime service accounts"
+for S in "$API_SA" "$WEB_SA" "$SCRAPER_SA"; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${S}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role=roles/cloudsql.client --condition=None >/dev/null 2>&1 || true
+done
 
 info "Granting Cloud Build permissions (Run admin + SA user)"
 for ROLE in roles/run.admin roles/iam.serviceAccountUser roles/artifactregistry.writer roles/cloudsql.client; do
@@ -398,6 +385,10 @@ done
 info "Applying Postgres schema migrations"
 bash "$SCRIPT_DIR/apply-pg-schema.sh" \
   "$PROJECT_ID" "$REGION" "$SQL_INSTANCE" "$SQL_DATABASE" "$SQL_USER" "$SQL_PASS"
+
+info "Applying Prisma app schema migrations"
+bash "$SCRIPT_DIR/apply-prisma-schema.sh" \
+  "$PROJECT_ID" "$REGION" "$SQL_INSTANCE" "$APP_SQL_DATABASE" "$SQL_USER" "$SQL_PASS"
 
 # -------------------------------------------------------------------------------------------------
 # 9. Build + deploy mc-api first (so we know its URL for mc-web)
@@ -427,7 +418,7 @@ info "Building and deploying mc-web"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.web.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_API_URL=$API_URL,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN"
 
 WEB_URL="$(gcloud run services describe mc-web --region="$REGION" --format='value(status.url)')"
 [ -n "$WEB_URL" ] || die "Could not read mc-web URL"
@@ -450,7 +441,7 @@ info "Building and deploying mc-scraper (Cloud Run Job)"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.scraper.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO"
+  --substitutions="_REGION=$REGION,_AR_REPO=$AR_REPO,_CLOUD_SQL_INSTANCE=$CLOUD_SQL_CONN"
 
 # -------------------------------------------------------------------------------------------------
 # 12. Cloud Scheduler -> Cloud Run Job (every 5 minutes)

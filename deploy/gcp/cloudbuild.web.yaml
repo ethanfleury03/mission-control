@@ -1,7 +1,7 @@
 # Build and deploy mc-web (Next.js dashboard) to Cloud Run.
 #
 # Substitutions (all have defaults that match bootstrap.sh):
-#   _REGION, _AR_REPO, _SERVICE, _SERVICE_ACCOUNT, _API_URL
+#   _REGION, _AR_REPO, _SERVICE, _SERVICE_ACCOUNT, _API_URL, _CLOUD_SQL_INSTANCE
 #
 # Invoked by bootstrap.sh via (global Cloud Build — do not pass --region on submit):
 #   gcloud builds submit . --gcs-source-staging-dir=gs://PROJECT_ID_cloudbuild/source \
@@ -14,6 +14,7 @@ substitutions:
   _SERVICE: mc-web
   _SERVICE_ACCOUNT: mc-web-sa
   _API_URL: ''
+  _CLOUD_SQL_INSTANCE: ''
   _ENABLE_BLOGS: 'false'
   _NEXT_PUBLIC_ENABLE_BLOGS: 'false'
 
@@ -56,7 +57,11 @@ steps:
         if [ -n "$$API_URL_S" ]; then
           SET_ENV="$$SET_ENV,API_URL=$$API_URL_S,NEXT_PUBLIC_API_URL=$$API_URL_S,MISSION_CONTROL_API_URL=$$API_URL_S"
         fi
-        SECRET_FLAGS="--set-secrets=AUTH_SECRET=mc-auth-secret:latest,AUTH_GOOGLE_ID=mc-google-client-id:latest,AUTH_GOOGLE_SECRET=mc-google-client-secret:latest,TURSO_DATABASE_URL=mc-turso-url:latest,TURSO_AUTH_TOKEN=mc-turso-token:latest"
+        if [ -z "${_CLOUD_SQL_INSTANCE}" ]; then
+          echo "FATAL: _CLOUD_SQL_INSTANCE substitution is required" >&2
+          exit 1
+        fi
+        SECRET_FLAGS="--set-secrets=DATABASE_URL=mc-app-db-url:latest,AUTH_SECRET=mc-auth-secret:latest,AUTH_GOOGLE_ID=mc-google-client-id:latest,AUTH_GOOGLE_SECRET=mc-google-client-secret:latest"
         for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter IMAGE_OPENROUTER_API_KEY=mc-image-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper HUBSPOT_ACCESS_TOKEN=mc-hubspot-token HUBSPOT_PORTAL_ID=mc-hubspot-portal GOOGLE_SERVICE_ACCOUNT_EMAIL=mc-google-sa-email GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=mc-google-sa-key; do
           NAME="$${OPTIONAL%%=*}"
           SECRET="$${OPTIONAL##*=}"
@@ -71,6 +76,7 @@ steps:
           --allow-unauthenticated \
           --port 8080 \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
+          --add-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
           --set-env-vars="$$SET_ENV" \
           $$SECRET_FLAGS
 

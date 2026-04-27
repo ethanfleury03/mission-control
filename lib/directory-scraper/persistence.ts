@@ -1,6 +1,6 @@
 /**
  * Persistence abstraction for directory scraper jobs.
- * Implemented with Prisma (SQLite via DATABASE_URL today; same schema works on Postgres/Turso).
+ * Implemented with Prisma against the configured Postgres DATABASE_URL.
  */
 import type { PrismaClient } from '@prisma/client';
 import type {

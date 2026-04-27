@@ -20,8 +20,8 @@ COPY tsconfig.json ./
 COPY lib ./lib
 COPY scripts ./scripts
 
-# Generate Prisma client; the worker only touches SQLite/Turso via lib/prisma.ts.
-ENV DATABASE_URL="file:./prisma/dev.db"
+# Generate Prisma client; runtime DATABASE_URL is injected from Secret Manager.
+ENV DATABASE_URL="postgresql://mcapp:mcapp@localhost:5432/missioncontrol_app"
 RUN npx prisma generate
 
 CMD ["npx", "tsx", "scripts/directory-scraper-worker.ts"]

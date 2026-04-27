@@ -18,10 +18,27 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
+function isReadOnlyModeEnabled(): boolean {
+  return process.env.MISSION_CONTROL_READ_ONLY === '1';
+}
+
+function isMutatingApiRequest(method: string, pathname: string): boolean {
+  if (!pathname.startsWith('/api/')) return false;
+  if (pathname === '/api/healthz' || pathname.startsWith('/api/auth/')) return false;
+  return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+}
+
 export default auth((req) => {
   const { pathname, search } = req.nextUrl;
   if (isPublic(pathname)) return NextResponse.next();
   if (isAuthBypassEnabled()) return NextResponse.next();
+
+  if (isReadOnlyModeEnabled() && isMutatingApiRequest(req.method, pathname)) {
+    return NextResponse.json(
+      { error: 'read_only', message: 'Mission Control is temporarily read-only for database maintenance.' },
+      { status: 503 },
+    );
+  }
 
   if (!req.auth) {
     if (pathname.startsWith('/api/')) {

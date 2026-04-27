@@ -10,7 +10,10 @@ export async function GET() {
   if (admin.response) return admin.response;
 
   const rows = await prisma.$queryRaw<TableRow[]>`
-    SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('app_users', 'auth_event_logs')
+    SELECT tablename AS name
+    FROM pg_catalog.pg_tables
+    WHERE schemaname = current_schema()
+      AND tablename IN ('app_users', 'auth_event_logs')
   `;
   const tables = new Set(rows.map((row) => row.name));
 

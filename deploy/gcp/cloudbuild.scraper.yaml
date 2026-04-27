@@ -6,6 +6,7 @@ substitutions:
   _AR_REPO: mission-control
   _JOB: mc-scraper
   _SERVICE_ACCOUNT: mc-scraper-sa
+  _CLOUD_SQL_INSTANCE: ''
 
 serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
 
@@ -36,7 +37,11 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        SECRET_FLAGS="--set-secrets=TURSO_DATABASE_URL=mc-turso-url:latest,TURSO_AUTH_TOKEN=mc-turso-token:latest"
+        if [ -z "${_CLOUD_SQL_INSTANCE}" ]; then
+          echo "FATAL: _CLOUD_SQL_INSTANCE substitution is required" >&2
+          exit 1
+        fi
+        SECRET_FLAGS="--set-secrets=DATABASE_URL=mc-app-db-url:latest"
         for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper; do
           NAME="$${OPTIONAL%%=*}"
           SECRET="$${OPTIONAL##*=}"
@@ -54,6 +59,7 @@ steps:
           --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB}:$BUILD_ID" \
           --region "${_REGION}" \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
+          --set-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
           --set-env-vars "NODE_ENV=production,RUN_ONCE=1" \
           $$SECRET_FLAGS \
           --max-retries 1 \

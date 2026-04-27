@@ -13,17 +13,22 @@ const IGNORABLE_DDL_ERROR_CODES = new Set(['42P07', '42710']);
 function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = '';
-  let inDollarQuote = false;
+  let dollarQuoteTag: string | null = null;
   const len = sql.length;
 
   for (let i = 0; i < len; i++) {
-    if (sql.substr(i, 2) === '$$') {
-      inDollarQuote = !inDollarQuote;
-      current += '$$';
-      i++;
-      continue;
+    if (sql[i] === '$') {
+      const tagMatch = sql.slice(i).match(/^\$[A-Za-z0-9_]*\$/);
+      const tag = tagMatch?.[0];
+      if (tag && (!dollarQuoteTag || tag === dollarQuoteTag)) {
+        dollarQuoteTag = dollarQuoteTag ? null : tag;
+        current += tag;
+        i += tag.length - 1;
+        continue;
+      }
     }
-    if (sql[i] === ';' && !inDollarQuote) {
+
+    if (sql[i] === ';' && !dollarQuoteTag) {
       current += ';';
       const raw = current.trim();
       // Strip leading comment lines so "Comment\nCREATE TABLE..." is not skipped

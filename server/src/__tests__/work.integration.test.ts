@@ -99,7 +99,7 @@ async function runTests() {
   if (createdId) {
     try {
       const res = await request.delete(`/work/items/${createdId}`);
-      if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
+      if (res.status !== 204) throw new Error(`Expected 204, got ${res.status}`);
       const boardRes = await request.get('/work/board');
       const total = boardRes.body.counts?.total ?? -1;
       if (total !== 0) throw new Error(`Expected 0 items after delete, got ${total}`);

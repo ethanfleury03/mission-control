@@ -7,10 +7,14 @@
     "build": "node scripts/check-no-sqlite.js && tsc",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "db:migrate": "node scripts/migrate.js",
+    "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "node scripts/seed.js",
     "seed": "node dist/scripts/seedAdmin.js",
-    "test:work": "tsx src/__tests__/work.integration.test.ts"
+    "ci:setup-db": "tsx scripts/setup-ci-db.ts",
+    "test:registry": "tsx src/__tests__/registry.integration.test.ts",
+    "test:work": "tsx src/__tests__/work.integration.test.ts",
+    "test:work:orchestration": "tsx src/work/__tests__/integration.test.ts",
+    "test:integration": "npm run test:registry && npm run test:work && npm run test:work:orchestration"
   },
   "dependencies": {
     "axios": "^1.6.0",

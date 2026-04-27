@@ -29,9 +29,9 @@ Use this file as the short path to production. The repo already contains working
 
 ### 2. Secrets and runtime config
 
-- Confirm the repo root `.env` has the production Turso values used by the dashboard:
-  - `TURSO_DATABASE_URL`
-  - `TURSO_AUTH_TOKEN`
+- Confirm Cloud SQL is the production data plane for both the app and API:
+  - `mc-app-db-url` for Prisma/Next.js data
+  - `mc-api-db-url` for the Express API data
 - Decide which optional integrations are needed at launch:
   - `OPENROUTER_API_KEY`
   - `IMAGE_OPENROUTER_API_KEY`

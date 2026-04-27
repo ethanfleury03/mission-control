@@ -1,0 +1,52 @@
+[
+  {
+    "id": "1",
+    "name": "Right person, outsourcing today",
+    "prompt": "Yes, I handle that. We're outsourcing some of the short-run label work right now."
+  },
+  {
+    "id": "2",
+    "name": "Wrong person with contact help",
+    "prompt": "No, I don't handle that. The best person is our operations manager, and her email is ops@example.com."
+  },
+  {
+    "id": "3",
+    "name": "Direct machine spec question",
+    "prompt": "Potentially. Do you know what size web width the machines have?"
+  },
+  {
+    "id": "4",
+    "name": "Material capability question",
+    "prompt": "Can your machines print on Mylar or BOPP?"
+  },
+  {
+    "id": "5",
+    "name": "Immediate decline",
+    "prompt": "No thanks, not interested."
+  },
+  {
+    "id": "6",
+    "name": "Already have a printer",
+    "prompt": "We already have a digital printer in-house."
+  },
+  {
+    "id": "7",
+    "name": "Send me information",
+    "prompt": "Can you just send me some information?"
+  },
+  {
+    "id": "8",
+    "name": "Ask if caller is AI",
+    "prompt": "Are you AI?"
+  },
+  {
+    "id": "9",
+    "name": "Direct price question",
+    "prompt": "What do your printers usually cost?"
+  },
+  {
+    "id": "10",
+    "name": "Not the right person, no help",
+    "prompt": "No, that's not me. I don't have a number or email for that person."
+  }
+]

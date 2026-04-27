@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { getAuthBypassEmail, isAuthBypassEnabled } from '../bypass';
 
@@ -7,22 +7,23 @@ const originalBypass = process.env.AUTH_BYPASS_LOGIN;
 const originalBypassEmail = process.env.AUTH_BYPASS_EMAIL;
 
 afterEach(() => {
-  process.env.NODE_ENV = originalNodeEnv;
-  process.env.AUTH_BYPASS_LOGIN = originalBypass;
-  process.env.AUTH_BYPASS_EMAIL = originalBypassEmail;
+  vi.unstubAllEnvs();
+  if (originalNodeEnv !== undefined) vi.stubEnv('NODE_ENV', originalNodeEnv);
+  if (originalBypass !== undefined) vi.stubEnv('AUTH_BYPASS_LOGIN', originalBypass);
+  if (originalBypassEmail !== undefined) vi.stubEnv('AUTH_BYPASS_EMAIL', originalBypassEmail);
 });
 
 describe('auth bypass', () => {
   it('allows bypass in non-production when enabled', () => {
-    process.env.NODE_ENV = 'development';
-    process.env.AUTH_BYPASS_LOGIN = '1';
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('AUTH_BYPASS_LOGIN', '1');
 
     expect(isAuthBypassEnabled()).toBe(true);
   });
 
   it('disables bypass in production even when env is set', () => {
-    process.env.NODE_ENV = 'production';
-    process.env.AUTH_BYPASS_LOGIN = '1';
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('AUTH_BYPASS_LOGIN', '1');
 
     expect(isAuthBypassEnabled()).toBe(false);
   });

@@ -123,18 +123,20 @@ export class RegistryRepository {
 
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     updates.push(`version = version + 1`);
+    const idPos = idx;
     values.push(id);
     idx++;
+    let versionPos: number | null = null;
     if (expectedVersion !== undefined) {
+      versionPos = idx;
       values.push(expectedVersion);
       idx++;
     }
 
     const setClause = updates.join(', ');
-    const idPos = idx;
     const whereClause =
-      expectedVersion !== undefined
-        ? `id = $${idPos} AND version = $${idPos + 1}`
+      versionPos !== null
+        ? `id = $${idPos} AND version = $${versionPos}`
         : `id = $${idPos}`;
 
     const r = await this.db.query(
@@ -231,18 +233,21 @@ export class RegistryRepository {
 
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     updates.push(`version = version + 1`);
+    const idPos = idx;
     values.push(id);
     idx++;
+    let versionPos: number | null = null;
     if (expectedVersion !== undefined) {
+      versionPos = idx;
       values.push(expectedVersion);
       idx++;
     }
 
     const setClause = updates.join(', ');
     const whereClause =
-      expectedVersion !== undefined
-        ? `id = $${idx - 1} AND version = $${idx}`
-        : `id = $${idx - 1}`;
+      versionPos !== null
+        ? `id = $${idPos} AND version = $${versionPos}`
+        : `id = $${idPos}`;
 
     const r = await this.db.query(
       `UPDATE registry_teams SET ${setClause} WHERE ${whereClause} RETURNING *`,
