@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getImageStudioKBAsset } from '@/lib/image-generation/service';
 
 export const runtime = 'nodejs';
@@ -19,7 +20,7 @@ export async function GET(
   return new NextResponse(Buffer.from(asset.bytes) as BodyInit, {
     headers: {
       'Content-Type': asset.mimeType,
-      'Content-Disposition': `inline; filename="${asset.fileName.replace(/"/g, '')}"`,
+      'Content-Disposition': inlineContentDisposition(asset.fileName, 'kb-asset'),
       'Cache-Control': 'no-store',
     },
   });

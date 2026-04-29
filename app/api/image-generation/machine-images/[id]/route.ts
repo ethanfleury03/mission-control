@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getImageGenerationMachineImage } from '@/lib/image-generation/service';
 
 export const runtime = 'nodejs';
@@ -19,7 +20,7 @@ export async function GET(
   return new NextResponse(Buffer.from(image.bytes) as BodyInit, {
     headers: {
       'Content-Type': image.mimeType,
-      'Content-Disposition': `inline; filename="${image.fileName.replace(/"/g, '')}"`,
+      'Content-Disposition': inlineContentDisposition(image.fileName, 'machine-reference'),
       'Cache-Control': 'no-store',
     },
   });

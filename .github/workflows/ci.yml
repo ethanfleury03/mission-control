@@ -12,6 +12,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   NEXT_TELEMETRY_DISABLED: "1"
 
@@ -184,3 +188,37 @@ jobs:
 
       - name: Validate GCP deployment config
         run: npm run ci:gcp-config
+
+  deploy-prod:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs:
+      - web-postgres-tests
+      - web-build
+      - server-build-and-tests
+      - docker-builds
+      - gcp-config-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'arrow-rag-support-prod' }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy production
+        run: bash deploy/gcp/deploy-env.sh prod "$GCP_PROJECT_ID" "$GCP_REGION"

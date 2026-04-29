@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getManualFile } from '@/lib/manuals/service';
 
 export const runtime = 'nodejs';
@@ -19,7 +20,7 @@ export async function GET(
   return new NextResponse(Buffer.from(manual.bytes) as BodyInit, {
     headers: {
       'Content-Type': manual.mimeType,
-      'Content-Disposition': `inline; filename="${manual.fileName.replace(/"/g, '')}"`,
+      'Content-Disposition': inlineContentDisposition(manual.fileName, 'manual'),
       'Cache-Control': 'no-store',
     },
   });

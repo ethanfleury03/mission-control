@@ -2,6 +2,7 @@
 #
 # Substitutions (all have defaults that match bootstrap.sh):
 #   _REGION, _AR_REPO, _SERVICE, _SERVICE_ACCOUNT, _API_URL, _CLOUD_SQL_INSTANCE
+#   _APP_DB_SECRET, _AUTH_SECRET, _GOOGLE_ID_SECRET, _GOOGLE_SECRET_SECRET
 #
 # Invoked by bootstrap.sh via (global Cloud Build — do not pass --region on submit):
 #   gcloud builds submit . --gcs-source-staging-dir=gs://PROJECT_ID_cloudbuild/source \
@@ -17,6 +18,22 @@ substitutions:
   _CLOUD_SQL_INSTANCE: ''
   _ENABLE_BLOGS: 'false'
   _NEXT_PUBLIC_ENABLE_BLOGS: 'false'
+  _AUTH_PUBLIC_URL: ''
+  _IMAGE_CHAT_MODEL: deepseek/deepseek-v4-flash
+  _IMAGE_IMAGE_MODEL: openai/gpt-5.4-image-2
+  _IMAGE_VIDEO_MODEL: google/veo-3.1-fast
+  _APP_DB_SECRET: mc-app-db-url
+  _AUTH_SECRET: mc-auth-secret
+  _GOOGLE_ID_SECRET: mc-google-client-id
+  _GOOGLE_SECRET_SECRET: mc-google-client-secret
+  _OPENROUTER_SECRET: mc-openrouter
+  _IMAGE_OPENROUTER_SECRET: mc-image-openrouter
+  _FIRECRAWL_SECRET: mc-firecrawl
+  _SERPER_SECRET: mc-serper
+  _HUBSPOT_TOKEN_SECRET: mc-hubspot-token
+  _HUBSPOT_PORTAL_SECRET: mc-hubspot-portal
+  _GOOGLE_SA_EMAIL_SECRET: mc-google-sa-email
+  _GOOGLE_SA_KEY_SECRET: mc-google-sa-key
 
 serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
 
@@ -53,19 +70,23 @@ steps:
         # (avoids gcloud exit 2 when the service has no previous env to merge into).
         # ${_API_URL} is a Cloud Build substitution, expanded when the build is created.
         API_URL_S="${_API_URL}"
-        SET_ENV="NODE_ENV=production,AUTH_TRUST_HOST=true,ENABLE_BLOGS=${_ENABLE_BLOGS},NEXT_PUBLIC_ENABLE_BLOGS=${_NEXT_PUBLIC_ENABLE_BLOGS}"
+        AUTH_PUBLIC_URL_S="${_AUTH_PUBLIC_URL}"
+        SET_ENV="NODE_ENV=production,AUTH_TRUST_HOST=true,ENABLE_BLOGS=${_ENABLE_BLOGS},NEXT_PUBLIC_ENABLE_BLOGS=${_NEXT_PUBLIC_ENABLE_BLOGS},IMAGE_OPENROUTER_CHAT_MODEL=${_IMAGE_CHAT_MODEL},IMAGE_OPENROUTER_IMAGE_MODEL=${_IMAGE_IMAGE_MODEL},IMAGE_OPENROUTER_VIDEO_MODEL=${_IMAGE_VIDEO_MODEL}"
         if [ -n "$$API_URL_S" ]; then
           SET_ENV="$$SET_ENV,API_URL=$$API_URL_S,NEXT_PUBLIC_API_URL=$$API_URL_S,MISSION_CONTROL_API_URL=$$API_URL_S"
+        fi
+        if [ -n "$$AUTH_PUBLIC_URL_S" ]; then
+          SET_ENV="$$SET_ENV,NEXTAUTH_URL=$$AUTH_PUBLIC_URL_S,AUTH_URL=$$AUTH_PUBLIC_URL_S"
         fi
         if [ -z "${_CLOUD_SQL_INSTANCE}" ]; then
           echo "FATAL: _CLOUD_SQL_INSTANCE substitution is required" >&2
           exit 1
         fi
-        SECRET_FLAGS="--set-secrets=DATABASE_URL=mc-app-db-url:latest,AUTH_SECRET=mc-auth-secret:latest,AUTH_GOOGLE_ID=mc-google-client-id:latest,AUTH_GOOGLE_SECRET=mc-google-client-secret:latest"
-        for OPTIONAL in OPENROUTER_API_KEY=mc-openrouter IMAGE_OPENROUTER_API_KEY=mc-image-openrouter FIRECRAWL_API_KEY=mc-firecrawl SERPER_API_KEY=mc-serper HUBSPOT_ACCESS_TOKEN=mc-hubspot-token HUBSPOT_PORTAL_ID=mc-hubspot-portal GOOGLE_SERVICE_ACCOUNT_EMAIL=mc-google-sa-email GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=mc-google-sa-key; do
+        SECRET_FLAGS="--set-secrets=DATABASE_URL=${_APP_DB_SECRET}:latest,AUTH_SECRET=${_AUTH_SECRET}:latest,AUTH_GOOGLE_ID=${_GOOGLE_ID_SECRET}:latest,AUTH_GOOGLE_SECRET=${_GOOGLE_SECRET_SECRET}:latest"
+        for OPTIONAL in OPENROUTER_API_KEY=${_OPENROUTER_SECRET} IMAGE_OPENROUTER_API_KEY=${_IMAGE_OPENROUTER_SECRET} FIRECRAWL_API_KEY=${_FIRECRAWL_SECRET} SERPER_API_KEY=${_SERPER_SECRET} HUBSPOT_ACCESS_TOKEN=${_HUBSPOT_TOKEN_SECRET} HUBSPOT_PORTAL_ID=${_HUBSPOT_PORTAL_SECRET} GOOGLE_SERVICE_ACCOUNT_EMAIL=${_GOOGLE_SA_EMAIL_SECRET} GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${_GOOGLE_SA_KEY_SECRET}; do
           NAME="$${OPTIONAL%%=*}"
           SECRET="$${OPTIONAL##*=}"
-          if gcloud secrets describe "$$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
+          if [ -n "$$SECRET" ] && gcloud secrets describe "$$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
             SECRET_FLAGS="$$SECRET_FLAGS,$$NAME=$$SECRET:latest"
           fi
         done
@@ -73,8 +94,10 @@ steps:
           --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID" \
           --region "${_REGION}" \
           --platform managed \
-          --allow-unauthenticated \
+          --no-invoker-iam-check \
           --port 8080 \
+          --memory 1Gi \
+          --timeout 900s \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
           --add-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
           --set-env-vars="$$SET_ENV" \

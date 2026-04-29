@@ -4,6 +4,8 @@ import type { Session } from 'next-auth';
 import { SessionProvider } from 'next-auth/react';
 import type { ReactNode } from 'react';
 
+import { AuthSessionTracker } from './components/AuthSessionTracker';
+
 export function AppProviders({
   children,
   session,
@@ -11,5 +13,10 @@ export function AppProviders({
   children: ReactNode;
   session: Session | null;
 }) {
-  return <SessionProvider session={session}>{children}</SessionProvider>;
+  return (
+    <SessionProvider session={session}>
+      <AuthSessionTracker />
+      {children}
+    </SessionProvider>
+  );
 }

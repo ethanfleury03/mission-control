@@ -3,6 +3,7 @@ import type {
   ImageGenerationChatResponse,
   ImageGenerationHistoryRun,
   ImageGenerationMachineSummary,
+  ImageStudioAgentContext,
   ImageStudioKBResponse,
   ImageStudioSettingsResponse,
   ImageStudioSettingsUpdate,
@@ -44,6 +45,8 @@ export async function sendImageGenerationPrompt(input: {
   machineId?: string | null;
   imageType: string;
   imageMode: boolean;
+  generationMode: ImageStudioAgentContext['generationMode'];
+  studioContext?: ImageStudioAgentContext;
   messages: ImageConversationMessage[];
 }): Promise<ImageGenerationChatResponse> {
   const response = await fetch(`${BASE}/chat`, {

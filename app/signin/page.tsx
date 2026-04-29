@@ -7,7 +7,11 @@ import { isAuthBypassEnabled } from '@/lib/auth/bypass';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type SearchParams = { callbackUrl?: string | string[]; error?: string | string[] };
+type SearchParams = {
+  callbackUrl?: string | string[];
+  error?: string | string[];
+  signedOut?: string | string[];
+};
 
 function first(v: string | string[] | undefined): string | undefined {
   if (Array.isArray(v)) return v[0];
@@ -38,13 +42,14 @@ export default async function SignInPage({
   const session = await auth();
   const params = await searchParams;
   const callbackUrl = first(params.callbackUrl) ?? '/';
+  const signedOut = first(params.signedOut) === '1';
   const err = authBypassEnabled
     ? null
     : !googleAuthConfigured
     ? 'Google sign-in is not configured on this deployment yet. Set AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET, then redeploy.'
     : errorMessage(first(params.error));
 
-  if (authBypassEnabled || session) {
+  if (authBypassEnabled || (session && !signedOut)) {
     redirect(callbackUrl);
   }
 

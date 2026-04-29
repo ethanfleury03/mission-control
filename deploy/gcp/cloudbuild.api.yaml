@@ -2,7 +2,7 @@
 #
 # Requires:
 #   - _CLOUD_SQL_INSTANCE: "project:region:instance" for --add-cloudsql-instances
-#   - Secret Manager secret "mc-api-db-url" containing the full DATABASE_URL
+#   - Secret Manager secret _API_DB_SECRET containing the full DATABASE_URL
 #     (postgresql://user:pw@127.0.0.1/missioncontrol?host=/cloudsql/<INSTANCE>).
 #
 # The service is deployed with --no-allow-unauthenticated; only principals with
@@ -14,6 +14,9 @@ substitutions:
   _SERVICE: mc-api
   _SERVICE_ACCOUNT: mc-api-sa
   _CLOUD_SQL_INSTANCE: ''
+  _API_DB_SECRET: mc-api-db-url
+  _WEBHOOK_URL_SECRET: mc-webhook-url
+  _WEBHOOK_SECRET_SECRET: mc-webhook-secret
 
 # User-managed worker (bootstrap creates mc-build-runner). Required when org policy blocks
 # PROJECT_NUMBER@cloudbuild.gserviceaccount.com. With a custom SA, logs MUST be CLOUD_LOGGING_ONLY.
@@ -50,6 +53,14 @@ steps:
           echo "FATAL: _CLOUD_SQL_INSTANCE substitution is required" >&2
           exit 1
         fi
+        SECRET_FLAGS="--set-secrets=DATABASE_URL=${_API_DB_SECRET}:latest"
+        for OPTIONAL in MISSION_CONTROL_WEBHOOK_URL=${_WEBHOOK_URL_SECRET} MISSION_CONTROL_WEBHOOK_SECRET=${_WEBHOOK_SECRET_SECRET}; do
+          NAME="$${OPTIONAL%%=*}"
+          SECRET="$${OPTIONAL##*=}"
+          if [ -n "$$SECRET" ] && gcloud secrets describe "$$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            SECRET_FLAGS="$$SECRET_FLAGS,$$NAME=$$SECRET:latest"
+          fi
+        done
         gcloud run deploy "${_SERVICE}" \
           --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID" \
           --region "${_REGION}" \
@@ -61,7 +72,7 @@ steps:
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
           --add-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
           --set-env-vars "NODE_ENV=production,PGSSLMODE=disable" \
-          --set-secrets "DATABASE_URL=mc-api-db-url:latest"
+          $$SECRET_FLAGS
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID'

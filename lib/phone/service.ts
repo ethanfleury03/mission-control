@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { DEFAULT_PHONE_SETTINGS, getPhoneAgentProfile, getPhoneAgentProfiles, PHONE_FUTURE_SOURCE_CONNECTORS } from './config';
 import { parsePhoneCsv, previewPhoneCsvImport } from './csv-import';
@@ -212,25 +212,32 @@ function parseActiveWeekdays(value: unknown): PhoneWeekday[] {
 
 export async function ensurePhoneSettingsRow() {
   await ensurePhoneSchema();
-  const existing = await prisma.phoneSettings.findUnique({ where: { id: 'default' } });
-  if (existing) return existing;
-
-  return prisma.phoneSettings.create({
-    data: {
-      id: 'default',
-      defaultTimezone: DEFAULT_PHONE_SETTINGS.defaultTimezone,
-      businessHoursStart: DEFAULT_PHONE_SETTINGS.businessHoursStart,
-      businessHoursEnd: DEFAULT_PHONE_SETTINGS.businessHoursEnd,
-      activeWeekdaysJson: stringifyJson(DEFAULT_PHONE_SETTINGS.activeWeekdays, '[]'),
-      dailyCallCap: DEFAULT_PHONE_SETTINGS.dailyCallCap,
-      cooldownSeconds: DEFAULT_PHONE_SETTINGS.cooldownSeconds,
-      maxAttemptsPerLead: DEFAULT_PHONE_SETTINGS.maxAttemptsPerLead,
-      retryDelayMinutes: DEFAULT_PHONE_SETTINGS.retryDelayMinutes,
-      voicemailEnabled: DEFAULT_PHONE_SETTINGS.voicemailEnabled,
-      autoPauseAfterRepeatedFailures: DEFAULT_PHONE_SETTINGS.autoPauseAfterRepeatedFailures,
-      defaultSourceBehavior: DEFAULT_PHONE_SETTINGS.defaultSourceBehavior,
-    },
-  });
+  try {
+    return await prisma.phoneSettings.upsert({
+      where: { id: 'default' },
+      update: {},
+      create: {
+        id: 'default',
+        defaultTimezone: DEFAULT_PHONE_SETTINGS.defaultTimezone,
+        businessHoursStart: DEFAULT_PHONE_SETTINGS.businessHoursStart,
+        businessHoursEnd: DEFAULT_PHONE_SETTINGS.businessHoursEnd,
+        activeWeekdaysJson: stringifyJson(DEFAULT_PHONE_SETTINGS.activeWeekdays, '[]'),
+        dailyCallCap: DEFAULT_PHONE_SETTINGS.dailyCallCap,
+        cooldownSeconds: DEFAULT_PHONE_SETTINGS.cooldownSeconds,
+        maxAttemptsPerLead: DEFAULT_PHONE_SETTINGS.maxAttemptsPerLead,
+        retryDelayMinutes: DEFAULT_PHONE_SETTINGS.retryDelayMinutes,
+        voicemailEnabled: DEFAULT_PHONE_SETTINGS.voicemailEnabled,
+        autoPauseAfterRepeatedFailures: DEFAULT_PHONE_SETTINGS.autoPauseAfterRepeatedFailures,
+        defaultSourceBehavior: DEFAULT_PHONE_SETTINGS.defaultSourceBehavior,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const existing = await prisma.phoneSettings.findUnique({ where: { id: 'default' } });
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
 export async function previewPhoneListImport(text: string): Promise<PhoneCsvPreview> {

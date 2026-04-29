@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getVideoGenerationRunContent } from '@/lib/image-generation/video-service';
 
 export const runtime = 'nodejs';
@@ -80,7 +81,7 @@ export async function GET(
         'Content-Length': String(chunk.length),
         'Content-Range': `bytes ${start}-${end}/${buffer.length}`,
         'Accept-Ranges': 'bytes',
-        'Content-Disposition': `inline; filename="${video.fileName.replace(/"/g, '')}"`,
+        'Content-Disposition': inlineContentDisposition(video.fileName, 'generated-video'),
         'Cache-Control': 'no-store',
       },
     });
@@ -91,7 +92,7 @@ export async function GET(
       'Content-Type': contentType,
       'Content-Length': String(buffer.length),
       'Accept-Ranges': 'bytes',
-      'Content-Disposition': `inline; filename="${video.fileName.replace(/"/g, '')}"`,
+      'Content-Disposition': inlineContentDisposition(video.fileName, 'generated-video'),
       'Cache-Control': 'no-store',
     },
   });

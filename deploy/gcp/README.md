@@ -116,6 +116,80 @@ That verifies `https://support.arrsys.com/api/healthz`, updates `NEXTAUTH_URL`, 
 
 `mc-api` listens on `PORT` **before** Postgres finishes connecting. **Cloud Run startup probe** hits `GET /health/live` (always 200 once HTTP is up). **`GET /health/startup`** returns 503 until migrations and seeds finish, then 200. **`GET /health`** returns 503 with `database: "initializing"` until the API is fully ready, then behaves as before (DB ping). Other routes return 503 with `error: "starting"` until ready so callers do not hit half-initialized state.
 
+## Staging environment
+
+Use the environment-aware scripts when you want a live GCP staging copy that cannot touch production services or production databases.
+
+Staging is created in the same project, on the existing `mc-sql` Cloud SQL instance, but with separate runtime resources:
+
+| Resource | Production | Staging |
+| --- | --- | --- |
+| Web service | `mc-web` | `mc-web-stage` |
+| API service | `mc-api` | `mc-api-stage` |
+| Scraper job | `mc-scraper` | `mc-scraper-stage` |
+| Scheduler job | `mc-scraper-tick` | `mc-scraper-stage-tick` |
+| API database | `missioncontrol` | `missioncontrol_stage` |
+| App database | `missioncontrol_app` | `missioncontrol_app_stage` |
+| App DB secret | `mc-app-db-url` | `mc-stage-app-db-url` |
+| API DB secret | `mc-api-db-url` | `mc-stage-api-db-url` |
+
+Create or refresh staging infrastructure and empty schemas. Replace `YOUR_PROJECT_ID` with the actual project ID from `gcloud projects list`; do not type the placeholder word `PROJECT`.
+
+```bash
+bash deploy/gcp/bootstrap-env.sh stage YOUR_PROJECT_ID us-central1
+```
+
+Deploy the current branch to staging:
+
+```bash
+bash deploy/gcp/deploy-env.sh stage YOUR_PROJECT_ID us-central1
+```
+
+For UI/API-route changes that only affect the Next.js dashboard, deploy just the web service:
+
+```bash
+bash deploy/gcp/deploy-web-env.sh stage YOUR_PROJECT_ID us-central1
+```
+
+This skips database migrations, `mc-api-stage`, `mc-scraper-stage`, and scheduler updates. Use the full `deploy-env.sh`
+when backend API, scraper, scheduler, or schema changes are part of the release.
+
+The deploy prints the staging `run.app` dashboard URL and the OAuth callback URI to add:
+
+```text
+https://<mc-web-stage-run-app>/api/auth/callback/google
+```
+
+Verify staging:
+
+```bash
+bash deploy/gcp/verify-env.sh stage YOUR_PROJECT_ID us-central1
+```
+
+The staging scheduler is paused after deploy by default so scraper tests do not run continuously by accident. To leave it active during deploy:
+
+```bash
+MC_STAGE_SCHEDULER_ACTIVE=1 bash deploy/gcp/deploy-env.sh stage YOUR_PROJECT_ID us-central1
+```
+
+Production deploys through the environment-aware script are intentionally guarded to run from `main`:
+
+```bash
+git checkout main
+git pull
+bash deploy/gcp/deploy-env.sh prod YOUR_PROJECT_ID us-central1
+```
+
+To override the branch guard in an emergency:
+
+```bash
+MC_ALLOW_NON_MAIN_PROD=1 bash deploy/gcp/deploy-env.sh prod YOUR_PROJECT_ID us-central1
+```
+
+These scripts do not configure DNS or copy production data into staging. Staging starts empty but receives the same SQL and Prisma schemas.
+
+The web service is made browser-accessible with Cloud Run's `--no-invoker-iam-check` setting instead of an `allUsers` IAM binding. This works better in organizations that block public IAM principals; NextAuth still restricts app login to verified `@arrsys.com` users.
+
 ## Re-deploying a single service
 
 ### Prisma app schema migrations

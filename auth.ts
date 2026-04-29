@@ -78,6 +78,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         token.appUserId = appUser.id;
         token.hd = appUser.hostedDomain;
+        token.appRole = appUser.role;
+        token.appStatus = appUser.status;
         token.email = appUser.email;
         token.name = appUser.name || undefined;
         token.picture = appUser.image || undefined;
@@ -90,6 +92,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (appUser) {
           token.appUserId = appUser.id;
           token.hd = appUser.hostedDomain;
+          token.appRole = appUser.role;
+          token.appStatus = appUser.status;
           token.name = appUser.name || token.name;
           token.picture = appUser.image || token.picture;
         }
@@ -99,6 +103,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       session.appUserId = typeof token.appUserId === 'string' ? token.appUserId : null;
       session.hd = typeof token.hd === 'string' ? token.hd : null;
+      session.appRole = typeof token.appRole === 'string' ? token.appRole : null;
+      session.appStatus = typeof token.appStatus === 'string' ? token.appStatus : null;
       if (session.user && typeof token.email === 'string') {
         session.user.email = token.email;
       }

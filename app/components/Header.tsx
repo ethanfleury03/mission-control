@@ -28,7 +28,8 @@ export function Header({ activeApp }: HeaderProps) {
     } catch {
       /* Sign-out should still continue if audit logging is unavailable. */
     }
-    await signOut({ callbackUrl: '/signin' });
+    const result = await signOut({ callbackUrl: '/signin?signedOut=1', redirect: false });
+    window.location.assign(result.url || '/signin?signedOut=1');
   };
 
   return (

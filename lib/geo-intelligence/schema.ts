@@ -1,6 +1,14 @@
 import { prisma } from '@/lib/prisma';
 
-const GEO_SCHEMA_STATEMENTS = [
+function geoDateTimeType() {
+  const databaseUrl = process.env.DATABASE_URL ?? '';
+  return databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://') ? 'TIMESTAMP(3)' : 'DATETIME';
+}
+
+function geoSchemaStatements() {
+  const dateTimeType = geoDateTimeType();
+
+  return [
   `CREATE TABLE IF NOT EXISTS "geo_dealers" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -16,8 +24,8 @@ const GEO_SCHEMA_STATEMENTS = [
     "lng" REAL NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'active',
     "notes" TEXT NOT NULL DEFAULT '',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE TABLE IF NOT EXISTS "geo_hubspot_contact_snapshots" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -38,22 +46,22 @@ const GEO_SCHEMA_STATEMENTS = [
     "leadStatus" TEXT NOT NULL DEFAULT '',
     "persona" TEXT NOT NULL DEFAULT '',
     "isMappable" BOOLEAN NOT NULL DEFAULT false,
-    "sourceUpdatedAt" DATETIME,
-    "lastSyncedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "sourceUpdatedAt" ${dateTimeType},
+    "lastSyncedAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE TABLE IF NOT EXISTS "geo_sync_state" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "status" TEXT NOT NULL DEFAULT 'idle',
-    "lastAttemptedAt" DATETIME,
-    "lastSyncedAt" DATETIME,
+    "lastAttemptedAt" ${dateTimeType},
+    "lastSyncedAt" ${dateTimeType},
     "lastError" TEXT NOT NULL DEFAULT '',
     "totalRecords" INTEGER NOT NULL DEFAULT 0,
     "mappableRecords" INTEGER NOT NULL DEFAULT 0,
     "unmappableRecords" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" ${dateTimeType} NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "geo_hubspot_contact_snapshots_hubspotContactId_key" ON "geo_hubspot_contact_snapshots"("hubspotContactId")`,
   `CREATE INDEX IF NOT EXISTS "geo_dealers_status_idx" ON "geo_dealers"("status")`,
@@ -65,7 +73,8 @@ const GEO_SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "geo_hubspot_contact_snapshots_leadStatus_idx" ON "geo_hubspot_contact_snapshots"("leadStatus")`,
   `CREATE INDEX IF NOT EXISTS "geo_hubspot_contact_snapshots_persona_idx" ON "geo_hubspot_contact_snapshots"("persona")`,
   `CREATE INDEX IF NOT EXISTS "geo_hubspot_contact_snapshots_isMappable_idx" ON "geo_hubspot_contact_snapshots"("isMappable")`,
-].map((statement) => statement.replace(/\s+/g, ' ').trim());
+  ].map((statement) => statement.replace(/\s+/g, ' ').trim());
+}
 
 let geoSchemaReady = false;
 let geoSchemaPromise: Promise<void> | null = null;
@@ -78,7 +87,7 @@ export async function ensureGeoIntelligenceSchema(): Promise<void> {
   }
 
   geoSchemaPromise = (async () => {
-    for (const statement of GEO_SCHEMA_STATEMENTS) {
+    for (const statement of geoSchemaStatements()) {
       await prisma.$executeRawUnsafe(statement);
     }
     geoSchemaReady = true;

@@ -57,6 +57,8 @@ import type {
   ImageGenerationHistoryRun,
   ImageGenerationMachineSummary,
   ImagePlannerResult,
+  ImageStudioAgentContext,
+  ImageStudioGenerationMode,
   ImageStudioKBResponse,
   ImageStudioPromptKey,
   ImageStudioPromptSet,
@@ -76,7 +78,7 @@ import { cn } from '../lib/utils';
 type ImageGenPage = 'home' | 'generate' | 'gallery' | 'settings';
 type GalleryTab = 'machines' | 'images' | 'videos';
 type KBSection = 'logos' | 'posts' | 'colors';
-type GenerationMode = 'chat' | 'image' | 'video';
+type GenerationMode = ImageStudioGenerationMode;
 
 type ChatMessage = {
   id: string;
@@ -385,6 +387,60 @@ export function ImageGenerationTab() {
     }
   };
 
+  const buildAgentContext = (): ImageStudioAgentContext => ({
+    activePage,
+    galleryTab,
+    settingsTab,
+    kbSection,
+    generationMode,
+    imageType,
+    selectedMachineId: selectedMachine?.id ?? null,
+    selectedMachineTitle: selectedMachine?.title ?? null,
+    selectedMachineNotes: selectedMachine?.notes ?? null,
+    selectedMachineImageCount: selectedMachine?.images.length ?? 0,
+    machineCount: machines.length,
+    kbSummary: {
+      logoCount: kbData.logos.length,
+      postCount: kbData.posts.length,
+      colorCount: kbData.colors.length,
+      colorNames: kbData.colors.slice(0, 8).map((color) => color.name),
+    },
+    settingsSummary: settingsData
+      ? {
+          configured: settingsData.configured,
+          chatModel: settingsData.chatModel,
+          imageModel: settingsData.imageModel,
+          videoModel: settingsData.videoModel,
+        }
+      : undefined,
+    historySummary: {
+      imageCount: historyRuns.length,
+      videoCount: videoRuns.length,
+      recentImages: historyRuns.slice(0, 6).map((run) => ({
+        id: run.id,
+        prompt: run.userPrompt,
+        machineTitle: run.machineTitle ?? null,
+        imageType: run.imageType,
+        createdAt: run.createdAt,
+      })),
+      recentVideos: videoRuns.slice(0, 6).map((run) => ({
+        id: run.id,
+        prompt: run.userPrompt,
+        status: run.status,
+        durationSeconds: run.durationSeconds,
+        sourceKind: run.sourceKind,
+        createdAt: run.createdAt,
+      })),
+    },
+    videoSetup: {
+      sourceKind: videoSourceKind,
+      hasUploadSource: Boolean(videoSourceFile),
+      selectedSourceImageRunId,
+      hasGeneratedSource: Boolean(selectedSourceImageRunId),
+      selectedDuration: selectedVideoDuration,
+    },
+  });
+
   const upsertVideoRun = (run: VideoGenerationRunSummary) => {
     setVideoRuns((current) =>
       [run, ...current.filter((entry) => entry.id !== run.id)].sort(
@@ -596,6 +652,8 @@ export function ImageGenerationTab() {
         machineId: selectedMachine?.id ?? null,
         imageType,
         imageMode: generationMode === 'image',
+        generationMode,
+        studioContext: buildAgentContext(),
         messages: messages.filter((message) => message.status !== 'sending').map((message) => ({
           role: message.role,
           text: message.text,

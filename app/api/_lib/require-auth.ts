@@ -21,6 +21,8 @@ export interface AuthedSession {
   appUserId: string | null;
   email: string;
   hd: string | null;
+  role: string | null;
+  status: string | null;
 }
 
 type Allowed = { authed: AuthedSession; response?: undefined };
@@ -33,6 +35,8 @@ export async function requireAuth(): Promise<Allowed | Denied> {
         appUserId: null,
         email: getAuthBypassEmail(),
         hd: getAuthBypassHd(),
+        role: 'admin',
+        status: 'active',
       },
     };
   }
@@ -46,6 +50,8 @@ export async function requireAuth(): Promise<Allowed | Denied> {
   const email = typeof session.user.email === 'string' ? session.user.email : '';
   const hd = typeof session.hd === 'string' ? session.hd : null;
   const appUserId = typeof session.appUserId === 'string' ? session.appUserId : null;
+  let role = typeof session.appRole === 'string' ? session.appRole : null;
+  let status = typeof session.appStatus === 'string' ? session.appStatus : null;
   if (!email.toLowerCase().endsWith('@arrsys.com')) {
     return {
       response: NextResponse.json({ error: 'forbidden' }, { status: 403 }),
@@ -73,6 +79,8 @@ export async function requireAuth(): Promise<Allowed | Denied> {
 
     if (appUser) {
       resolvedAppUserId = appUser.id;
+      role = appUser.role;
+      status = appUser.status;
       const stale =
         !appUser.lastSeenAt || Date.now() - appUser.lastSeenAt.getTime() > 5 * 60 * 1000;
       if (stale) {
@@ -86,5 +94,5 @@ export async function requireAuth(): Promise<Allowed | Denied> {
     console.warn('App user session metadata lookup failed', error);
   }
 
-  return { authed: { appUserId: resolvedAppUserId, email, hd } };
+  return { authed: { appUserId: resolvedAppUserId, email, hd, role, status } };
 }
