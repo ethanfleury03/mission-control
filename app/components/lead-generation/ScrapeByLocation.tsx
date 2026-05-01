@@ -51,6 +51,18 @@ interface LeadRow {
   duplicateStatus: DuplicateStatus;
   address: string;
   notes: string;
+  placeId?: string;
+  mapsUrl?: string;
+  sourceProvider?: string;
+}
+
+interface RunStats {
+  searches: number;
+  raw: number;
+  deduped: number;
+  enriched: number;
+  needsReview: number;
+  truncatedEnrichment?: boolean;
 }
 
 const TEMPLATES = [
@@ -262,6 +274,17 @@ export function ScrapeByLocation() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [queryFilter, setQueryFilter] = useState('');
   const [isDrafting, setIsDrafting] = useState(false);
+  const [leads, setLeads] = useState<LeadRow[]>(MOCK_LEADS);
+  const [runStats, setRunStats] = useState<RunStats>({
+    searches: 35,
+    raw: 347,
+    deduped: 221,
+    enriched: MOCK_LEADS.filter((lead) => lead.status === 'email_found').length,
+    needsReview: MOCK_LEADS.filter((lead) => lead.status !== 'email_found').length,
+  });
+  const [runErrors, setRunErrors] = useState<string[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isPreviewData, setIsPreviewData] = useState(true);
 
   const keywordList = useMemo(() => keywords.split('\n').map((value) => value.trim()).filter(Boolean), [keywords]);
   const regionList = useMemo(() => regions.split('\n').map((value) => value.trim()).filter(Boolean), [regions]);
@@ -276,7 +299,7 @@ export function ScrapeByLocation() {
   }, [keywordList, regionList, maxResults]);
 
   const filteredLeads = useMemo(() => {
-    return MOCK_LEADS.filter((lead) => {
+    return leads.filter((lead) => {
       if (statusFilter !== 'all' && lead.status !== statusFilter) return false;
       if (!queryFilter) return true;
       const q = queryFilter.toLowerCase();
@@ -288,11 +311,11 @@ export function ScrapeByLocation() {
         lead.website.toLowerCase().includes(q)
       );
     });
-  }, [queryFilter, statusFilter]);
+  }, [leads, queryFilter, statusFilter]);
 
-  const selectedLead = MOCK_LEADS.find((lead) => lead.id === selectedLeadId) ?? MOCK_LEADS[0];
-  const emailCount = MOCK_LEADS.filter((lead) => lead.status === 'email_found').length;
-  const reviewCount = MOCK_LEADS.filter((lead) => lead.status !== 'email_found').length;
+  const selectedLead = leads.find((lead) => lead.id === selectedLeadId) ?? leads[0] ?? MOCK_LEADS[0];
+  const emailCount = runStats.enriched;
+  const reviewCount = runStats.needsReview;
   const commandPreview = `python scripts/run_pipeline.py --input input/${activeTemplate === 'cannabis' ? 'ontario-cannabis-copackers-searches.csv' : 'arrow-label-searches-ontario.csv'} --output output/final_leads.csv`;
 
   const applyTemplate = (templateId: string) => {
@@ -301,17 +324,29 @@ export function ScrapeByLocation() {
     setKeywords(template.keywords.join('\n'));
   };
 
-  const draftWithAi = () => {
+  const draftWithAi = async () => {
     setIsDrafting(true);
-    window.setTimeout(() => {
-      if (aiPrompt.toLowerCase().includes('cannabis')) {
-        applyTemplate('cannabis');
-      } else {
-        applyTemplate('digital-labels');
+    try {
+      const response = await fetch('/api/lead-generation/scrape-by-location/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPrompt }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (Array.isArray(body.keywords) && body.keywords.length > 0) {
+        setKeywords(body.keywords.map(String).join('\n'));
       }
-      setRegions(STARTER_REGIONS.join('\n'));
+      if (Array.isArray(body.regions) && body.regions.length > 0) {
+        setRegions(body.regions.map(String).join('\n'));
+      }
+      setActiveTemplate('custom');
+    } catch {
+      if (aiPrompt.toLowerCase().includes('cannabis')) applyTemplate('cannabis');
+      else applyTemplate('digital-labels');
       setIsDrafting(false);
-    }, 650);
+      return;
+    }
+    setIsDrafting(false);
   };
 
   const toggleSelected = (id: string) => {
@@ -321,6 +356,59 @@ export function ScrapeByLocation() {
       else next.add(id);
       return next;
     });
+  };
+
+  const runScrape = async () => {
+    setIsRunning(true);
+    setRunErrors([]);
+    try {
+      const response = await fetch('/api/lead-generation/scrape-by-location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keywords: keywordList,
+          regions: regionList,
+          maxResults,
+          enrichWebsites,
+          dedupe,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Scrape failed.');
+      }
+      const nextLeads = Array.isArray(body.leads) ? body.leads as LeadRow[] : [];
+      setLeads(nextLeads);
+      setRunStats({
+        searches: Number(body.stats?.searches ?? searchRows.length),
+        raw: Number(body.stats?.raw ?? nextLeads.length),
+        deduped: Number(body.stats?.deduped ?? nextLeads.length),
+        enriched: Number(body.stats?.enriched ?? nextLeads.filter((lead) => lead.status === 'email_found').length),
+        needsReview: Number(body.stats?.needsReview ?? nextLeads.filter((lead) => lead.status !== 'email_found').length),
+        truncatedEnrichment: Boolean(body.stats?.truncatedEnrichment),
+      });
+      setRunErrors(Array.isArray(body.errors) ? body.errors.map(String) : []);
+      setIsPreviewData(false);
+      setSelectedLeadId(nextLeads[0]?.id ?? '');
+      setSelectedRows(new Set(nextLeads.slice(0, 3).map((lead) => lead.id)));
+    } catch (error) {
+      setRunErrors([error instanceof Error ? error.message : 'Scrape failed.']);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const exportCsv = () => {
+    const columns = ['business', 'category', 'city', 'phone', 'website', 'email', 'contactPage', 'rating', 'sourceQuery', 'confidence', 'address'];
+    const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = [columns.join(','), ...leads.map((lead) => columns.map((column) => escape(lead[column as keyof LeadRow])).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = isPreviewData ? 'preview-leads.csv' : 'scrape-by-location-leads.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -339,11 +427,20 @@ export function ScrapeByLocation() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
+            <button
+              type="button"
+              onClick={runScrape}
+              disabled={isRunning}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
               <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
+              Run
             </button>
-            <button className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+            >
               <Download className="h-3.5 w-3.5" />
               Export CSV
             </button>
@@ -398,7 +495,7 @@ export function ScrapeByLocation() {
               />
               <button
                 type="button"
-                onClick={draftWithAi}
+                onClick={() => void draftWithAi()}
                 className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-2xs font-semibold text-white hover:bg-blue-700"
               >
                 {isDrafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -463,10 +560,26 @@ export function ScrapeByLocation() {
               </label>
             </div>
 
-            <button className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-brand text-xs font-semibold text-white hover:bg-brand/90">
-              <Search className="h-4 w-4" />
-              Start location scrape
+            <button
+              type="button"
+              onClick={runScrape}
+              disabled={isRunning || keywordList.length === 0 || regionList.length === 0}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-brand text-xs font-semibold text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {isRunning ? 'Scraping locations...' : 'Start location scrape'}
             </button>
+
+            {runErrors.length > 0 && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-2xs leading-4 text-red-800">
+                <p className="font-semibold">Run warning</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {runErrors.slice(0, 3).map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="rounded-md border border-neutral-200 bg-white p-3">
               <div className="mb-2 flex items-center gap-2">
@@ -486,12 +599,19 @@ export function ScrapeByLocation() {
               <div>
                 <h2 className="text-sm font-semibold text-neutral-900">Review Leads</h2>
                 <p className="text-2xs text-neutral-500">
-                  Preview of a completed Ontario run. Backend execution will connect this screen to the local pipeline.
+                  {isPreviewData
+                    ? 'Preview data is shown until you run a live scrape.'
+                    : `Live scrape results from ${runStats.searches} keyword/region searches.`}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex rounded-md border border-green-200 bg-green-50 px-2 py-1 text-2xs font-medium text-green-700">
-                  Local Business Data ready
+                <span
+                  className={cn(
+                    'inline-flex rounded-md border px-2 py-1 text-2xs font-medium',
+                    isPreviewData ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-green-200 bg-green-50 text-green-700',
+                  )}
+                >
+                  {isPreviewData ? 'Preview data' : 'Live data'}
                 </span>
                 <button className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700">
                   <MoreHorizontal className="h-3.5 w-3.5" />
@@ -507,7 +627,7 @@ export function ScrapeByLocation() {
                   <FileSpreadsheet className="h-4 w-4 text-brand" />
                   <span className="text-2xs text-neutral-400">API</span>
                 </div>
-                <p className="mt-2 text-lg font-bold text-neutral-900">347</p>
+                <p className="mt-2 text-lg font-bold text-neutral-900">{runStats.raw}</p>
                 <p className="text-2xs text-neutral-500">Raw leads</p>
               </div>
               <div className="rounded-lg border border-hub-border bg-white p-3">
@@ -515,7 +635,7 @@ export function ScrapeByLocation() {
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <span className="text-2xs text-neutral-400">Dedupe</span>
                 </div>
-                <p className="mt-2 text-lg font-bold text-neutral-900">221</p>
+                <p className="mt-2 text-lg font-bold text-neutral-900">{runStats.deduped}</p>
                 <p className="text-2xs text-neutral-500">After dedupe</p>
               </div>
               <div className="rounded-lg border border-hub-border bg-white p-3">
@@ -570,7 +690,7 @@ export function ScrapeByLocation() {
               <div className="border-b border-hub-border bg-neutral-50 px-3 py-2 text-2xs text-neutral-500">
                 <span className="font-semibold text-neutral-800">{selectedRows.size} selected</span>
                 <button className="ml-3 text-brand hover:underline" type="button">
-                  Select all 221
+                  Select all {filteredLeads.length}
                 </button>
               </div>
 
@@ -613,7 +733,7 @@ export function ScrapeByLocation() {
                         <td className="px-3 py-2 text-neutral-600">{lead.phone || '-'}</td>
                         <td className="px-3 py-2">
                           <span className="inline-flex items-center gap-1 text-brand">
-                            {lead.website}
+                            {lead.website || '-'}
                             <ExternalLink className="h-3 w-3" />
                           </span>
                         </td>
@@ -659,7 +779,7 @@ export function ScrapeByLocation() {
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-neutral-500">Website</dt>
-                  <dd className="inline-flex items-center gap-1 text-right text-brand">{selectedLead.website}<ExternalLink className="h-3 w-3" /></dd>
+                  <dd className="inline-flex items-center gap-1 text-right text-brand">{selectedLead.website || '-'}<ExternalLink className="h-3 w-3" /></dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-neutral-500">Email</dt>
@@ -677,7 +797,7 @@ export function ScrapeByLocation() {
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-neutral-500">API</dt>
-                  <dd className="text-right text-neutral-800">Local Business Data</dd>
+                  <dd className="text-right text-neutral-800">{selectedLead.sourceProvider || 'Local Business Data'}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-neutral-500">Confidence</dt>
@@ -704,11 +824,23 @@ export function ScrapeByLocation() {
             <section>
               <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-neutral-500">Actions</h3>
               <div className="grid grid-cols-2 gap-2">
-                <button className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedLead.website) window.open(selectedLead.website.startsWith('http') ? selectedLead.website : `https://${selectedLead.website}`, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open site
                 </button>
-                <button className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedLead.email) void navigator.clipboard?.writeText(selectedLead.email);
+                  }}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                >
                   <Copy className="h-3.5 w-3.5" />
                   Copy email
                 </button>
@@ -727,7 +859,11 @@ export function ScrapeByLocation() {
               <div className="flex gap-2">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
                 <p className="text-2xs leading-4 text-amber-800">
-                  This screen is ready for the pipeline hook. For now, run execution still happens through the local Python scripts.
+                  {isPreviewData
+                    ? 'The visible rows are mock preview data. Click Start location scrape to fetch real Local Business Data results.'
+                    : runStats.truncatedEnrichment
+                      ? 'Live run complete. Website enrichment was capped at 250 leads for interactive performance.'
+                      : 'Live run complete. Review and export these leads before outreach.'}
                 </p>
               </div>
             </section>
