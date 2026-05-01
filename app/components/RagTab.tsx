@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   AlertCircle,
   BarChart3,
@@ -193,7 +193,7 @@ interface IngestResult {
   warnings?: string[];
 }
 
-const BROWSER_UPLOAD_LIMIT_BYTES = 30 * 1024 * 1024;
+const API_UPLOAD_LIMIT_BYTES = 30 * 1024 * 1024;
 const INGEST_LIFECYCLE_STEPS = [
   { id: 'ready', label: 'Ready', description: 'File selected and duplicate check finished.' },
   { id: 'uploading', label: 'Uploading', description: 'Browser is sending the file to the RAG API.' },
@@ -877,33 +877,31 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
     const pdfs = queue.filter((item) => item.file.name.toLowerCase().endsWith('.pdf')).length;
     const docx = queue.filter((item) => item.file.name.toLowerCase().endsWith('.docx')).length;
     const duplicates = queue.filter((item) => item.duplicateTitle).length;
-    const blocked = queue.filter((item) => item.status === 'blocked').length;
+    const large = queue.filter((item) => item.file.size > API_UPLOAD_LIMIT_BYTES).length;
     const bytes = queue.reduce((sum, item) => sum + item.file.size, 0);
-    return { files: queue.length, pdfs, docx, duplicates, blocked, bytes };
+    return { files: queue.length, pdfs, docx, duplicates, large, bytes };
   }, [queue]);
-  const hasUploadableFiles = queue.some((item) => item.status !== 'blocked');
+  const hasUploadableFiles = queue.length > 0;
 
   async function addFiles(files: FileList | File[]) {
     const accepted = Array.from(files).filter(isAcceptedFile);
     const next: QueueFile[] = [];
     for (const file of accepted) {
       const hash = await hashFile(file);
-      const tooLargeForBrowserUpload = file.size > BROWSER_UPLOAD_LIMIT_BYTES;
+      const usesLargeUpload = file.size > API_UPLOAD_LIMIT_BYTES;
       next.push({
         id: `${hash}-${file.name}-${file.size}`,
         file,
         hash,
         duplicateTitle: '',
-        status: tooLargeForBrowserUpload ? 'blocked' : 'ready',
-        phase: tooLargeForBrowserUpload ? 'Too large for browser upload' : 'Ready',
-        progress: tooLargeForBrowserUpload ? 100 : 0,
-        error: tooLargeForBrowserUpload
-          ? `This file is ${formatBytes(file.size)}. Staging browser uploads are capped at ${formatBytes(BROWSER_UPLOAD_LIMIT_BYTES)} so the request can reach the RAG API reliably. Use a smaller/split PDF or CLI/GCS ingestion for this manual.`
-          : '',
+        status: 'ready',
+        phase: usesLargeUpload ? 'Ready for large-file upload' : 'Ready',
+        progress: 0,
+        error: '',
         logs: [
           `${new Date().toLocaleTimeString()} - File selected (${formatBytes(file.size)}).`,
-          ...(tooLargeForBrowserUpload
-            ? [`${new Date().toLocaleTimeString()} - Blocked before upload because it exceeds the staging browser upload limit.`]
+          ...(usesLargeUpload
+            ? [`${new Date().toLocaleTimeString()} - This file will use direct Cloud Storage upload before RAG ingestion.`]
             : []),
         ],
       });
@@ -931,46 +929,34 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
     setUploading(true);
     const batchId = crypto.randomUUID();
     for (const item of queue) {
-      if (item.status === 'blocked' || item.file.size > BROWSER_UPLOAD_LIMIT_BYTES) {
-        setQueue((current) =>
-          updateQueuedFile(current, item.id, {
-            status: 'blocked',
-            phase: 'Too large for browser upload',
-            progress: 100,
-            error: item.error || `This file is larger than ${formatBytes(BROWSER_UPLOAD_LIMIT_BYTES)} and was not uploaded.`,
-            finishedAt: new Date().toISOString(),
-            logs: appendQueueLog(item, 'Skipped upload because the file is too large for the browser request path.'),
-          }),
-        );
-        continue;
-      }
+      if (item.status === 'running') continue;
       setQueue((current) => updateQueuedFile(current, item.id, {
         status: 'running',
-        phase: 'Uploading',
+        phase: item.file.size > API_UPLOAD_LIMIT_BYTES ? 'Creating large-file upload' : 'Uploading',
         progress: 12,
         startedAt: new Date().toISOString(),
         logs: appendQueueLog(item, 'Upload started.'),
       }));
-      const form = new FormData();
-      form.append('batchId', batchId);
-      form.append('files', item.file);
-      form.append('duplicateBehavior', duplicateBehavior);
-      form.append('autoDetectMetadata', String(autoDetectMetadata));
-      form.append('applyMetadataToAll', String(applyMetadataToAll));
-      Object.entries(preset).forEach(([key, value]) => {
-        if (value) form.append(key, value);
-      });
-      setQueue((current) => updateQueuedFile(current, item.id, { phase: 'Sending file to server', progress: 24, logs: appendQueueLog(item, 'Sending multipart upload to /api/ingest/files.') }));
       try {
-        setQueue((current) => updateQueuedFile(current, item.id, {
-          phase: 'Server processing',
-          progress: 36,
-          logs: appendQueueLog(item, 'Upload reached the server. Waiting for extraction, metadata detection, chunking, embedding, and indexing to finish.'),
-        }));
-        const response = await fetch('/api/ingest/files', { method: 'POST', body: form });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || `Upload failed with HTTP ${response.status}.`);
-        const result = payload.results?.[0] as IngestResult;
+        const result = item.file.size > API_UPLOAD_LIMIT_BYTES
+          ? await uploadLargeFileViaGcs({
+              item,
+              batchId,
+              duplicateBehavior,
+              autoDetectMetadata,
+              applyMetadataToAll,
+              preset,
+              setQueue,
+            })
+          : await uploadSmallFileViaApi({
+              item,
+              batchId,
+              duplicateBehavior,
+              autoDetectMetadata,
+              applyMetadataToAll,
+              preset,
+              setQueue,
+            });
         setQueue((current) =>
           updateQueuedFile(current, item.id, {
             status: result.status,
@@ -1040,21 +1026,21 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
         </section>
 
         <Panel title="Upload Queue" action={<span className="text-xs text-neutral-500">{summary.files} files · {formatBytes(summary.bytes)}</span>}>
-          {queue.length === 0 ? (
+      {queue.length === 0 ? (
             <EmptyState title="No files selected" text="Select one manual or a batch of manuals to review them before ingestion." actionLabel="Select files" onAction={() => fileInputRef.current?.click()} />
           ) : (
             <div className="space-y-3">
-              {summary.blocked > 0 ? (
+              {summary.large > 0 ? (
                 <Alert
-                  tone="warning"
-                  text={`${summary.blocked} file(s) are too large for the staging browser upload path. Split/compress the PDF or use CLI/GCS ingestion for those files.`}
+                  tone="info"
+                  text={`${summary.large} large file(s) will bypass the Next/Cloud Run request-size limit by uploading directly to Cloud Storage, then the server will ingest them from there.`}
                 />
               ) : null}
               <div className="grid gap-2 text-xs text-neutral-600 sm:grid-cols-4">
                 <SummaryPill label="PDFs" value={summary.pdfs} />
                 <SummaryPill label="DOCX" value={summary.docx} />
                 <SummaryPill label="Duplicates" value={summary.duplicates} />
-                <SummaryPill label="Blocked" value={summary.blocked} />
+                <SummaryPill label="Large upload" value={summary.large} />
               </div>
               <SummaryPill label="Total size" value={formatBytes(summary.bytes)} />
               <div className="divide-y divide-neutral-100 rounded-md border border-neutral-200">
@@ -1148,7 +1134,7 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
               </li>
             ))}
           </ol>
-          <Alert tone="info" text="For very large PDFs, browser uploads on staging may fail before the request reaches the app. Use a smaller PDF first, or ingest large manuals by CLI/GCS import." />
+          <Alert tone="info" text="Files over 30 MB use direct Cloud Storage upload first, then the RAG server reads the uploaded object and runs extraction, metadata detection, chunking, embedding, and indexing." />
         </Panel>
       </aside>
     </div>
@@ -1162,7 +1148,6 @@ function IngestionStepper({ item }: { item: QueueFile }) {
       {INGEST_LIFECYCLE_STEPS.map((step, index) => {
         const state =
           item.status === 'failed' && index === activeIndex ? 'failed' :
-          item.status === 'blocked' && index === activeIndex ? 'failed' :
           index < activeIndex ? 'done' :
           index === activeIndex ? 'active' :
           'pending';
@@ -2122,9 +2107,147 @@ function appendQueueLog(item: QueueFile, message: string): string[] {
   return [...(item.logs || []), `${new Date().toLocaleTimeString()} - ${message}`].slice(-12);
 }
 
+async function uploadSmallFileViaApi(input: {
+  item: QueueFile;
+  batchId: string;
+  duplicateBehavior: string;
+  autoDetectMetadata: boolean;
+  applyMetadataToAll: boolean;
+  preset: Record<string, string>;
+  setQueue: Dispatch<SetStateAction<QueueFile[]>>;
+}): Promise<IngestResult> {
+  const { item, batchId, duplicateBehavior, autoDetectMetadata, applyMetadataToAll, preset, setQueue } = input;
+  const form = new FormData();
+  form.append('batchId', batchId);
+  form.append('files', item.file);
+  form.append('duplicateBehavior', duplicateBehavior);
+  form.append('autoDetectMetadata', String(autoDetectMetadata));
+  form.append('applyMetadataToAll', String(applyMetadataToAll));
+  Object.entries(preset).forEach(([key, value]) => {
+    if (value) form.append(key, value);
+  });
+
+  setQueue((current) => updateQueuedFile(current, item.id, {
+    phase: 'Sending file to server',
+    progress: 24,
+    logs: appendQueueLog(item, 'Sending multipart upload to /api/ingest/files.'),
+  }));
+  setQueue((current) => updateQueuedFile(current, item.id, {
+    phase: 'Server processing',
+    progress: 36,
+    logs: appendQueueLog(item, 'Upload reached the server. Waiting for extraction, metadata detection, chunking, embedding, and indexing to finish.'),
+  }));
+  const response = await fetch('/api/ingest/files', { method: 'POST', body: form });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Upload failed with HTTP ${response.status}.`);
+  return payload.results?.[0] as IngestResult;
+}
+
+async function uploadLargeFileViaGcs(input: {
+  item: QueueFile;
+  batchId: string;
+  duplicateBehavior: string;
+  autoDetectMetadata: boolean;
+  applyMetadataToAll: boolean;
+  preset: Record<string, string>;
+  setQueue: Dispatch<SetStateAction<QueueFile[]>>;
+}): Promise<IngestResult> {
+  const { item, batchId, duplicateBehavior, autoDetectMetadata, applyMetadataToAll, preset, setQueue } = input;
+  setQueue((current) => updateQueuedFile(current, item.id, {
+    phase: 'Creating Cloud Storage upload',
+    progress: 8,
+    logs: appendQueueLog(item, 'Requesting a resumable Cloud Storage upload URL.'),
+  }));
+
+  const setupResponse = await fetch('/api/ingest/uploads/resumable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: item.file.name,
+      contentType: item.file.type || 'application/octet-stream',
+      sizeBytes: item.file.size,
+    }),
+  });
+  const target = await setupResponse.json().catch(() => ({}));
+  if (!setupResponse.ok) throw new Error(target.error || `Could not create large-file upload session (${setupResponse.status}).`);
+
+  setQueue((current) => updateQueuedFile(current, item.id, {
+    phase: 'Uploading to Cloud Storage',
+    progress: 12,
+    logs: appendQueueLog(item, `Large upload session created for ${target.gcsUri || 'Cloud Storage object'}.`),
+  }));
+
+  await uploadFileToResumableUrl({
+    file: item.file,
+    uploadUrl: String(target.uploadUrl || ''),
+    onProgress: (percent) => {
+      setQueue((current) => updateQueuedFile(current, item.id, {
+        phase: 'Uploading to Cloud Storage',
+        progress: Math.max(12, Math.min(54, Math.round(12 + percent * 0.42))),
+      }));
+    },
+  });
+
+  setQueue((current) => updateQueuedFile(current, item.id, {
+    phase: 'Server processing',
+    progress: 58,
+    logs: appendQueueLog(item, 'Large upload finished. Server is downloading from Cloud Storage and starting RAG ingestion.'),
+  }));
+
+  const ingestResponse = await fetch('/api/ingest/gcs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      batchId,
+      filename: item.file.name,
+      contentType: item.file.type || 'application/octet-stream',
+      bucket: target.bucket,
+      objectName: target.objectName,
+      duplicateBehavior,
+      autoDetectMetadata,
+      applyMetadataToAll,
+      metadataPreset: preset,
+    }),
+  });
+  const payload = await ingestResponse.json().catch(() => ({}));
+  const result = payload.results?.[0] as IngestResult | undefined;
+  if (!ingestResponse.ok) throw new Error(result?.message || payload.error || `Large manual ingestion failed with HTTP ${ingestResponse.status}.`);
+  if (!result) throw new Error('Large manual ingestion finished without a result payload.');
+  return result;
+}
+
+function uploadFileToResumableUrl(input: {
+  file: File;
+  uploadUrl: string;
+  onProgress: (percent: number) => void;
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!input.uploadUrl) {
+      reject(new Error('Large-file upload URL was empty.'));
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', input.uploadUrl);
+    xhr.setRequestHeader('Content-Type', input.file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) input.onProgress(event.loaded / event.total * 100);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        input.onProgress(100);
+        resolve();
+      } else {
+        reject(new Error(`Cloud Storage upload failed with HTTP ${xhr.status}. ${xhr.responseText || ''}`.trim()));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Cloud Storage upload failed because the browser could not reach the upload URL.'));
+    xhr.ontimeout = () => reject(new Error('Cloud Storage upload timed out.'));
+    xhr.send(input.file);
+  });
+}
+
 function ingestionStepIndex(item: QueueFile): number {
   const phase = `${item.phase} ${item.status} ${item.result?.status || ''}`.toLowerCase();
-  if (item.status === 'blocked') return 0;
   if (/complete|failed|duplicate|review|warning/.test(phase)) return INGEST_LIFECYCLE_STEPS.length - 1;
   if (/index/.test(phase)) return 7;
   if (/embed/.test(phase)) return 6;
@@ -2147,11 +2270,16 @@ async function hashFile(file: File): Promise<string> {
 
 function humanUploadError(error: unknown, file?: File): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (file && file.size > BROWSER_UPLOAD_LIMIT_BYTES) {
-    return `This file is ${formatBytes(file.size)}, which is above the ${formatBytes(BROWSER_UPLOAD_LIMIT_BYTES)} staging browser upload limit. The request likely did not reach the RAG API. Split/compress the PDF or ingest it via CLI/GCS import.`;
+  if (/RAG_UPLOAD_BUCKET|Large-file uploads are not configured/i.test(message)) {
+    return 'Large-file uploads are not configured on this environment yet. Set RAG_UPLOAD_BUCKET and redeploy.';
+  }
+  if (/Cloud Storage|CORS|forbidden|permission|denied/i.test(message)) {
+    return `Large-file upload failed: ${message}`;
   }
   if (/failed to fetch|network|body|payload|413|request entity too large/i.test(message)) {
-    return 'The upload did not reach a completed RAG API response. If this was a large PDF, it likely exceeded the staging request-size limit. Try a smaller PDF first or use CLI/GCS import.';
+    return file && file.size > API_UPLOAD_LIMIT_BYTES
+      ? 'The large-file upload did not complete. Check Cloud Storage bucket CORS/permissions, then retry.'
+      : 'The upload did not reach a completed RAG API response. Try the large-file upload path or a smaller PDF.';
   }
   if (/database|pgvector|postgres/i.test(message)) return 'The RAG database is not connected. Set DATABASE_URL to PostgreSQL with pgvector and run the migration.';
   if (/pdf/i.test(message)) return 'PDF text extraction failed. Try OCR mode or upload a cleaner PDF.';

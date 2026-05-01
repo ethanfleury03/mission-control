@@ -73,6 +73,23 @@ export async function ingestUploadedFile(input: {
   });
 }
 
+export async function ingestRemoteUploadedFile(input: {
+  filename: string;
+  bytes: Buffer;
+  mimeType?: string;
+  sourcePath: string;
+  options?: IngestionOptions;
+}): Promise<IngestionResult> {
+  return ingestBuffer({
+    filename: input.filename,
+    bytes: input.bytes,
+    mimeType: input.mimeType,
+    originalPath: null,
+    sourcePath: input.sourcePath,
+    options: input.options,
+  });
+}
+
 export async function ingestFolder(input: { folderPath: string; recursive?: boolean }): Promise<IngestionResult[]> {
   const folderPath = path.resolve(input.folderPath);
   const files = await collectSupportedFiles(folderPath, Boolean(input.recursive));
