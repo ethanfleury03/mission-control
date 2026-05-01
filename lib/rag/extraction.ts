@@ -1,4 +1,6 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export interface ExtractedPage {
   pageNumber: number;
@@ -60,6 +62,7 @@ export async function extractDocumentText(input: {
 async function extractPdf(bytes: Buffer): Promise<ExtractedDocumentText> {
   await ensurePdfRuntimeGlobals();
   const { PDFParse } = await import('pdf-parse');
+  configurePdfWorker(PDFParse);
   const parser = new PDFParse({ data: bytes });
   try {
     const [info, textResult] = await Promise.all([
@@ -91,6 +94,30 @@ async function extractPdf(bytes: Buffer): Promise<ExtractedDocumentText> {
     };
   } finally {
     await parser.destroy().catch(() => undefined);
+  }
+}
+
+function configurePdfWorker(PDFParse: { setWorker?: (workerSrc?: string) => string }): void {
+  if (typeof PDFParse.setWorker !== 'function') return;
+
+  const candidates = [
+    path.join(process.cwd(), 'node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs'),
+    path.join(process.cwd(), 'node_modules/pdf-parse/dist/worker/pdf.worker.mjs'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const workerUrl = pathToFileURL(candidate).href;
+      PDFParse.setWorker(workerUrl);
+      console.info('[rag:extract] PDF worker configured', { workerUrl });
+      return;
+    } catch (error) {
+      console.warn('[rag:extract] PDF worker candidate failed', {
+        candidate,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
 
