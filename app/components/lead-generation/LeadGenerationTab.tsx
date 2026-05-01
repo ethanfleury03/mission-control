@@ -6,6 +6,7 @@ import {
   BookOpen,
   Database,
   Building2,
+  MapPinned,
   Radio,
   ArrowLeft,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import { MarketDatabases } from './MarketDatabases';
 import { MarketDetail } from './MarketDetail';
 import { AccountsExplorer } from './AccountsExplorer';
 import { AccountDetail } from './AccountDetail';
+import { ScrapeByLocation } from './ScrapeByLocation';
 import { SocialSignals } from './SocialSignals';
 
 interface NavItem {
@@ -30,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: BookOpen },
   { id: 'markets', label: 'Market Databases', icon: Database },
   { id: 'accounts', label: 'Accounts', icon: Building2 },
+  { id: 'scrape-by-location', label: 'Scrape by Location', icon: MapPinned },
   { id: 'social-signals', label: 'Social Signals', icon: Radio },
 ];
 
@@ -64,6 +67,8 @@ export function LeadGenerationTab() {
         );
       case 'accounts':
         return <AccountsExplorer onSelectAccount={(id) => navigate('account-detail', { accountId: id })} />;
+      case 'scrape-by-location':
+        return <ScrapeByLocation />;
       case 'account-detail':
         return (
           <AccountDetail

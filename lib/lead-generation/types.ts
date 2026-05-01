@@ -339,4 +339,5 @@ export type LeadGenPage =
   | 'market-detail'
   | 'accounts'
   | 'account-detail'
+  | 'scrape-by-location'
   | 'social-signals';
