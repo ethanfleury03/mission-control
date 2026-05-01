@@ -3,10 +3,13 @@ import { createHash } from 'node:crypto';
 import {
   getChatModelConfig,
   getEmbeddingModel,
+  getEmbeddingProvider,
   getOpenRouterBaseUrl,
   hasEmbeddingProvider,
+  readEmbeddingProviderKey,
   readProviderKey,
   shouldUseLocalEmbeddings,
+  type RagEmbeddingProvider,
   type RagChatProvider,
   type RagChatTask,
 } from './config';
@@ -39,25 +42,28 @@ export interface RunChatCompletionInput {
 
 export function assertEmbeddingProviderConfigured(): void {
   if (!hasEmbeddingProvider()) {
-    throw new Error('OPENAI_API_KEY is required for RAG ingestion embeddings. Set RAG_LOCAL_EMBEDDINGS=true only for local smoke tests.');
+    throw new Error('A RAG embedding provider key is required. Set OPENROUTER_API_KEY for OpenRouter embeddings, OPENAI_API_KEY for OpenAI embeddings, or RAG_LOCAL_EMBEDDINGS=true only for local smoke tests.');
   }
 }
 
 export async function createEmbeddings(texts: string[]): Promise<{ embeddings: number[][]; model: string }> {
   if (texts.length === 0) return { embeddings: [], model: getEmbeddingModel() };
 
-  const openAiKey = readProviderKey('openai');
-  if (!openAiKey) {
-    if (shouldUseLocalEmbeddings()) {
+  const provider = getEmbeddingProvider();
+  const apiKey = readEmbeddingProviderKey(provider);
+  if (!apiKey || provider === 'local') {
+    if (shouldUseLocalEmbeddings() || provider === 'local') {
       return {
         embeddings: texts.map((text) => createLocalEmbedding(text)),
         model: 'local-hash-embedding',
       };
     }
-    throw new Error('OPENAI_API_KEY is required for RAG embeddings. Set RAG_LOCAL_EMBEDDINGS=true only for local smoke tests.');
+    throw new Error(`${provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY'} is required for RAG embeddings. Set RAG_LOCAL_EMBEDDINGS=true only for local smoke tests.`);
   }
 
-  const model = getEmbeddingModel();
+  const model = getEmbeddingModelForProvider(provider);
+  const url = provider === 'openrouter' ? `${getOpenRouterBaseUrl()}/embeddings` : OPENAI_EMBEDDINGS_URL;
+  const headers = embeddingProviderHeaders(provider, apiKey);
   const embeddings: number[][] = [];
   const batchSize = 64;
   for (let start = 0; start < texts.length; start += batchSize) {
@@ -65,8 +71,8 @@ export async function createEmbeddings(texts: string[]): Promise<{ embeddings: n
     const payload = await postJson<{
       data?: Array<{ embedding: number[]; index: number }>;
     }>(
-      OPENAI_EMBEDDINGS_URL,
-      { Authorization: `Bearer ${openAiKey}` },
+      url,
+      headers,
       {
         model,
         input: batch,
@@ -77,6 +83,19 @@ export async function createEmbeddings(texts: string[]): Promise<{ embeddings: n
   }
 
   return { embeddings, model };
+}
+
+function getEmbeddingModelForProvider(provider: RagEmbeddingProvider): string {
+  const model = getEmbeddingModel();
+  if (provider === 'openrouter' && /^text-embedding-3-(small|large)$/i.test(model)) {
+    return `openai/${model}`;
+  }
+  return model;
+}
+
+function embeddingProviderHeaders(provider: RagEmbeddingProvider, apiKey: string): Record<string, string> {
+  if (provider === 'openrouter') return providerHeaders('openrouter', apiKey);
+  return { Authorization: `Bearer ${apiKey}` };
 }
 
 export async function createQueryEmbedding(text: string): Promise<number[] | null> {

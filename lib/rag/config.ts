@@ -1,10 +1,11 @@
 import path from 'node:path';
 
-export const DEFAULT_RAG_LLM_MODEL = 'openai/gpt-4o-mini';
+export const DEFAULT_RAG_LLM_MODEL = 'deepseek/deepseek-v4-flash';
 export const DEFAULT_RAG_OPENAI_LLM_MODEL = 'gpt-4o-mini';
-export const DEFAULT_RAG_EMBEDDING_MODEL = 'text-embedding-3-small';
+export const DEFAULT_RAG_EMBEDDING_MODEL = 'text-embedding-3-large';
 export type RagChatTask = 'answer' | 'query_parser' | 'metadata_extractor' | 'reranker' | 'long_context';
 export type RagChatProvider = 'openai' | 'openrouter';
+export type RagEmbeddingProvider = 'openai' | 'openrouter' | 'local';
 
 export interface RagChatModelConfig {
   task: RagChatTask;
@@ -26,12 +27,17 @@ export function getEmbeddingModel(): string {
   return process.env.RAG_EMBEDDING_MODEL?.trim() || DEFAULT_RAG_EMBEDDING_MODEL;
 }
 
-export function getEmbeddingProvider(): 'openai' | 'local' {
-  return shouldUseLocalEmbeddings() ? 'local' : 'openai';
+export function getEmbeddingProvider(): RagEmbeddingProvider {
+  if (shouldUseLocalEmbeddings()) return 'local';
+  const explicit = normalizeEmbeddingProvider(process.env.RAG_EMBEDDING_PROVIDER);
+  if (explicit) return explicit;
+  if (process.env.OPENROUTER_API_KEY?.trim()) return 'openrouter';
+  return 'openai';
 }
 
 export function hasEmbeddingProvider(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY?.trim()) || shouldUseLocalEmbeddings();
+  if (shouldUseLocalEmbeddings()) return true;
+  return Boolean(readEmbeddingProviderKey(getEmbeddingProvider()));
 }
 
 export function getAnswerModel(): string {
@@ -71,6 +77,12 @@ export function getChatModelConfig(task: RagChatTask): RagChatModelConfig {
 }
 
 export function readProviderKey(provider: RagChatProvider): string {
+  const key = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.OPENAI_API_KEY;
+  return key?.trim() || '';
+}
+
+export function readEmbeddingProviderKey(provider = getEmbeddingProvider()): string {
+  if (provider === 'local') return 'local';
   const key = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.OPENAI_API_KEY;
   return key?.trim() || '';
 }
@@ -182,6 +194,12 @@ function taskModelEnv(task: RagChatTask): string {
 }
 
 function normalizeProvider(value: string | undefined): RagChatProvider | '' {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'openrouter' || normalized === 'openai') return normalized;
+  return '';
+}
+
+function normalizeEmbeddingProvider(value: string | undefined): Exclude<RagEmbeddingProvider, 'local'> | '' {
   const normalized = value?.trim().toLowerCase();
   if (normalized === 'openrouter' || normalized === 'openai') return normalized;
   return '';

@@ -131,10 +131,10 @@ export async function collectRagHealth(): Promise<RagHealth> {
     nextSteps.push('Ingest 5-10 known manuals before trusting support answers.');
   }
   if (summary.chunks > 0 && summary.embeddings === 0 && !hasEmbeddingProvider()) {
-    nextSteps.push('Configure OPENAI_API_KEY for embeddings or set RAG_LOCAL_EMBEDDINGS=true for smoke tests.');
+    nextSteps.push('Configure OPENROUTER_API_KEY or OPENAI_API_KEY for embeddings, or set RAG_LOCAL_EMBEDDINGS=true for smoke tests.');
   }
   if (!hasEmbeddingProvider()) {
-    nextSteps.push('Set OPENAI_API_KEY for production-quality embeddings.');
+    nextSteps.push('Set the key for the selected production embedding provider.');
   }
   if (!hasChatProvider('answer')) {
     nextSteps.push(`Set ${config.chatProvider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY'} for RAG chat answers.`);
@@ -286,17 +286,24 @@ async function checkStorageDir(): Promise<RagHealthCheck> {
 }
 
 function checkEmbeddingProvider(): RagHealthCheck {
+  const provider = getEmbeddingProvider();
+  const hasProvider = hasEmbeddingProvider();
   const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const local = process.env.RAG_LOCAL_EMBEDDINGS === 'true';
+  const hasOpenRouter = Boolean(process.env.OPENROUTER_API_KEY?.trim());
+  const local = provider === 'local';
+  const providerName = provider === 'openrouter' ? 'OpenRouter' : provider === 'openai' ? 'OpenAI' : 'Local';
   return {
     name: 'Embedding provider',
-    ok: hasOpenAi || local,
-    severity: hasOpenAi ? 'info' : local ? 'warning' : 'error',
-    message: hasOpenAi
-      ? `OpenAI embeddings configured (${getEmbeddingModel()}).`
+    ok: hasProvider,
+    severity: hasProvider && !local ? 'info' : local ? 'warning' : 'error',
+    message: hasProvider && !local
+      ? `${providerName} embeddings configured (${getEmbeddingModel()}).`
       : local
         ? 'Local hash embeddings are enabled for smoke tests only.'
-        : 'OPENAI_API_KEY is not set. Ingestion is blocked unless RAG_LOCAL_EMBEDDINGS=true is used for smoke tests.',
+        : provider === 'openrouter'
+          ? 'OPENROUTER_API_KEY is not set. Ingestion is blocked unless another embedding provider or RAG_LOCAL_EMBEDDINGS=true is configured.'
+          : 'OPENAI_API_KEY is not set. Ingestion is blocked unless another embedding provider or RAG_LOCAL_EMBEDDINGS=true is configured.',
+    detail: `OpenRouter key: ${hasOpenRouter ? 'present' : 'missing'}; OpenAI key: ${hasOpenAi ? 'present' : 'missing'}`,
   };
 }
 

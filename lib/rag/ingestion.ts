@@ -483,7 +483,7 @@ function humanStatusMessage(status: IngestionResult['status'], warnings: string[
 function humanizeIngestionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/invalid pdf|pdf/i.test(message)) return 'PDF text extraction failed. Try OCR mode or check if the PDF is corrupted.';
-  if (/OPENAI_API_KEY|embedding/i.test(message)) return 'Embeddings could not be created. Check OPENAI_API_KEY or enable RAG_LOCAL_EMBEDDINGS=true for local smoke tests.';
+  if (/OPENAI_API_KEY|OPENROUTER_API_KEY|embedding/i.test(message)) return 'Embeddings could not be created. Check the selected embedding provider key or enable RAG_LOCAL_EMBEDDINGS=true for local smoke tests.';
   if (/postgres|pgvector|DATABASE_URL/i.test(message)) return 'The RAG database is not connected. Set DATABASE_URL to PostgreSQL with pgvector and run the RAG migration.';
   return message || 'Ingestion failed. Review the job details for more information.';
 }

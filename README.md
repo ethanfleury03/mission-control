@@ -72,44 +72,44 @@ DATABASE_URL="postgresql://mcapp:mcapp@localhost:5432/missioncontrol_app"
 Required/important environment variables:
 
 - `DATABASE_URL`: Postgres connection string.
-- `OPENAI_API_KEY`: required for production-quality embeddings.
-- `OPENROUTER_API_KEY`: required when `RAG_LLM_PROVIDER=openrouter` or `RAG_RERANK_PROVIDER=openrouter`.
+- `OPENROUTER_API_KEY`: required when using OpenRouter for RAG chat, reranking, or embeddings.
+- `OPENAI_API_KEY`: optional fallback if `RAG_EMBEDDING_PROVIDER=openai` or `RAG_LLM_PROVIDER=openai`.
 - `OPENROUTER_BASE_URL`: default `https://openrouter.ai/api/v1`.
 - `RAG_LLM_PROVIDER`: `openrouter` or `openai`.
 - `RAG_LLM_MODEL`: answer model string.
 - `RAG_QUERY_MODEL`: optional query-parser model, defaults to `RAG_LLM_MODEL`.
 - `RAG_METADATA_MODEL`: optional metadata-extractor model, defaults to `RAG_LLM_MODEL`.
-- `RAG_EMBEDDING_MODEL`: embedding model, default `text-embedding-3-small`.
+- `RAG_EMBEDDING_PROVIDER`: `openrouter` or `openai`; staging defaults to `openrouter`.
+- `RAG_EMBEDDING_MODEL`: embedding model, default/recommended `text-embedding-3-large` for Arrow manuals.
 - `RAG_RERANK_PROVIDER` / `RAG_RERANK_MODEL`: optional LLM reranker provider/model.
 - `RAG_LONG_CONTEXT_MODEL`: optional long-context experiment model.
 - `STORAGE_DIR`: local upload storage root, default `.local-storage`.
 - `RAG_OCR_ENABLED`: currently flags OCR-needed pages; local OCR execution is not wired yet.
 - `RAG_LOCAL_EMBEDDINGS=true`: local hash embeddings for smoke tests only, not support-quality answers.
 
-Using OpenRouter for RAG chat:
+Using OpenRouter for RAG chat and embeddings:
 
 ```bash
 DATABASE_URL="postgresql://mcapp:mcapp@localhost:5432/missioncontrol_app"
 
-# Embeddings remain OpenAI by default.
-OPENAI_API_KEY="..."
-RAG_EMBEDDING_MODEL="text-embedding-3-small"
-
-# Non-embedding LLM calls use OpenRouter.
 OPENROUTER_API_KEY="..."
 OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+
+RAG_EMBEDDING_PROVIDER="openrouter"
+RAG_EMBEDDING_MODEL="text-embedding-3-large"
+
 RAG_LLM_PROVIDER="openrouter"
-RAG_LLM_MODEL="openai/gpt-4o-mini"
-RAG_QUERY_MODEL="openai/gpt-4o-mini"
-RAG_METADATA_MODEL="openai/gpt-4o-mini"
+RAG_LLM_MODEL="deepseek/deepseek-v4-flash"
+RAG_QUERY_MODEL="deepseek/deepseek-v4-flash"
+RAG_METADATA_MODEL="deepseek/deepseek-v4-flash"
 RAG_RERANK_PROVIDER="openrouter"
-RAG_RERANK_MODEL="openai/gpt-4o-mini"
+RAG_RERANK_MODEL="deepseek/deepseek-v4-flash"
 
 # Optional long-context experiment after retrieval.
 RAG_LONG_CONTEXT_MODEL="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 ```
 
-OpenRouter is used for answer generation, agentic chat, query parsing, metadata extraction, reranking, and optional long-context experiments. Embeddings still require OpenAI by default; ingestion will stop with a clear error if no embedding provider is configured.
+OpenRouter is used for embeddings, answer generation, agentic chat, query parsing, metadata extraction, reranking, and optional long-context experiments. The app accepts `RAG_EMBEDDING_MODEL=text-embedding-3-large` and sends it to OpenRouter as `openai/text-embedding-3-large`.
 
 Ingest documents from the UI (`RAG > Ingest`) or from the CLI:
 
