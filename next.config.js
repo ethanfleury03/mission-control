@@ -7,6 +7,7 @@ const nextConfig = {
     '/*': [
       './node_modules/.prisma/**',
       './node_modules/@prisma/**',
+      './node_modules/@napi-rs/**',
     ],
   },
 }

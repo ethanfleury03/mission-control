@@ -99,9 +99,8 @@ async function ensurePdfRuntimeGlobals(): Promise<void> {
   if (globals.DOMMatrix && globals.DOMPoint && globals.DOMRect) return;
 
   try {
-    const runtimeRequire = (0, eval)('require') as NodeRequire;
     const canvasPackage = '@napi-rs/' + 'canvas';
-    const canvas = runtimeRequire(canvasPackage) as {
+    const canvas = await import(/* webpackIgnore: true */ canvasPackage) as {
       DOMMatrix?: unknown;
       DOMPoint?: unknown;
       DOMRect?: unknown;
@@ -113,6 +112,11 @@ async function ensurePdfRuntimeGlobals(): Promise<void> {
     globals.DOMRect ??= canvas.DOMRect;
     globals.ImageData ??= canvas.ImageData;
     globals.Path2D ??= canvas.Path2D;
+    console.info('[rag:extract] PDF runtime geometry polyfills loaded', {
+      domMatrix: Boolean(globals.DOMMatrix),
+      domPoint: Boolean(globals.DOMPoint),
+      domRect: Boolean(globals.DOMRect),
+    });
   } catch (error) {
     console.warn('[rag:extract] PDF runtime geometry polyfills unavailable', {
       message: error instanceof Error ? error.message : String(error),
