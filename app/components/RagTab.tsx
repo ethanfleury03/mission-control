@@ -29,7 +29,7 @@ import type { LucideIcon } from 'lucide-react';
 import { DOCUMENT_TYPES, PRODUCT_FAMILIES } from '@/lib/rag/types';
 import { cn } from '../lib/utils';
 
-type AdminView = 'chat' | 'dashboard' | 'ingest' | 'manuals' | 'jobs' | 'search-debug' | 'feedback' | 'settings';
+type AdminView = 'chat' | 'dashboard' | 'ingest' | 'manuals' | 'jobs' | 'feedback' | 'settings';
 type DetailTab = 'metadata' | 'quality' | 'pages' | 'chunks' | 'search' | 'questions';
 
 interface RagDocument {
@@ -311,7 +311,6 @@ const NAV_ITEMS: Array<{ id: AdminView; label: string; description: string; icon
   { id: 'ingest', label: 'Ingest Manuals', description: 'Upload PDFs and docs', icon: Upload },
   { id: 'manuals', label: 'Manual Library', description: 'Search and manage docs', icon: Database },
   { id: 'jobs', label: 'Ingestion Jobs', description: 'Status and failures', icon: RefreshCw },
-  { id: 'search-debug', label: 'Search Debugger', description: 'Trace retrieval', icon: FileSearch },
   { id: 'feedback', label: 'Feedback / Bad Answers', description: 'Review answer quality', icon: ThumbsDown },
   { id: 'settings', label: 'Settings', description: 'Read-only config', icon: Settings2 },
 ];
@@ -464,8 +463,6 @@ export function RagTab() {
               />
             ) : activeView === 'jobs' ? (
               <JobsView jobs={jobs} onRefresh={loadAll} />
-            ) : activeView === 'search-debug' ? (
-              <SearchDebuggerView documents={documents} />
             ) : activeView === 'feedback' ? (
               <FeedbackView />
             ) : (
@@ -523,7 +520,6 @@ function DashboardView({
           <div className="mt-4 flex flex-wrap gap-2">
             <ActionButton icon={Upload} label="Upload manuals" onClick={() => onNavigate('ingest')} primary />
             <ActionButton icon={Database} label="View library" onClick={() => onNavigate('manuals')} />
-            <ActionButton icon={FileSearch} label="Run search test" onClick={() => onNavigate('search-debug')} />
             <ActionButton icon={AlertCircle} label="Failed jobs" onClick={() => onNavigate('jobs')} />
           </div>
         </Panel>
