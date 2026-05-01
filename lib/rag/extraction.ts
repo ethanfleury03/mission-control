@@ -58,6 +58,7 @@ export async function extractDocumentText(input: {
 }
 
 async function extractPdf(bytes: Buffer): Promise<ExtractedDocumentText> {
+  await ensurePdfRuntimeGlobals();
   const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: bytes });
   try {
@@ -90,6 +91,32 @@ async function extractPdf(bytes: Buffer): Promise<ExtractedDocumentText> {
     };
   } finally {
     await parser.destroy().catch(() => undefined);
+  }
+}
+
+async function ensurePdfRuntimeGlobals(): Promise<void> {
+  const globals = globalThis as Record<string, unknown>;
+  if (globals.DOMMatrix && globals.DOMPoint && globals.DOMRect) return;
+
+  try {
+    const runtimeRequire = (0, eval)('require') as NodeRequire;
+    const canvasPackage = '@napi-rs/' + 'canvas';
+    const canvas = runtimeRequire(canvasPackage) as {
+      DOMMatrix?: unknown;
+      DOMPoint?: unknown;
+      DOMRect?: unknown;
+      ImageData?: unknown;
+      Path2D?: unknown;
+    };
+    globals.DOMMatrix ??= canvas.DOMMatrix;
+    globals.DOMPoint ??= canvas.DOMPoint;
+    globals.DOMRect ??= canvas.DOMRect;
+    globals.ImageData ??= canvas.ImageData;
+    globals.Path2D ??= canvas.Path2D;
+  } catch (error) {
+    console.warn('[rag:extract] PDF runtime geometry polyfills unavailable', {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
