@@ -120,6 +120,7 @@ async function ingestBuffer(input: {
     filename: input.filename,
     batchId: input.options?.batchId,
   });
+  logIngestion(jobId, input.filename, 'job_created', { bytes: input.bytes.length });
 
   if (existing) {
     if (input.options?.duplicateBehavior === 'replace') {
@@ -187,6 +188,7 @@ async function ingestBuffer(input: {
       status: 'extracting',
       stats: { sourceHash, phase: 'extracting_text', progress: 35 },
     });
+    logIngestion(jobId, input.filename, 'extracting_text');
     const extracted = await extractDocumentText({
       filename: input.filename,
       bytes: input.bytes,
@@ -196,6 +198,7 @@ async function ingestBuffer(input: {
       status: 'detecting_metadata',
       stats: { phase: 'detecting_metadata', progress: 50, pageCount: extracted.pageCount },
     });
+    logIngestion(jobId, input.filename, 'detecting_metadata', { pageCount: extracted.pageCount });
     const firstPages = extracted.pages
       .slice(0, 4)
       .map((page) => page.combinedText)
@@ -211,6 +214,7 @@ async function ingestBuffer(input: {
       pages: extracted.pages,
       metadata,
     });
+    logIngestion(jobId, input.filename, 'chunking_complete', { chunkCount: preparedChunks.length });
 
     let embeddingProvider = '';
     let embeddingError = '';
@@ -221,12 +225,15 @@ async function ingestBuffer(input: {
           status: 'embedding',
           stats: { phase: 'embedding', progress: 74, chunkCount: preparedChunks.length },
         });
+        logIngestion(jobId, input.filename, 'embedding', { chunkCount: preparedChunks.length });
         const embedded = await createEmbeddings(preparedChunks.map((chunk) => chunk.text));
         embeddingProvider = embedded.model;
         embeddings = embedded.embeddings;
+        logIngestion(jobId, input.filename, 'embedding_complete', { embeddingProvider, embeddingCount: embeddings.length });
       } catch (error) {
         embeddingError = error instanceof Error ? error.message : 'Embedding failed.';
         console.warn('[rag] embedding failed; continuing with keyword-only chunks:', embeddingError);
+        logIngestion(jobId, input.filename, 'embedding_failed_keyword_only', { embeddingError });
       }
     }
 
@@ -234,6 +241,7 @@ async function ingestBuffer(input: {
       status: 'indexing',
       stats: { phase: 'indexing', progress: 88 },
     });
+    logIngestion(jobId, input.filename, 'indexing');
 
     const warnings = buildIngestionWarnings({
       metadata,
@@ -300,6 +308,7 @@ async function ingestBuffer(input: {
         humanMessage: humanStatusMessage(finalStatus, warnings),
       },
     });
+    logIngestion(jobId, input.filename, 'finished', { status: finalStatus, documentId, warnings: warnings.length });
 
     return {
       batchId: input.options?.batchId,
@@ -317,6 +326,10 @@ async function ingestBuffer(input: {
     };
   } catch (error) {
     const humanMessage = humanizeIngestionError(error);
+    logIngestion(jobId, input.filename, 'failed', {
+      humanMessage,
+      technicalError: error instanceof Error ? error.message : String(error),
+    });
     await updateIngestionJob(jobId, {
       status: 'failed',
       errorMessage: humanMessage,
@@ -340,6 +353,10 @@ async function ingestBuffer(input: {
       warnings: [humanMessage],
     };
   }
+}
+
+function logIngestion(jobId: string, filename: string, phase: string, detail: Record<string, unknown> = {}): void {
+  console.info('[rag:ingest]', { jobId, filename, phase, ...detail });
 }
 
 export async function reingestDocument(documentId: string): Promise<IngestionResult> {

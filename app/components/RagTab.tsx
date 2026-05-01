@@ -171,6 +171,9 @@ interface QueueFile {
   status: string;
   phase: string;
   progress: number;
+  logs?: string[];
+  startedAt?: string;
+  finishedAt?: string;
   result?: IngestResult;
   error?: string;
 }
@@ -189,6 +192,19 @@ interface IngestResult {
   version?: string;
   warnings?: string[];
 }
+
+const BROWSER_UPLOAD_LIMIT_BYTES = 30 * 1024 * 1024;
+const INGEST_LIFECYCLE_STEPS = [
+  { id: 'ready', label: 'Ready', description: 'File selected and duplicate check finished.' },
+  { id: 'uploading', label: 'Uploading', description: 'Browser is sending the file to the RAG API.' },
+  { id: 'server_processing', label: 'Server processing', description: 'The API is extracting text, detecting metadata, chunking, embedding, and indexing.' },
+  { id: 'extracting', label: 'Extracting text', description: 'PDF/text content is being read page by page.' },
+  { id: 'detecting_metadata', label: 'Detecting metadata', description: 'Product, document type, version, and revision hints are being detected.' },
+  { id: 'chunking', label: 'Chunking', description: 'Pages are being split into support-ready chunks.' },
+  { id: 'embedding', label: 'Embedding', description: 'Chunks are being embedded for vector search.' },
+  { id: 'indexing', label: 'Indexing', description: 'Pages, chunks, metadata, and vectors are being written to Postgres.' },
+  { id: 'complete', label: 'Complete or failed', description: 'Final status and warnings are available.' },
+] as const;
 
 interface DebugResult {
   parsedQuery: Record<string, unknown>;
@@ -865,23 +881,35 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
     const pdfs = queue.filter((item) => item.file.name.toLowerCase().endsWith('.pdf')).length;
     const docx = queue.filter((item) => item.file.name.toLowerCase().endsWith('.docx')).length;
     const duplicates = queue.filter((item) => item.duplicateTitle).length;
+    const blocked = queue.filter((item) => item.status === 'blocked').length;
     const bytes = queue.reduce((sum, item) => sum + item.file.size, 0);
-    return { files: queue.length, pdfs, docx, duplicates, bytes };
+    return { files: queue.length, pdfs, docx, duplicates, blocked, bytes };
   }, [queue]);
+  const hasUploadableFiles = queue.some((item) => item.status !== 'blocked');
 
   async function addFiles(files: FileList | File[]) {
     const accepted = Array.from(files).filter(isAcceptedFile);
     const next: QueueFile[] = [];
     for (const file of accepted) {
       const hash = await hashFile(file);
+      const tooLargeForBrowserUpload = file.size > BROWSER_UPLOAD_LIMIT_BYTES;
       next.push({
         id: `${hash}-${file.name}-${file.size}`,
         file,
         hash,
         duplicateTitle: '',
-        status: 'ready',
-        phase: 'Ready',
-        progress: 0,
+        status: tooLargeForBrowserUpload ? 'blocked' : 'ready',
+        phase: tooLargeForBrowserUpload ? 'Too large for browser upload' : 'Ready',
+        progress: tooLargeForBrowserUpload ? 100 : 0,
+        error: tooLargeForBrowserUpload
+          ? `This file is ${formatBytes(file.size)}. Staging browser uploads are capped at ${formatBytes(BROWSER_UPLOAD_LIMIT_BYTES)} so the request can reach the RAG API reliably. Use a smaller/split PDF or CLI/GCS ingestion for this manual.`
+          : '',
+        logs: [
+          `${new Date().toLocaleTimeString()} - File selected (${formatBytes(file.size)}).`,
+          ...(tooLargeForBrowserUpload
+            ? [`${new Date().toLocaleTimeString()} - Blocked before upload because it exceeds the staging browser upload limit.`]
+            : []),
+        ],
       });
     }
     const deduped = [...queue, ...next].filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index);
@@ -907,7 +935,26 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
     setUploading(true);
     const batchId = crypto.randomUUID();
     for (const item of queue) {
-      setQueue((current) => updateQueuedFile(current, item.id, { status: 'running', phase: 'Uploading', progress: 12 }));
+      if (item.status === 'blocked' || item.file.size > BROWSER_UPLOAD_LIMIT_BYTES) {
+        setQueue((current) =>
+          updateQueuedFile(current, item.id, {
+            status: 'blocked',
+            phase: 'Too large for browser upload',
+            progress: 100,
+            error: item.error || `This file is larger than ${formatBytes(BROWSER_UPLOAD_LIMIT_BYTES)} and was not uploaded.`,
+            finishedAt: new Date().toISOString(),
+            logs: appendQueueLog(item, 'Skipped upload because the file is too large for the browser request path.'),
+          }),
+        );
+        continue;
+      }
+      setQueue((current) => updateQueuedFile(current, item.id, {
+        status: 'running',
+        phase: 'Uploading',
+        progress: 12,
+        startedAt: new Date().toISOString(),
+        logs: appendQueueLog(item, 'Upload started.'),
+      }));
       const form = new FormData();
       form.append('batchId', batchId);
       form.append('files', item.file);
@@ -917,12 +964,16 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
       Object.entries(preset).forEach(([key, value]) => {
         if (value) form.append(key, value);
       });
-      setQueue((current) => updateQueuedFile(current, item.id, { phase: 'Queued', progress: 24 }));
+      setQueue((current) => updateQueuedFile(current, item.id, { phase: 'Sending file to server', progress: 24, logs: appendQueueLog(item, 'Sending multipart upload to /api/ingest/files.') }));
       try {
-        setQueue((current) => updateQueuedFile(current, item.id, { phase: 'Extracting / embedding', progress: 62 }));
+        setQueue((current) => updateQueuedFile(current, item.id, {
+          phase: 'Server processing',
+          progress: 36,
+          logs: appendQueueLog(item, 'Upload reached the server. Waiting for extraction, metadata detection, chunking, embedding, and indexing to finish.'),
+        }));
         const response = await fetch('/api/ingest/files', { method: 'POST', body: form });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Upload failed.');
+        if (!response.ok) throw new Error(payload.error || `Upload failed with HTTP ${response.status}.`);
         const result = payload.results?.[0] as IngestResult;
         setQueue((current) =>
           updateQueuedFile(current, item.id, {
@@ -931,6 +982,8 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
             progress: 100,
             result,
             error: result.status === 'failed' ? result.message : '',
+            finishedAt: new Date().toISOString(),
+            logs: appendQueueLog(item, `${result.status === 'failed' ? 'Failed' : 'Finished'}: ${result.message}${result.jobId ? ` Job ${result.jobId}.` : ''}`),
           }),
         );
       } catch (uploadError) {
@@ -939,7 +992,9 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
             status: 'failed',
             phase: 'Failed',
             progress: 100,
-            error: humanUploadError(uploadError),
+            error: humanUploadError(uploadError, item.file),
+            finishedAt: new Date().toISOString(),
+            logs: appendQueueLog(item, `Failed before a completed ingestion response: ${humanUploadError(uploadError, item.file)}`),
           }),
         );
       }
@@ -993,12 +1048,19 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
             <EmptyState title="No files selected" text="Select one manual or a batch of manuals to review them before ingestion." actionLabel="Select files" onAction={() => fileInputRef.current?.click()} />
           ) : (
             <div className="space-y-3">
+              {summary.blocked > 0 ? (
+                <Alert
+                  tone="warning"
+                  text={`${summary.blocked} file(s) are too large for the staging browser upload path. Split/compress the PDF or use CLI/GCS ingestion for those files.`}
+                />
+              ) : null}
               <div className="grid gap-2 text-xs text-neutral-600 sm:grid-cols-4">
                 <SummaryPill label="PDFs" value={summary.pdfs} />
                 <SummaryPill label="DOCX" value={summary.docx} />
                 <SummaryPill label="Duplicates" value={summary.duplicates} />
-                <SummaryPill label="Total size" value={formatBytes(summary.bytes)} />
+                <SummaryPill label="Blocked" value={summary.blocked} />
               </div>
+              <SummaryPill label="Total size" value={formatBytes(summary.bytes)} />
               <div className="divide-y divide-neutral-100 rounded-md border border-neutral-200">
                 {queue.map((item) => (
                   <div key={item.id} className="p-3">
@@ -1023,6 +1085,23 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
                         <span className={cn(item.status === 'failed' ? 'text-red-700' : 'text-neutral-500')}>{item.result?.message || item.error || item.status}</span>
                       </div>
                     </div>
+                    <IngestionStepper item={item} />
+                    <details className="mt-2 rounded-md border border-neutral-200 bg-neutral-50">
+                      <summary className="cursor-pointer px-3 py-2 text-2xs font-semibold text-neutral-600">Ingestion details</summary>
+                      <div className="space-y-2 px-3 pb-3 text-xs text-neutral-600">
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          <SummaryPill label="Status" value={item.status} />
+                          <SummaryPill label="Progress" value={`${item.progress}%`} />
+                          <SummaryPill label="Job ID" value={item.result?.jobId || 'not created yet'} />
+                          <SummaryPill label="Chunks" value={item.result?.chunkCount ?? '-'} />
+                        </div>
+                        {item.startedAt ? <p>Started: {new Date(item.startedAt).toLocaleString()}</p> : null}
+                        {item.finishedAt ? <p>Finished: {new Date(item.finishedAt).toLocaleString()}</p> : null}
+                        <ul className="space-y-1 font-mono text-2xs">
+                          {(item.logs || []).map((log, index) => <li key={`${item.id}-log-${index}`}>{log}</li>)}
+                        </ul>
+                      </div>
+                    </details>
                     {item.result?.warnings?.length ? (
                       <div className="mt-2 space-y-1">
                         {item.result.warnings.map((warning) => <Alert key={warning} tone="warning" text={warning} />)}
@@ -1055,7 +1134,7 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
               <TextField label="Revision date" value={preset.revisionDate} onChange={(value) => setPreset((prev) => ({ ...prev, revisionDate: value }))} placeholder="YYYY-MM-DD" />
               <TextField label="Notes" value={preset.notes} onChange={(value) => setPreset((prev) => ({ ...prev, notes: value }))} placeholder="Optional admin note" />
             </div>
-            <button type="button" onClick={() => void startUpload()} disabled={queue.length === 0 || uploading} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60">
+            <button type="button" onClick={() => void startUpload()} disabled={queue.length === 0 || !hasUploadableFiles || uploading} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60">
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Start ingestion
             </button>
@@ -1063,15 +1142,52 @@ function IngestView({ onDone }: { onDone: () => Promise<void> }) {
         </Panel>
         <Panel title="Lifecycle">
           <ol className="space-y-2 text-xs text-neutral-600">
-            {['Uploaded', 'Queued', 'Extracting text', 'Detecting metadata', 'Chunking', 'Embedding', 'Indexing', 'Complete or failed'].map((step) => (
-              <li key={step} className="flex items-center gap-2">
+            {INGEST_LIFECYCLE_STEPS.map((step) => (
+              <li key={step.id} className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-brand" />
-                {step}
+                <span>
+                  <span className="font-semibold text-neutral-800">{step.label}</span>
+                  <span className="block text-2xs text-neutral-500">{step.description}</span>
+                </span>
               </li>
             ))}
           </ol>
+          <Alert tone="info" text="For very large PDFs, browser uploads on staging may fail before the request reaches the app. Use a smaller PDF first, or ingest large manuals by CLI/GCS import." />
         </Panel>
       </aside>
+    </div>
+  );
+}
+
+function IngestionStepper({ item }: { item: QueueFile }) {
+  const activeIndex = ingestionStepIndex(item);
+  return (
+    <div className="mt-3 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+      {INGEST_LIFECYCLE_STEPS.map((step, index) => {
+        const state =
+          item.status === 'failed' && index === activeIndex ? 'failed' :
+          item.status === 'blocked' && index === activeIndex ? 'failed' :
+          index < activeIndex ? 'done' :
+          index === activeIndex ? 'active' :
+          'pending';
+        return (
+          <div
+            key={step.id}
+            className={cn(
+              'rounded-md border px-2 py-1.5 text-2xs',
+              state === 'done' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
+              state === 'active' ? 'border-brand/30 bg-brand/5 text-brand' :
+              state === 'failed' ? 'border-red-200 bg-red-50 text-red-700' :
+              'border-neutral-200 bg-white text-neutral-400',
+            )}
+          >
+            <div className="flex items-center gap-1.5 font-semibold">
+              {state === 'done' ? <CheckCircle2 className="h-3 w-3" /> : state === 'active' ? <Loader2 className="h-3 w-3 animate-spin" /> : state === 'failed' ? <AlertCircle className="h-3 w-3" /> : <span className="h-2 w-2 rounded-full bg-current opacity-40" />}
+              {step.label}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2006,6 +2122,24 @@ function updateQueuedFile(queue: QueueFile[], id: string, patch: Partial<QueueFi
   return queue.map((item) => (item.id === id ? { ...item, ...patch } : item));
 }
 
+function appendQueueLog(item: QueueFile, message: string): string[] {
+  return [...(item.logs || []), `${new Date().toLocaleTimeString()} - ${message}`].slice(-12);
+}
+
+function ingestionStepIndex(item: QueueFile): number {
+  const phase = `${item.phase} ${item.status} ${item.result?.status || ''}`.toLowerCase();
+  if (item.status === 'blocked') return 0;
+  if (/complete|failed|duplicate|review|warning/.test(phase)) return INGEST_LIFECYCLE_STEPS.length - 1;
+  if (/index/.test(phase)) return 7;
+  if (/embed/.test(phase)) return 6;
+  if (/chunk/.test(phase)) return 5;
+  if (/metadata/.test(phase)) return 4;
+  if (/extract/.test(phase)) return 3;
+  if (/server|processing/.test(phase)) return 2;
+  if (/upload|sending/.test(phase)) return 1;
+  return 0;
+}
+
 function isAcceptedFile(file: File): boolean {
   return /\.(pdf|txt|md|markdown|docx|csv|tsv)$/i.test(file.name);
 }
@@ -2015,8 +2149,14 @@ async function hashFile(file: File): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function humanUploadError(error: unknown): string {
+function humanUploadError(error: unknown, file?: File): string {
   const message = error instanceof Error ? error.message : String(error);
+  if (file && file.size > BROWSER_UPLOAD_LIMIT_BYTES) {
+    return `This file is ${formatBytes(file.size)}, which is above the ${formatBytes(BROWSER_UPLOAD_LIMIT_BYTES)} staging browser upload limit. The request likely did not reach the RAG API. Split/compress the PDF or ingest it via CLI/GCS import.`;
+  }
+  if (/failed to fetch|network|body|payload|413|request entity too large/i.test(message)) {
+    return 'The upload did not reach a completed RAG API response. If this was a large PDF, it likely exceeded the staging request-size limit. Try a smaller PDF first or use CLI/GCS import.';
+  }
   if (/database|pgvector|postgres/i.test(message)) return 'The RAG database is not connected. Set DATABASE_URL to PostgreSQL with pgvector and run the migration.';
   if (/pdf/i.test(message)) return 'PDF text extraction failed. Try OCR mode or upload a cleaner PDF.';
   return message || 'Upload failed. Review the ingestion job for details.';

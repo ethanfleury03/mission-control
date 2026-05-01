@@ -29,6 +29,13 @@ export async function POST(request: NextRequest) {
 
   const results = [];
   for (const file of files) {
+    console.info('[rag:ingest] upload received', {
+      filename: file.name,
+      size: file.size,
+      batchId,
+      duplicateBehavior,
+      autoDetectMetadata,
+    });
     try {
       const result = await ingestUploadedFile({
         filename: file.name,
@@ -41,8 +48,21 @@ export async function POST(request: NextRequest) {
           metadataPreset: applyMetadataToAll ? metadataPreset : {},
         },
       });
+      console.info('[rag:ingest] upload finished', {
+        filename: file.name,
+        jobId: result.jobId,
+        documentId: result.documentId,
+        status: result.status,
+        pageCount: result.pageCount,
+        chunkCount: result.chunkCount,
+      });
       results.push(result);
     } catch (error) {
+      console.error('[rag:ingest] upload failed before result', {
+        filename: file.name,
+        batchId,
+        message: error instanceof Error ? error.message : String(error),
+      });
       results.push({
         batchId,
         jobId: '',
