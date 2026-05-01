@@ -17,7 +17,7 @@ function jsonResponse(body: unknown, status: number): Response {
 describe('video service', () => {
   beforeEach(() => {
     process.env.IMAGE_OPENROUTER_API_KEY = 'test-key';
-    process.env.IMAGE_OPENROUTER_VIDEO_MODEL = 'google/veo-3.1-fast';
+    process.env.IMAGE_OPENROUTER_VIDEO_MODEL = 'kwaivgi/kling-v3.0-pro';
   });
 
   afterEach(async () => {
@@ -29,7 +29,7 @@ describe('video service', () => {
   it('accepts an uploaded source image and submits a first-frame OpenRouter request', async () => {
     const fetchMock = vi.fn(async (_input, init) => {
       const payload = JSON.parse(String(init?.body));
-      expect(payload.model).toBe('google/veo-3.1-fast');
+      expect(payload.model).toBe('kwaivgi/kling-v3.0-pro');
       expect(payload.duration).toBe(6);
       expect(payload.frame_images[0].frame_type).toBe('first_frame');
       expect(payload.frame_images[0].image_url.url).toContain('data:image/png;base64,');

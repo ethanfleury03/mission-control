@@ -49,6 +49,7 @@ mc_resolve_env() {
       MC_GOOGLE_ID_SECRET="mc-google-client-id"
       MC_GOOGLE_SECRET_SECRET="mc-google-client-secret"
       MC_OPENROUTER_SECRET="mc-openrouter"
+      MC_OPENAI_SECRET="mc-openai"
       MC_IMAGE_OPENROUTER_SECRET="mc-image-openrouter"
       MC_FIRECRAWL_SECRET="mc-firecrawl"
       MC_SERPER_SECRET="mc-serper"
@@ -61,7 +62,7 @@ mc_resolve_env() {
       MC_WEBHOOK_SECRET_SECRET="mc-webhook-secret"
       MC_IMAGE_CHAT_MODEL="${MC_IMAGE_CHAT_MODEL:-deepseek/deepseek-v4-flash}"
       MC_IMAGE_IMAGE_MODEL="${MC_IMAGE_IMAGE_MODEL:-openai/gpt-5.4-image-2}"
-      MC_IMAGE_VIDEO_MODEL="${MC_IMAGE_VIDEO_MODEL:-google/veo-3.1-fast}"
+      MC_IMAGE_VIDEO_MODEL="${MC_IMAGE_VIDEO_MODEL:-kwaivgi/kling-v3.0-pro}"
       MC_PUBLIC_URL="${MC_PROD_PUBLIC_URL:-${MISSION_CONTROL_PUBLIC_URL:-https://hub.arrsys.com}}"
       ;;
     stage | staging)
@@ -88,6 +89,7 @@ mc_resolve_env() {
       MC_GOOGLE_ID_SECRET="mc-stage-google-client-id"
       MC_GOOGLE_SECRET_SECRET="mc-stage-google-client-secret"
       MC_OPENROUTER_SECRET="mc-stage-openrouter"
+      MC_OPENAI_SECRET="mc-stage-openai"
       MC_IMAGE_OPENROUTER_SECRET="mc-stage-image-openrouter"
       MC_FIRECRAWL_SECRET="mc-stage-firecrawl"
       MC_SERPER_SECRET="mc-stage-serper"
@@ -100,7 +102,7 @@ mc_resolve_env() {
       MC_WEBHOOK_SECRET_SECRET="mc-stage-webhook-secret"
       MC_IMAGE_CHAT_MODEL="${MC_STAGE_IMAGE_CHAT_MODEL:-${MC_IMAGE_CHAT_MODEL:-deepseek/deepseek-v4-flash}}"
       MC_IMAGE_IMAGE_MODEL="${MC_STAGE_IMAGE_IMAGE_MODEL:-${MC_IMAGE_IMAGE_MODEL:-openai/gpt-5.4-image-2}}"
-      MC_IMAGE_VIDEO_MODEL="${MC_STAGE_IMAGE_VIDEO_MODEL:-${MC_IMAGE_VIDEO_MODEL:-google/veo-3.1-fast}}"
+      MC_IMAGE_VIDEO_MODEL="${MC_STAGE_IMAGE_VIDEO_MODEL:-${MC_IMAGE_VIDEO_MODEL:-kwaivgi/kling-v3.0-pro}}"
       MC_PUBLIC_URL="${MC_STAGE_PUBLIC_URL:-}"
       ;;
     *)
