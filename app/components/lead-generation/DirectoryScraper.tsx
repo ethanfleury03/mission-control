@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 import {
   Search,
   Play,
@@ -84,7 +84,7 @@ type FieldFilter =
   | 'method_detail'
   | 'method_ai';
 
-export function DirectoryScraperTab() {
+export function DirectoryScraper() {
   const [url, setUrl] = useState('');
   const [maxCompanies, setMaxCompanies] = useState('');
   const [visitWebsites, setVisitWebsites] = useState(false);

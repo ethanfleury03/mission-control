@@ -8,7 +8,6 @@ import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
 import { BottomBar } from './components/BottomBar';
 import { BlogsTab } from './components/BlogsTab';
-import { DirectoryScraperTab } from './components/DirectoryScraperTab';
 import { ImageGenerationTab } from './components/ImageGenerationTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
 import { ManualsTab } from './components/ManualsTab';
@@ -87,8 +86,6 @@ export default function ArrowHub() {
           <AdminTab />
         ) : resolvedActiveApp === 'BLOGS' ? (
           <BlogsTab />
-        ) : resolvedActiveApp === 'SCRAPER' ? (
-          <DirectoryScraperTab />
         ) : resolvedActiveApp === 'IMAGE_GEN' ? (
           <ImageGenerationTab />
         ) : resolvedActiveApp === 'GEO_INTELLIGENCE' ? (

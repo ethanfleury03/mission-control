@@ -4,7 +4,6 @@ import {
   BrainCircuit,
   Orbit,
   Newspaper,
-  Globe,
   Target,
   ImagePlus,
   Phone,
@@ -15,7 +14,6 @@ import { BLOGS_ENABLED } from '@/lib/features';
 
 export type HubAppId =
   | 'BLOGS'
-  | 'SCRAPER'
   | 'LEAD_GEN'
   | 'IMAGE_GEN'
   | 'GEO_INTELLIGENCE'
@@ -45,12 +43,6 @@ const ALL_HUB_APPS: HubApp[] = [
     label: 'Blogs',
     description: 'Content pipeline',
     icon: Newspaper,
-  },
-  {
-    id: 'SCRAPER',
-    label: 'Directory Scraper',
-    description: 'Extract contacts from directories',
-    icon: Globe,
   },
   {
     id: 'LEAD_GEN',

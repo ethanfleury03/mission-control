@@ -67,6 +67,7 @@ export function LeadGenDashboard({ onNavigate }: LeadGenDashboardProps) {
     { label: 'Coffee Market Database', description: 'Browse markets — open Coffee or any vertical', page: 'markets' as LeadGenPage },
     { label: 'Accounts Explorer', description: 'Review imported companies and qualification status', page: 'accounts' as LeadGenPage },
     { label: 'Scrape by Location', description: 'Build lead lists from keywords, regions, and Places data', page: 'scrape-by-location' as LeadGenPage },
+    { label: 'Directory Scraper', description: 'Extract companies from directories, associations, and roster pages', page: 'directory-scraper' as LeadGenPage },
     { label: 'Social Signals', description: 'Track the next planned enrichment layer', page: 'social-signals' as LeadGenPage },
   ];
 
