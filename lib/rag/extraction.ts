@@ -60,6 +60,20 @@ export async function extractDocumentText(input: {
 }
 
 async function extractPdf(bytes: Buffer): Promise<ExtractedDocumentText> {
+  try {
+    return await extractPdfWithPdfParse(bytes);
+  } catch (error) {
+    if (!shouldUseWorkerlessPdfFallback(error)) throw error;
+
+    const fallbackReason = error instanceof Error ? error.message : String(error);
+    console.warn('[rag:extract] pdf-parse worker extraction failed; using workerless PDF fallback', {
+      message: fallbackReason,
+    });
+    return extractPdfWithPdfJs(bytes, fallbackReason);
+  }
+}
+
+async function extractPdfWithPdfParse(bytes: Buffer): Promise<ExtractedDocumentText> {
   await ensurePdfRuntimeGlobals();
   const { PDFParse } = await import('pdf-parse');
   configurePdfWorker(PDFParse);
@@ -94,6 +108,72 @@ async function extractPdf(bytes: Buffer): Promise<ExtractedDocumentText> {
     };
   } finally {
     await parser.destroy().catch(() => undefined);
+  }
+}
+
+function shouldUseWorkerlessPdfFallback(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /deserialize cloned data|fake worker|worker|DOMMatrix|canvas/i.test(message);
+}
+
+async function extractPdfWithPdfJs(bytes: Buffer, fallbackReason: string): Promise<ExtractedDocumentText> {
+  await ensurePdfRuntimeGlobals();
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const loadingTask = pdfjs.getDocument({
+    // Copy out of Node's pooled Buffer so PDF.js has a plain transferable array.
+    data: new Uint8Array(bytes),
+    useWorkerFetch: false,
+    isOffscreenCanvasSupported: false,
+    isImageDecoderSupported: false,
+    disableFontFace: true,
+    stopAtErrors: false,
+  });
+
+  let document: any;
+  try {
+    document = await loadingTask.promise;
+    const pages: ExtractedPage[] = [];
+
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      try {
+        const content = await page.getTextContent({
+          disableNormalization: false,
+        });
+        const text = content.items
+          .map((item: { str?: unknown }) => (typeof item.str === 'string' ? item.str : ''))
+          .filter(Boolean)
+          .join('\n');
+        pages.push(buildExtractedPage(pageNumber, text, {
+          extractionMethod: 'pdfjs-dist-workerless',
+          fallbackFrom: 'pdf-parse',
+          fallbackReason,
+          ocrRequired: normalizePageText(text).length < 40,
+        }));
+      } finally {
+        page.cleanup();
+      }
+    }
+
+    const quality = buildQualitySignals(pages, true);
+    return {
+      pageCount: document.numPages,
+      pages,
+      metadata: {
+        parser: 'pdfjs-dist-workerless',
+        fallbackFrom: 'pdf-parse',
+        fallbackReason,
+        info: { total: document.numPages },
+        ocrBacklog: pages.filter((page) => page.metadata.ocrRequired).map((page) => page.pageNumber),
+        quality,
+        extractionWarnings: quality.extractionWarnings,
+        suspectedScannedPdf: quality.suspectedScannedPdf,
+        ocrStatus: quality.ocrStatus,
+      },
+    };
+  } finally {
+    await document?.destroy?.();
+    await loadingTask.destroy?.();
   }
 }
 

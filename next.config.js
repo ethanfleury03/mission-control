@@ -9,6 +9,7 @@ const nextConfig = {
       './node_modules/@prisma/**',
       './node_modules/@napi-rs/**',
       './node_modules/pdf-parse/dist/**',
+      './node_modules/pdfjs-dist/**',
     ],
   },
 }
