@@ -1,0 +1,66 @@
+# Apply RAG SQL migrations to the app Cloud SQL database from Cloud Build.
+#
+# This is useful when the local workstation lacks Cloud SQL IAM permissions for
+# cloud-sql-proxy, but the build runner service account is authorized.
+
+substitutions:
+  _REGION: us-central1
+  _CLOUD_SQL_INSTANCE: ''
+  _DB_NAME: missioncontrol_app
+  _DB_USER: mcapp
+  _DB_PASSWORD_SECRET: mc-api-db-password
+
+serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
+
+steps:
+  - id: apply-rag-schema
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ -z "${_CLOUD_SQL_INSTANCE}" ]; then
+          echo "FATAL: _CLOUD_SQL_INSTANCE substitution is required" >&2
+          exit 1
+        fi
+        echo "Applying RAG schema in ${_REGION} to ${_DB_NAME}"
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql-client curl ca-certificates >/dev/null
+
+        curl -fsSL -o /tmp/cloud-sql-proxy \
+          https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.4/cloud-sql-proxy.linux.amd64
+        chmod +x /tmp/cloud-sql-proxy
+
+        /tmp/cloud-sql-proxy --address 127.0.0.1 --port 5432 "${_CLOUD_SQL_INSTANCE}" >/tmp/cloud-sql-proxy-rag.log 2>&1 &
+        PROXY_PID=$$!
+        trap 'kill "$$PROXY_PID" >/dev/null 2>&1 || true' EXIT
+
+        READY=0
+        for _ in $$(seq 1 90); do
+          if ! kill -0 "$$PROXY_PID" 2>/dev/null; then
+            tail -80 /tmp/cloud-sql-proxy-rag.log >&2 || true
+            echo "FATAL: cloud-sql-proxy exited early" >&2
+            exit 1
+          fi
+          if pg_isready -h 127.0.0.1 -p 5432 -U "${_DB_USER}" -d "${_DB_NAME}" -q 2>/dev/null; then
+            READY=1
+            break
+          fi
+          sleep 2
+        done
+        if [ "$$READY" != "1" ]; then
+          tail -80 /tmp/cloud-sql-proxy-rag.log >&2 || true
+          echo "FATAL: Postgres did not become reachable" >&2
+          exit 1
+        fi
+
+        export PGPASSWORD="$$(gcloud secrets versions access latest --secret="${_DB_PASSWORD_SECRET}" --project="$PROJECT_ID")"
+        for FILE in database/migrations/*rag*.sql database/migrations/*RAG*.sql; do
+          [ -f "$$FILE" ] || continue
+          echo "Applying $$FILE"
+          psql -h 127.0.0.1 -p 5432 -U "${_DB_USER}" -d "${_DB_NAME}" -v ON_ERROR_STOP=1 -f "$$FILE"
+        done
+
+options:
+  logging: CLOUD_LOGGING_ONLY
