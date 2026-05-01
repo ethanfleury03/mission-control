@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mission-control-postgres
+    environment:
+      POSTGRES_USER: mcapp
+      POSTGRES_PASSWORD: mcapp
+      POSTGRES_DB: missioncontrol_app
+    ports:
+      - "5432:5432"
+    volumes:
+      - mission_control_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcapp -d missioncontrol_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mission_control_pgdata:

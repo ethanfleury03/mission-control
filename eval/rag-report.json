@@ -1,0 +1,1121 @@
+{
+  "generatedAt": "2026-04-29T19:59:53.466Z",
+  "mode": "retrieval",
+  "summary": {
+    "total": 15,
+    "passed": 3,
+    "failed": 12
+  },
+  "results": [
+    {
+      "id": "duraflex-connectivity",
+      "question": "How do I connect to a DuraFlex printer?",
+      "expected": {
+        "id": "duraflex-connectivity",
+        "question": "How do I connect to a DuraFlex printer?",
+        "expectedProduct": "DuraFlex",
+        "expectedIntent": "connectivity",
+        "expectedDocTitleIncludes": [
+          "DuraFlex",
+          "connect"
+        ],
+        "expectedDocType": "connectivity",
+        "mustAskFollowup": false,
+        "mustCite": true,
+        "wrongProductMustNotAppear": [
+          "DuraCore",
+          "DuraBolt"
+        ]
+      },
+      "parsed": {
+        "intent": "connectivity",
+        "product_family": "DuraFlex",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "connectivity",
+        "urgency": "normal",
+        "missing_info": [
+          "error code or alarm text if shown",
+          "connection type"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "Is the connection issue network/Ethernet, USB, RIP/job submission, or printer GUI access?"
+        ],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "connectivity",
+          "product_family": "DuraFlex",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "connectivity",
+          "urgency": "normal",
+          "missing_info": [
+            "error code or alarm text if shown",
+            "connection type"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "Is the connection issue network/Ethernet, USB, RIP/job submission, or printer GUI access?"
+          ],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraFlex"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: DuraFlex, connect.",
+        "Expected doc title keywords not found in final context: DuraFlex, connect.",
+        "Expected doc type connectivity was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "duraflex-declog-options",
+      "question": "Find the DuraFlex declog options procedure.",
+      "expected": {
+        "id": "duraflex-declog-options",
+        "question": "Find the DuraFlex declog options procedure.",
+        "expectedProduct": "DuraFlex",
+        "expectedIntent": "maintenance",
+        "expectedDocTitleIncludes": [
+          "Declog",
+          "Dehydration",
+          "Maintenance"
+        ],
+        "expectedDocType": "service_procedure",
+        "mustAskFollowup": false,
+        "mustCite": true,
+        "wrongProductMustNotAppear": [
+          "DuraCore",
+          "DuraBolt"
+        ]
+      },
+      "parsed": {
+        "intent": "maintenance",
+        "product_family": "DuraFlex",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [
+          "declog"
+        ],
+        "document_type": "service_procedure",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "maintenance",
+          "product_family": "DuraFlex",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [
+            "declog"
+          ],
+          "document_type": "service_procedure",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraFlex"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: Declog, Dehydration, Maintenance.",
+        "Expected doc title keywords not found in final context: Declog, Dehydration, Maintenance.",
+        "Expected doc type service_procedure was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "duraflex-dehydration-management",
+      "question": "What docs discuss DuraFlex dehydration management?",
+      "expected": {
+        "id": "duraflex-dehydration-management",
+        "question": "What docs discuss DuraFlex dehydration management?",
+        "expectedProduct": "DuraFlex",
+        "expectedIntent": "print_quality",
+        "expectedDocTitleIncludes": [
+          "Dehydration",
+          "Declog",
+          "Maintenance"
+        ],
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "print_quality",
+        "product_family": "DuraFlex",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [
+          "dehydration"
+        ],
+        "document_type": "print_quality",
+        "urgency": "normal",
+        "missing_info": [
+          "error code or alarm text if shown",
+          "ink/media and recent maintenance"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "What ink/media is loaded, and was there recent maintenance or downtime?"
+        ],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "print_quality",
+          "product_family": "DuraFlex",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [
+            "dehydration"
+          ],
+          "document_type": "print_quality",
+          "urgency": "normal",
+          "missing_info": [
+            "error code or alarm text if shown",
+            "ink/media and recent maintenance"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "What ink/media is loaded, and was there recent maintenance or downtime?"
+          ],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraFlex"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: Dehydration, Declog, Maintenance.",
+        "Expected doc title keywords not found in final context: Dehydration, Declog, Maintenance."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "duraflex-r602-release-notes",
+      "question": "What changed in DuraFlex R6.0.2?",
+      "expected": {
+        "id": "duraflex-r602-release-notes",
+        "question": "What changed in DuraFlex R6.0.2?",
+        "expectedProduct": "DuraFlex",
+        "expectedIntent": "release_notes",
+        "expectedDocTitleIncludes": [
+          "Release",
+          "R6.0.2",
+          "6.0.2"
+        ],
+        "expectedDocType": "software_release_notes",
+        "mustAskFollowup": false,
+        "mustCite": true,
+        "wrongProductMustNotAppear": [
+          "DuraCore",
+          "DuraBolt"
+        ]
+      },
+      "parsed": {
+        "intent": "release_notes",
+        "product_family": "DuraFlex",
+        "product_model": "",
+        "software_version": "R6.0.2",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "software_release_notes",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "release_notes",
+          "product_family": "DuraFlex",
+          "product_model": "",
+          "software_version": "R6.0.2",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "software_release_notes",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraFlex",
+          "softwareVersion": "R6.0.2"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: Release, R6.0.2, 6.0.2.",
+        "Expected doc title keywords not found in final context: Release, R6.0.2, 6.0.2.",
+        "Expected doc type software_release_notes was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "durabolt-installation",
+      "question": "Where are DuraBolt installation steps?",
+      "expected": {
+        "id": "durabolt-installation",
+        "question": "Where are DuraBolt installation steps?",
+        "expectedProduct": "DuraBolt",
+        "expectedIntent": "installation",
+        "expectedDocTitleIncludes": [
+          "DuraBolt",
+          "Installation",
+          "Commissioning"
+        ],
+        "expectedDocType": "installation_guide",
+        "mustAskFollowup": false,
+        "mustCite": true,
+        "wrongProductMustNotAppear": [
+          "DuraCore",
+          "DuraFlex"
+        ]
+      },
+      "parsed": {
+        "intent": "installation",
+        "product_family": "DuraBolt",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "installation_guide",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "installation",
+          "product_family": "DuraBolt",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "installation_guide",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraBolt"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: DuraBolt, Installation, Commissioning.",
+        "Expected doc title keywords not found in final context: DuraBolt, Installation, Commissioning.",
+        "Expected doc type installation_guide was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "duracore-operating-troubleshooting",
+      "question": "Find DuraCore operating and troubleshooting guidance.",
+      "expected": {
+        "id": "duracore-operating-troubleshooting",
+        "question": "Find DuraCore operating and troubleshooting guidance.",
+        "expectedProduct": "DuraCore",
+        "expectedIntent": "troubleshooting",
+        "expectedDocTitleIncludes": [
+          "DuraCore",
+          "Troubleshooting",
+          "Operating"
+        ],
+        "expectedDocType": "troubleshooting_guide",
+        "mustAskFollowup": false,
+        "mustCite": true,
+        "wrongProductMustNotAppear": [
+          "DuraFlex",
+          "DuraBolt"
+        ]
+      },
+      "parsed": {
+        "intent": "troubleshooting",
+        "product_family": "DuraCore",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "troubleshooting_guide",
+        "urgency": "normal",
+        "missing_info": [
+          "error code or alarm text if shown"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "What exact error code, alarm text, or visible symptom is shown?"
+        ],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "troubleshooting",
+          "product_family": "DuraCore",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "troubleshooting_guide",
+          "urgency": "normal",
+          "missing_info": [
+            "error code or alarm text if shown"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "What exact error code, alarm text, or visible symptom is shown?"
+          ],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraCore"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: DuraCore, Troubleshooting, Operating.",
+        "Expected doc title keywords not found in final context: DuraCore, Troubleshooting, Operating.",
+        "Expected doc type troubleshooting_guide was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "printhead-identification",
+      "question": "What documents mention printhead identification?",
+      "expected": {
+        "id": "printhead-identification",
+        "question": "What documents mention printhead identification?",
+        "expectedIntent": "parts",
+        "expectedDocTitleIncludes": [
+          "Printhead",
+          "Identification"
+        ],
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "parts",
+        "product_family": "",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [
+          "printhead"
+        ],
+        "document_type": "spare_parts",
+        "urgency": "normal",
+        "missing_info": [
+          "product family"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?"
+        ],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "parts",
+          "product_family": "",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [
+            "printhead"
+          ],
+          "document_type": "spare_parts",
+          "urgency": "normal",
+          "missing_info": [
+            "product family"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?"
+          ],
+          "confidence": 0.72
+        },
+        "filtersApplied": {},
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: Printhead, Identification.",
+        "Expected doc title keywords not found in final context: Printhead, Identification."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "duraflex-spare-parts",
+      "question": "Find DuraFlex spare parts information.",
+      "expected": {
+        "id": "duraflex-spare-parts",
+        "question": "Find DuraFlex spare parts information.",
+        "expectedProduct": "DuraFlex",
+        "expectedIntent": "parts",
+        "expectedDocTitleIncludes": [
+          "Spare",
+          "Parts"
+        ],
+        "expectedDocType": "spare_parts",
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "parts",
+        "product_family": "DuraFlex",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "spare_parts",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "parts",
+          "product_family": "DuraFlex",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "spare_parts",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraFlex"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: Spare, Parts.",
+        "Expected doc title keywords not found in final context: Spare, Parts.",
+        "Expected doc type spare_parts was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "duraflex-system-requirements",
+      "question": "Which docs mention system requirements for DuraFlex?",
+      "expected": {
+        "id": "duraflex-system-requirements",
+        "question": "Which docs mention system requirements for DuraFlex?",
+        "expectedProduct": "DuraFlex",
+        "expectedIntent": "system_requirements",
+        "expectedDocTitleIncludes": [
+          "System Requirements",
+          "Requirements"
+        ],
+        "expectedDocType": "system_requirements",
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "system_requirements",
+        "product_family": "DuraFlex",
+        "product_model": "requirements",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "system_requirements",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "system_requirements",
+          "product_family": "DuraFlex",
+          "product_model": "requirements",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "system_requirements",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "DuraFlex"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: System Requirements, Requirements.",
+        "Expected doc title keywords not found in final context: System Requirements, Requirements.",
+        "Expected doc type system_requirements was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "job-submission",
+      "question": "Where is job submission described?",
+      "expected": {
+        "id": "job-submission",
+        "question": "Where is job submission described?",
+        "expectedIntent": "job_submission",
+        "expectedDocTitleIncludes": [
+          "Job Submission",
+          "RIP",
+          "Workflow"
+        ],
+        "expectedDocType": "job_submission",
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "job_submission",
+        "product_family": "RIP",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "job_submission",
+        "urgency": "normal",
+        "missing_info": [
+          "software version"
+        ],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "job_submission",
+          "product_family": "RIP",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "job_submission",
+          "urgency": "normal",
+          "missing_info": [
+            "software version"
+          ],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "RIP"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: Job Submission, RIP, Workflow.",
+        "Expected doc title keywords not found in final context: Job Submission, RIP, Workflow.",
+        "Expected doc type job_submission was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "anyjet-user-guide",
+      "question": "Find AnyJet user guide information.",
+      "expected": {
+        "id": "anyjet-user-guide",
+        "question": "Find AnyJet user guide information.",
+        "expectedProduct": "AnyJet",
+        "expectedIntent": "unknown",
+        "expectedDocTitleIncludes": [
+          "AnyJet",
+          "User Guide",
+          "Manual"
+        ],
+        "expectedDocType": "user_manual",
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "unknown",
+        "product_family": "AnyJet",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "user_manual",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "unknown",
+          "product_family": "AnyJet",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "user_manual",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "AnyJet"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: AnyJet, User Guide, Manual.",
+        "Expected doc title keywords not found in final context: AnyJet, User Guide, Manual.",
+        "Expected doc type user_manual was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "ezcut-troubleshooting",
+      "question": "Find EZCut troubleshooting guidance.",
+      "expected": {
+        "id": "ezcut-troubleshooting",
+        "question": "Find EZCut troubleshooting guidance.",
+        "expectedProduct": "Cutter",
+        "expectedIntent": "troubleshooting",
+        "expectedDocTitleIncludes": [
+          "EZCut",
+          "Troubleshooting",
+          "Cutter"
+        ],
+        "expectedDocType": "troubleshooting_guide",
+        "mustAskFollowup": false,
+        "mustCite": true
+      },
+      "parsed": {
+        "intent": "troubleshooting",
+        "product_family": "Cutter",
+        "product_model": "EZCut",
+        "software_version": "",
+        "error_codes": [
+          "EZCUT"
+        ],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "troubleshooting_guide",
+        "urgency": "normal",
+        "missing_info": [],
+        "can_attempt_answer": true,
+        "needs_followup": false,
+        "followup_questions": [],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "troubleshooting",
+          "product_family": "Cutter",
+          "product_model": "EZCut",
+          "software_version": "",
+          "error_codes": [
+            "EZCUT"
+          ],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "troubleshooting_guide",
+          "urgency": "normal",
+          "missing_info": [],
+          "can_attempt_answer": true,
+          "needs_followup": false,
+          "followup_questions": [],
+          "confidence": 0.72
+        },
+        "filtersApplied": {
+          "productFamily": "Cutter"
+        },
+        "expectedDocInTop5": false,
+        "expectedDocInFinal": false,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [
+        "Expected doc title keywords not found in retrieval top 5: EZCut, Troubleshooting, Cutter.",
+        "Expected doc title keywords not found in final context: EZCut, Troubleshooting, Cutter.",
+        "Expected doc type troubleshooting_guide was not present in final context."
+      ],
+      "hints": [
+        "Use Search Debugger: check metadata filters, extraction quality, keyword query, and reranker reason.",
+        "Expected document may be retrieved but dropped by final context selection."
+      ]
+    },
+    {
+      "id": "vague-printer-connect",
+      "question": "Printer won't connect.",
+      "expected": {
+        "id": "vague-printer-connect",
+        "question": "Printer won't connect.",
+        "expectedIntent": "connectivity",
+        "mustAskFollowup": true,
+        "mustCite": false
+      },
+      "parsed": {
+        "intent": "connectivity",
+        "product_family": "",
+        "product_model": "won",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [
+          "won't connect"
+        ],
+        "document_type": "connectivity",
+        "urgency": "normal",
+        "missing_info": [
+          "product family",
+          "error code or alarm text if shown",
+          "connection type"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?",
+          "Is the connection issue network/Ethernet, USB, RIP/job submission, or printer GUI access?"
+        ],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "connectivity",
+          "product_family": "",
+          "product_model": "won",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [
+            "won't connect"
+          ],
+          "document_type": "connectivity",
+          "urgency": "normal",
+          "missing_info": [
+            "product family",
+            "error code or alarm text if shown",
+            "connection type"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?",
+            "Is the connection issue network/Ethernet, USB, RIP/job submission, or printer GUI access?"
+          ],
+          "confidence": 0.72
+        },
+        "filtersApplied": {},
+        "expectedDocInTop5": true,
+        "expectedDocInFinal": true,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [],
+      "hints": []
+    },
+    {
+      "id": "vague-banding",
+      "question": "My labels have banding.",
+      "expected": {
+        "id": "vague-banding",
+        "question": "My labels have banding.",
+        "expectedIntent": "print_quality",
+        "mustAskFollowup": true,
+        "mustCite": false
+      },
+      "parsed": {
+        "intent": "print_quality",
+        "product_family": "",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [
+          "banding"
+        ],
+        "document_type": "print_quality",
+        "urgency": "normal",
+        "missing_info": [
+          "product family",
+          "error code or alarm text if shown",
+          "ink/media and recent maintenance"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?"
+        ],
+        "confidence": 0.72
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "print_quality",
+          "product_family": "",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [
+            "banding"
+          ],
+          "document_type": "print_quality",
+          "urgency": "normal",
+          "missing_info": [
+            "product family",
+            "error code or alarm text if shown",
+            "ink/media and recent maintenance"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?"
+          ],
+          "confidence": 0.72
+        },
+        "filtersApplied": {},
+        "expectedDocInTop5": true,
+        "expectedDocInFinal": true,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [],
+      "hints": []
+    },
+    {
+      "id": "secret-service-password",
+      "question": "What is the secret service password?",
+      "expected": {
+        "id": "secret-service-password",
+        "question": "What is the secret service password?",
+        "expectedIntent": "unknown",
+        "mustAskFollowup": false,
+        "mustCite": false,
+        "shouldRefuse": true
+      },
+      "parsed": {
+        "intent": "unknown",
+        "product_family": "",
+        "product_model": "",
+        "software_version": "",
+        "error_codes": [],
+        "part_numbers": [],
+        "symptoms": [],
+        "document_type": "service_procedure",
+        "urgency": "normal",
+        "missing_info": [
+          "product family"
+        ],
+        "can_attempt_answer": false,
+        "needs_followup": true,
+        "followup_questions": [
+          "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?"
+        ],
+        "confidence": 0.35
+      },
+      "retrieval": {
+        "ok": true,
+        "parsedQuery": {
+          "intent": "unknown",
+          "product_family": "",
+          "product_model": "",
+          "software_version": "",
+          "error_codes": [],
+          "part_numbers": [],
+          "symptoms": [],
+          "document_type": "service_procedure",
+          "urgency": "normal",
+          "missing_info": [
+            "product family"
+          ],
+          "can_attempt_answer": false,
+          "needs_followup": true,
+          "followup_questions": [
+            "Which product is involved: DuraFlex, DuraCore, DuraBolt, AnyJet, cutter, RIP, or another system?"
+          ],
+          "confidence": 0.35
+        },
+        "filtersApplied": {},
+        "expectedDocInTop5": true,
+        "expectedDocInFinal": true,
+        "topFive": [],
+        "finalContext": []
+      },
+      "agent": null,
+      "failures": [],
+      "hints": []
+    }
+  ]
+}

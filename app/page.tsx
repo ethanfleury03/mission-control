@@ -13,6 +13,7 @@ import { ImageGenerationTab } from './components/ImageGenerationTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
 import { ManualsTab } from './components/ManualsTab';
 import { PhoneTab } from './components/PhoneTab';
+import { RagTab } from './components/RagTab';
 import { DEFAULT_HUB_APP, getHubApps, type HubAppId } from './lib/hubApps';
 import { BLOGS_ENABLED } from '@/lib/features';
 import { isAdminEmail } from '@/lib/auth/constants';
@@ -39,7 +40,8 @@ export default function ArrowHub() {
   const isAdmin = isAdminEmail(session?.user?.email);
   const availableApps = getHubApps({ includeAdmin: isAdmin });
   const resolvedActiveApp =
-    (activeApp === 'BLOGS' && !BLOGS_ENABLED) || (activeApp === 'ADMIN' && !isAdmin)
+    (activeApp === 'BLOGS' && !BLOGS_ENABLED) ||
+    (activeApp === 'ADMIN' && !isAdmin)
       ? DEFAULT_HUB_APP
       : activeApp;
 
@@ -99,6 +101,8 @@ export default function ArrowHub() {
           <PhoneTab />
         ) : resolvedActiveApp === 'MANUALS' ? (
           <ManualsTab />
+        ) : resolvedActiveApp === 'RAG' ? (
+          <RagTab />
         ) : (
           <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-[#0b1222]">
             <GeoIntelligenceEntry />

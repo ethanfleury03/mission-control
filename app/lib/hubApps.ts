@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
+  BrainCircuit,
   Orbit,
   Newspaper,
   Globe,
@@ -20,6 +21,7 @@ export type HubAppId =
   | 'GEO_INTELLIGENCE'
   | 'PHONE'
   | 'MANUALS'
+  | 'RAG'
   | 'ADMIN';
 
 export const DEFAULT_HUB_APP: HubAppId = 'GEO_INTELLIGENCE';
@@ -73,6 +75,12 @@ const ALL_HUB_APPS: HubApp[] = [
     label: 'Manuals',
     description: 'Internal manual library',
     icon: BookOpen,
+  },
+  {
+    id: 'RAG',
+    label: 'RAG',
+    description: 'Cited support assistant',
+    icon: BrainCircuit,
   },
   {
     id: 'ADMIN',
