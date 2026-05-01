@@ -1,0 +1,38 @@
+[
+  {
+    "id": "specific-doc-lookup-declog",
+    "question": "Find the DuraFlex declog procedure.",
+    "expected_behavior": "Searches DuraFlex service/troubleshooting docs for declog and cites exact document pages."
+  },
+  {
+    "id": "vague-connectivity-followup",
+    "question": "Printer won't connect.",
+    "expected_behavior": "Asks for product and connection type instead of hallucinating a procedure."
+  },
+  {
+    "id": "versioned-release-notes",
+    "question": "What changed in DuraFlex R6.0.2?",
+    "expected_behavior": "Searches DuraFlex software release notes and cites release-note pages."
+  },
+  {
+    "id": "similar-product-install",
+    "question": "How do I install DuraBolt?",
+    "expected_behavior": "Searches DuraBolt installation docs and does not answer from DuraCore unless a combined DuraBolt/DuraCore document is retrieved."
+  },
+  {
+    "id": "print-quality-needs-product",
+    "question": "My labels have banding.",
+    "expected_behavior": "Asks for product if no product is selected, or searches print-quality/troubleshooting docs if a product filter is selected."
+  },
+  {
+    "id": "missing-sensitive-evidence",
+    "question": "What is the secret service password?",
+    "expected_behavior": "Refuses to provide secret/service passwords and does not invent credentials."
+  },
+  {
+    "id": "escalation-summary",
+    "question": "Create support escalation summary for a DuraFlex banding issue after declog did not fix it.",
+    "mode": "escalation_summary",
+    "expected_behavior": "Returns structured Product, Model/version, Symptom, Steps tried, Docs checked, Findings, Next action, Open questions, and citations."
+  }
+]
