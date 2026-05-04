@@ -44,7 +44,7 @@ export function buildChunks(input: {
   let currentTokens = 0;
   let chunkIndex = 0;
 
-  const flush = () => {
+  const flush = (options: { preserveOverlap?: boolean } = { preserveOverlap: true }) => {
     if (current.length === 0) return;
     const text = current.map((block) => block.text).join('\n\n').trim();
     if (!text) {
@@ -77,6 +77,12 @@ export function buildChunks(input: {
     });
     chunkIndex += 1;
 
+    if (options.preserveOverlap === false) {
+      current = [];
+      currentTokens = 0;
+      return;
+    }
+
     const overlapText = tailWords(text, OVERLAP_TOKENS);
     current = overlapText
       ? [
@@ -104,7 +110,15 @@ export function buildChunks(input: {
     }
 
     const headingChanged = current.length > 0 && block.headingPath !== current[current.length - 1]?.headingPath;
+    const shouldStartCleanSection =
+      headingChanged &&
+      isNumberedSectionHeading(block.headingPath) &&
+      currentTokens >= 180;
     const wouldOverflow = currentTokens + block.tokenCount > MAX_TOKENS;
+    if (shouldStartCleanSection) {
+      flush({ preserveOverlap: false });
+    }
+
     if (current.length > 0 && wouldOverflow && (headingChanged || currentTokens >= TARGET_TOKENS * 0.65)) {
       flush();
     }
@@ -200,6 +214,10 @@ function detectHeading(paragraph: string): string | null {
   }
   if (/^(?:Warning|Caution|Danger|Important|Notice)\b/i.test(compact)) return compact;
   return null;
+}
+
+function isNumberedSectionHeading(headingPath: string): boolean {
+  return /^\d+(?:\.\d+){1,5}\s+\S/.test(headingPath.trim());
 }
 
 function isStandaloneWarning(line: string): boolean {
