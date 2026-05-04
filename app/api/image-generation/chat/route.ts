@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   createImageGenerationReply,
   isImageTypeValue,
-  LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE,
 } from '@/lib/image-generation/service';
 import type {
   ImageConversationMessage,
@@ -228,10 +227,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to create image-generation response.';
-    const status =
-      message === LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE || message === 'Selected machine was not found.'
-        ? 400
-        : 500;
+    const status = message === 'Selected machine was not found.' ? 400 : 500;
     return NextResponse.json(
       { error: message },
       { status }

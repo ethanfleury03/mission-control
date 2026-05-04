@@ -4,7 +4,7 @@ import { normalizeForCompareKey } from './dedupe-company-candidates';
 import { normalizeUrl } from './utils';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 const REQUEST_TIMEOUT_MS = 120_000;
 const MAX_VISIBLE_TEXT = 32_000;
 const MAX_LINKS = 350;

@@ -9,7 +9,7 @@ import { normalizeUrl } from './utils';
 import { validateScrapeUrl } from './validate-scrape-url';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 
 /** Visible text sent to locator model (member lists often sit mid-page). */
 const MAX_LOCATE_TEXT = 48_000;

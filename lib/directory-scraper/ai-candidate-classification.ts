@@ -19,7 +19,7 @@ export async function classifyCompanyCandidatesWithAi(
   const key = process.env.OPENROUTER_API_KEY;
   if (!key || candidates.length === 0) return null;
 
-  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || 'openai/gpt-4o-mini';
+  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || 'deepseek/deepseek-v4-flash';
   const supportsJsonFormat =
     model.startsWith('openai/') || model.startsWith('gpt-') || model === 'o1' || model === 'o3-mini';
   const body: Record<string, unknown> = {

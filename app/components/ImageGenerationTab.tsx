@@ -93,9 +93,6 @@ type ChatMessage = {
   meta?: string;
 };
 
-const LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE =
-  'Select a machine with uploaded reference images before generating a LinkedIn ad.';
-
 const PROMPT_ENTRIES: Array<{ key: ImageStudioPromptKey; label: string }> = [
   { key: 'assistantGoalPrompt', label: 'Assistant Goal Prompt' },
   { key: 'intentRoutingPrompt', label: 'Intent Routing Prompt' },
@@ -191,7 +188,7 @@ export function ImageGenerationTab() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
   const [isSending, setIsSending] = useState(false);
 
-  const [imageType, setImageType] = useState<ImageTypeValue>('linkedin_ad');
+  const [imageType, setImageType] = useState<ImageTypeValue>('none');
   const [generationMode, setGenerationMode] = useState<GenerationMode>('chat');
   const [draft, setDraft] = useState('');
   const [videoSourceKind, setVideoSourceKind] = useState<VideoSourceKind>('upload');
@@ -537,19 +534,6 @@ export function ImageGenerationTab() {
   const handleSubmitPrompt = async () => {
     const trimmedPrompt = draft.trim();
     if (!trimmedPrompt || isSending) return;
-    if (generationMode === 'image' && imageType === 'linkedin_ad' && (!selectedMachine || selectedMachine.images.length === 0)) {
-      setStatusMessage(LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE);
-      setMessages((current) => [
-        ...current,
-        {
-          id: `guardrail-${Date.now()}`,
-          role: 'assistant',
-          text: LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE,
-          status: 'error',
-        },
-      ]);
-      return;
-    }
 
     if (generationMode === 'video' && !selectedVideoDuration) {
       setStatusMessage('Select a video duration before generating.');
@@ -1183,14 +1167,12 @@ function GenerateView({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages]);
 
-  const linkedinNeedsMachineReference =
-    generationMode === 'image' && imageType === 'linkedin_ad' && (!selectedMachine || selectedMachine.images.length === 0);
   const videoNeedsSource =
     generationMode === 'video' &&
     ((videoSourceKind === 'upload' && !videoSourceFile) ||
       (videoSourceKind === 'generated' && !selectedSourceImageRunId));
   const videoNeedsDuration = generationMode === 'video' && !selectedVideoDuration;
-  const submitDisabled = isSending || !draft.trim() || linkedinNeedsMachineReference || videoNeedsSource || videoNeedsDuration;
+  const submitDisabled = isSending || !draft.trim() || videoNeedsSource || videoNeedsDuration;
   const modeSummary =
     generationMode === 'image' ? 'Image On' : generationMode === 'video' ? 'Video On' : 'Chat Only';
   const draftPlaceholder =
@@ -1364,15 +1346,17 @@ function GenerateView({
                     <SendHorizontal className="h-4 w-4" />
                   </button>
                 </div>
-                {linkedinNeedsMachineReference ? (
-                  <p className="mt-3 text-sm font-medium text-red-700">{LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE}</p>
-                ) : generationMode === 'video' ? (
+                {generationMode === 'video' ? (
                   <p className="mt-3 text-sm text-stone-600">
                     {selectedVideoDuration ? `${selectedVideoDuration}s selected` : 'Pick 4s, 6s, or 8s'} • 720p • 16:9 • source image becomes the first frame
                   </p>
                 ) : selectedMachine && selectedMachine.images.length > 0 ? (
                   <p className="mt-3 text-sm text-stone-600">
                     {selectedMachine.images.length} machine reference image(s) will be sent as authoritative visual inputs.
+                  </p>
+                ) : generationMode === 'image' ? (
+                  <p className="mt-3 text-sm text-stone-600">
+                    No machine selected. Image Studio will use your prompt and the Arrow brand KB.
                   </p>
                 ) : null}
               </div>
