@@ -162,6 +162,17 @@ function getMachineLabel(machine: ImageGenerationMachineSummary | null): string 
   return machine?.title ?? 'No Machine';
 }
 
+function getMachineSelectionLabel(machines: ImageGenerationMachineSummary[]): string {
+  if (machines.length === 0) return 'No Machine';
+  if (machines.length === 1) return machines[0].title;
+  return `${machines.length} machines`;
+}
+
+function getMachineSelectionDetail(machines: ImageGenerationMachineSummary[]): string {
+  if (machines.length === 0) return 'Brand KB only';
+  return machines.map((machine) => machine.title).join(', ');
+}
+
 export function ImageGenerationTab() {
   const initialLoadRef = useRef(false);
   const [activePage, setActivePage] = useState<ImageGenPage>('home');
@@ -171,7 +182,7 @@ export function ImageGenerationTab() {
 
   const [machines, setMachines] = useState<ImageGenerationMachineSummary[]>([]);
   const [machinesLoading, setMachinesLoading] = useState(false);
-  const [selectedMachineId, setSelectedMachineId] = useState<string>(NO_MACHINE_VALUE);
+  const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
 
   const [kbData, setKbData] = useState<ImageStudioKBResponse>({ logos: [], posts: [], colors: [] });
   const [kbLoading, setKbLoading] = useState(false);
@@ -221,10 +232,11 @@ export function ImageGenerationTab() {
   const [colorSaving, setColorSaving] = useState(false);
   const [colorDrafts, setColorDrafts] = useState<Record<string, KBColorEntry>>({});
 
-  const selectedMachine = useMemo(
-    () => machines.find((machine) => machine.id === selectedMachineId) ?? null,
-    [machines, selectedMachineId],
+  const selectedMachines = useMemo(
+    () => selectedMachineIds.map((id) => machines.find((machine) => machine.id === id)).filter((machine): machine is ImageGenerationMachineSummary => Boolean(machine)),
+    [machines, selectedMachineIds],
   );
+  const selectedMachine = selectedMachines[0] ?? null;
   const managedMachine = useMemo(
     () => machines.find((machine) => machine.id === manageMachineId) ?? null,
     [machines, manageMachineId],
@@ -235,10 +247,7 @@ export function ImageGenerationTab() {
     try {
       const nextMachines = await fetchImageGenerationMachines();
       setMachines(nextMachines);
-      setSelectedMachineId((current) => {
-        if (current === NO_MACHINE_VALUE) return current;
-        return nextMachines.some((machine) => machine.id === current) ? current : NO_MACHINE_VALUE;
-      });
+      setSelectedMachineIds((current) => current.filter((id) => nextMachines.some((machine) => machine.id === id)));
       setManageMachineId((current) => {
         if (current !== NO_MACHINE_VALUE && nextMachines.some((machine) => machine.id === current)) return current;
         return nextMachines[0]?.id ?? NO_MACHINE_VALUE;
@@ -392,9 +401,15 @@ export function ImageGenerationTab() {
     generationMode,
     imageType,
     selectedMachineId: selectedMachine?.id ?? null,
-    selectedMachineTitle: selectedMachine?.title ?? null,
-    selectedMachineNotes: selectedMachine?.notes ?? null,
-    selectedMachineImageCount: selectedMachine?.images.length ?? 0,
+    selectedMachineTitle: getMachineSelectionLabel(selectedMachines),
+    selectedMachineNotes: selectedMachines.map((machine) => `${machine.title}: ${machine.notes || 'No notes saved.'}`).join('\n\n') || null,
+    selectedMachineImageCount: selectedMachines.reduce((total, machine) => total + machine.images.length, 0),
+    selectedMachines: selectedMachines.map((machine) => ({
+      id: machine.id,
+      title: machine.title,
+      notes: machine.notes,
+      imageCount: machine.images.length,
+    })),
     machineCount: machines.length,
     kbSummary: {
       logoCount: kbData.logos.length,
@@ -555,8 +570,8 @@ export function ImageGenerationTab() {
       generationMode === 'image' ? 'Image mode on' : generationMode === 'video' ? 'Video mode on' : 'Chat only';
     const userMeta =
       generationMode === 'video'
-        ? `Context: Video • ${selectedVideoDuration ?? '?'}s • ${videoSourceKind === 'upload' ? 'Uploaded image' : 'Generated image'}`
-        : `Context: ${getMachineLabel(selectedMachine)} • ${getImageTypeLabel(imageType)} • ${modeLabel}`;
+        ? `Context: Video • ${selectedVideoDuration ?? '?'}s • ${videoSourceKind === 'upload' ? 'Uploaded image' : 'Generated image'} • ${getMachineSelectionLabel(selectedMachines)}`
+        : `Context: ${getMachineSelectionLabel(selectedMachines)} • ${getImageTypeLabel(imageType)} • ${modeLabel}`;
 
     setMessages((current) => [
       ...current,
@@ -585,6 +600,7 @@ export function ImageGenerationTab() {
           sourceKind: videoSourceKind,
           sourceFile: videoSourceKind === 'upload' ? videoSourceFile : null,
           sourceImageRunId: videoSourceKind === 'generated' ? selectedSourceImageRunId : null,
+          machineIds: selectedMachineIds,
           messages: messages.filter((message) => message.status !== 'sending').map((message) => ({
             role: message.role,
             text: message.text,
@@ -634,6 +650,7 @@ export function ImageGenerationTab() {
       const payload = await sendImageGenerationPrompt({
         prompt: trimmedPrompt,
         machineId: selectedMachine?.id ?? null,
+        machineIds: selectedMachineIds,
         imageType,
         imageMode: generationMode === 'image',
         generationMode,
@@ -707,7 +724,7 @@ export function ImageGenerationTab() {
       setNewMachineNotes('');
       setNewMachineFiles([]);
       await loadMachines();
-      setSelectedMachineId(created.id);
+      setSelectedMachineIds([created.id]);
       setManageMachineId(created.id);
       setStatusMessage(`Machine "${created.title}" created.`);
     } catch (error) {
@@ -873,15 +890,15 @@ export function ImageGenerationTab() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">Selected Machine</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{getMachineLabel(selectedMachine)}</p>
+                      <p className="mt-1 text-sm font-semibold text-white">{getMachineSelectionLabel(selectedMachines)}</p>
                     </div>
                     <span className="rounded-full border border-white/14 bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
                       {machines.length} in DB
                     </span>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/80">
-                    {selectedMachine
-                      ? `${selectedMachine.images.length} reference image(s) • ${selectedMachine.notes ? 'notes added' : 'notes pending'}`
+                    {selectedMachines.length > 0
+                      ? `${selectedMachines.reduce((total, machine) => total + machine.images.length, 0)} reference image(s) • ${getMachineSelectionDetail(selectedMachines)}`
                       : 'Generate still works without a machine. Brand KB is always applied by default.'}
                   </p>
                 </div>
@@ -897,7 +914,7 @@ export function ImageGenerationTab() {
                 <HomeView
                   machines={machines}
                   kbData={kbData}
-                  selectedMachine={selectedMachine}
+                  selectedMachines={selectedMachines}
                   onOpenGenerate={() => setActivePage('generate')}
                   onOpenGallery={() => setActivePage('gallery')}
                   onOpenSettings={(tab) => {
@@ -908,8 +925,8 @@ export function ImageGenerationTab() {
               ) : activePage === 'generate' ? (
                 <GenerateView
                   machines={machines}
-                  selectedMachine={selectedMachine}
-                  selectedMachineId={selectedMachineId}
+                  selectedMachines={selectedMachines}
+                  selectedMachineIds={selectedMachineIds}
                   imageType={imageType}
                   generationMode={generationMode}
                   draft={draft}
@@ -922,7 +939,7 @@ export function ImageGenerationTab() {
                   videoSourcePreviewUrl={videoSourcePreviewUrl}
                   selectedSourceImageRunId={selectedSourceImageRunId}
                   selectedVideoDuration={selectedVideoDuration}
-                  onMachineChange={setSelectedMachineId}
+                  onMachineSelectionChange={setSelectedMachineIds}
                   onImageTypeChange={setImageType}
                   onGenerationModeChange={handleGenerationModeChange}
                   onDraftChange={setDraft}
@@ -936,14 +953,14 @@ export function ImageGenerationTab() {
                 <GalleryView
                   machines={machines}
                   selectedMachine={selectedMachine}
-                  selectedMachineId={selectedMachineId}
+                  selectedMachineId={selectedMachine?.id ?? NO_MACHINE_VALUE}
                   historyRuns={historyRuns}
                   historyLoading={historyLoading}
                   videoRuns={videoRuns}
                   videoLoading={videoLoading}
                   galleryTab={galleryTab}
                   onGalleryTabChange={setGalleryTab}
-                  onMachineChange={setSelectedMachineId}
+                  onMachineChange={(value) => setSelectedMachineIds(value === NO_MACHINE_VALUE ? [] : [value])}
                   onOpenSettings={() => {
                     setSettingsTab('machines');
                     setActivePage('settings');
@@ -1021,14 +1038,14 @@ export function ImageGenerationTab() {
 function HomeView({
   machines,
   kbData,
-  selectedMachine,
+  selectedMachines,
   onOpenGenerate,
   onOpenGallery,
   onOpenSettings,
 }: {
   machines: ImageGenerationMachineSummary[];
   kbData: ImageStudioKBResponse;
-  selectedMachine: ImageGenerationMachineSummary | null;
+  selectedMachines: ImageGenerationMachineSummary[];
   onOpenGenerate: () => void;
   onOpenGallery: () => void;
   onOpenSettings: (tab: ImageStudioSettingsTab) => void;
@@ -1074,7 +1091,7 @@ function HomeView({
           <MetricCard icon={Database} label="Machines" value={String(machines.length)} />
           <MetricCard icon={ImagePlus} label="Logos" value={String(kbData.logos.length)} />
           <MetricCard icon={FileText} label="Post Refs" value={String(kbData.posts.length)} />
-          <MetricCard icon={Layers3} label="Current Selection" value={getMachineLabel(selectedMachine)} />
+          <MetricCard icon={Layers3} label="Current Selection" value={getMachineSelectionLabel(selectedMachines)} />
         </div>
       </section>
 
@@ -1109,8 +1126,8 @@ function HomeView({
 
 function GenerateView({
   machines,
-  selectedMachine,
-  selectedMachineId,
+  selectedMachines,
+  selectedMachineIds,
   imageType,
   generationMode,
   draft,
@@ -1123,7 +1140,7 @@ function GenerateView({
   videoSourcePreviewUrl,
   selectedSourceImageRunId,
   selectedVideoDuration,
-  onMachineChange,
+  onMachineSelectionChange,
   onImageTypeChange,
   onGenerationModeChange,
   onDraftChange,
@@ -1134,8 +1151,8 @@ function GenerateView({
   onSubmitPrompt,
 }: {
   machines: ImageGenerationMachineSummary[];
-  selectedMachine: ImageGenerationMachineSummary | null;
-  selectedMachineId: string;
+  selectedMachines: ImageGenerationMachineSummary[];
+  selectedMachineIds: string[];
   imageType: ImageTypeValue;
   generationMode: GenerationMode;
   draft: string;
@@ -1148,7 +1165,7 @@ function GenerateView({
   videoSourcePreviewUrl: string | null;
   selectedSourceImageRunId: string | null;
   selectedVideoDuration: VideoDurationSeconds | null;
-  onMachineChange: (value: string) => void;
+  onMachineSelectionChange: (value: string[]) => void;
   onImageTypeChange: (value: ImageTypeValue) => void;
   onGenerationModeChange: (value: GenerationMode) => void;
   onDraftChange: (value: string) => void;
@@ -1162,6 +1179,7 @@ function GenerateView({
   const selectedGeneratedImageRun =
     historyRuns.find((run) => run.id === selectedSourceImageRunId) ?? null;
   const generatedSourceOptions = historyRuns.slice().reverse();
+  const selectedMachineImageCount = selectedMachines.reduce((total, machine) => total + machine.images.length, 0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -1189,7 +1207,7 @@ function GenerateView({
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand">Generate</p>
-              <p className="mt-1 text-sm text-stone-600">{getMachineLabel(selectedMachine)} session</p>
+              <p className="mt-1 text-sm text-stone-600">{getMachineSelectionLabel(selectedMachines)} session</p>
             </div>
             <div className="flex items-center gap-2">
               <div className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs',
@@ -1288,24 +1306,18 @@ function GenerateView({
               <div className="border-t border-stone-200 px-5 py-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <MachineMultiSelectField
+                      machines={machines}
+                      selectedMachineIds={selectedMachineIds}
+                      onChange={onMachineSelectionChange}
+                    />
                     {generationMode === 'image' ? (
-                      <>
-                        <SelectField
-                          label="Machine"
-                          value={selectedMachineId}
-                          onChange={onMachineChange}
-                          options={[
-                            { value: NO_MACHINE_VALUE, label: 'No Machine' },
-                            ...machines.map((machine) => ({ value: machine.id, label: machine.title })),
-                          ]}
-                        />
                         <SelectField
                           label="Image Type"
                           value={imageType}
                           onChange={(value) => onImageTypeChange(value as ImageTypeValue)}
                           options={IMAGE_TYPE_OPTIONS}
                         />
-                      </>
                     ) : null}
                     <div className="sm:min-w-[220px]">
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Mode</p>
@@ -1350,9 +1362,9 @@ function GenerateView({
                   <p className="mt-3 text-sm text-stone-600">
                     {selectedVideoDuration ? `${selectedVideoDuration}s selected` : 'Pick 4s, 6s, or 8s'} • 720p • 16:9 • source image becomes the first frame
                   </p>
-                ) : selectedMachine && selectedMachine.images.length > 0 ? (
+                ) : selectedMachines.length > 0 && selectedMachineImageCount > 0 ? (
                   <p className="mt-3 text-sm text-stone-600">
-                    {selectedMachine.images.length} machine reference image(s) will be sent as authoritative visual inputs.
+                    {selectedMachineImageCount} machine reference image(s) across {selectedMachines.length} selected machine(s) will be sent as authoritative visual inputs.
                   </p>
                 ) : generationMode === 'image' ? (
                   <p className="mt-3 text-sm text-stone-600">
@@ -1470,22 +1482,27 @@ function GenerateView({
               </div>
             </SidebarCard>
           ) : (
-            <SidebarCard eyebrow="Selected Machine" title={getMachineLabel(selectedMachine)} icon={Layers3} footer={selectedMachine ? `${selectedMachine.images.length} machine image(s)` : 'Machine context is optional'}>
-              {selectedMachine ? (
-                <div className="space-y-3 text-sm text-stone-600">
-                  {selectedMachine.notes ? <p className="max-h-64 overflow-y-auto pr-1 leading-6">{selectedMachine.notes}</p> : <p>No machine notes added yet.</p>}
-                  {selectedMachine.images.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedMachine.images.slice(0, 4).map((image) => (
-                        <img
-                          key={image.id}
-                          src={getImageGenerationMachineImageUrl(image.id)}
-                          alt={image.label}
-                          className="h-24 w-full rounded-2xl border border-stone-200 bg-[#f8f1eb] object-cover"
-                        />
-                      ))}
+            <SidebarCard eyebrow="Selected Machines" title={getMachineSelectionLabel(selectedMachines)} icon={Layers3} footer={selectedMachines.length > 0 ? `${selectedMachineImageCount} machine image(s)` : 'Machine context is optional'}>
+              {selectedMachines.length > 0 ? (
+                <div className="space-y-4 text-sm text-stone-600">
+                  {selectedMachines.map((machine) => (
+                    <div key={machine.id} className="rounded-[22px] border border-stone-200 bg-white px-4 py-3">
+                      <p className="font-semibold text-stone-950">{machine.title}</p>
+                      {machine.notes ? <p className="mt-2 max-h-32 overflow-y-auto pr-1 leading-6">{machine.notes}</p> : <p className="mt-2">No machine notes added yet.</p>}
+                      {machine.images.length > 0 ? (
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          {machine.images.slice(0, 2).map((image) => (
+                            <img
+                              key={image.id}
+                              src={getImageGenerationMachineImageUrl(image.id)}
+                              alt={image.label}
+                              className="h-20 w-full rounded-2xl border border-stone-200 bg-[#f8f1eb] object-cover"
+                            />
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  ))}
                 </div>
               ) : (
                 <p className="text-sm leading-6 text-stone-600">No machine is selected. The Brand KB and your prompt will still guide the generation.</p>
@@ -2213,5 +2230,86 @@ function SelectField({
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
       </div>
     </label>
+  );
+}
+
+function MachineMultiSelectField({
+  machines,
+  selectedMachineIds,
+  onChange,
+}: {
+  machines: ImageGenerationMachineSummary[];
+  selectedMachineIds: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const selectedSet = new Set(selectedMachineIds);
+  const selectedMachines = selectedMachineIds
+    .map((id) => machines.find((machine) => machine.id === id))
+    .filter((machine): machine is ImageGenerationMachineSummary => Boolean(machine));
+  const label = getMachineSelectionLabel(selectedMachines);
+
+  const toggleMachine = (machineId: string) => {
+    if (selectedSet.has(machineId)) {
+      onChange(selectedMachineIds.filter((id) => id !== machineId));
+      return;
+    }
+    onChange([...selectedMachineIds, machineId]);
+  };
+
+  return (
+    <div className="block sm:min-w-[260px]">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Machines</p>
+      <details className="group relative">
+        <summary className="flex h-[46px] cursor-pointer list-none items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white px-4 text-sm font-medium text-stone-800 outline-none transition-colors hover:border-stone-300">
+          <span className="truncate">{label}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-stone-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-72 w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-[0_18px_45px_rgba(0,0,0,0.12)] sm:bottom-auto sm:top-full sm:mb-0 sm:mt-2">
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors',
+              selectedMachineIds.length === 0 ? 'bg-brand/10 text-brand' : 'text-stone-700 hover:bg-stone-50',
+            )}
+          >
+            <span className={cn('flex h-4 w-4 items-center justify-center rounded border', selectedMachineIds.length === 0 ? 'border-brand bg-brand text-white' : 'border-stone-300')}>
+              {selectedMachineIds.length === 0 ? <CheckCircle2 className="h-3 w-3" /> : null}
+            </span>
+            <span>
+              <span className="block font-semibold">No Machine</span>
+              <span className="block text-xs text-stone-500">Use prompt and Brand KB only</span>
+            </span>
+          </button>
+          <div className="my-2 h-px bg-stone-100" />
+          {machines.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-stone-500">No machines available yet.</p>
+          ) : (
+            machines.map((machine) => {
+              const selected = selectedSet.has(machine.id);
+              return (
+                <button
+                  key={machine.id}
+                  type="button"
+                  onClick={() => toggleMachine(machine.id)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors',
+                    selected ? 'bg-brand/10 text-brand' : 'text-stone-700 hover:bg-stone-50',
+                  )}
+                >
+                  <span className={cn('flex h-4 w-4 items-center justify-center rounded border', selected ? 'border-brand bg-brand text-white' : 'border-stone-300')}>
+                    {selected ? <CheckCircle2 className="h-3 w-3" /> : null}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{machine.title}</span>
+                    <span className="block text-xs text-stone-500">{machine.images.length} reference image(s)</span>
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </details>
+    </div>
   );
 }

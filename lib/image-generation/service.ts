@@ -497,6 +497,24 @@ function buildMachineContext(machine: ImageGenerationMachineSummary, template: s
   });
 }
 
+function buildMachinesContext(machines: ImageGenerationMachineSummary[], template: string): string {
+  if (machines.length === 0) {
+    return 'No machine selected. Use the Arrow Systems KB and the user request only.';
+  }
+  if (machines.length === 1) return buildMachineContext(machines[0], template);
+
+  return [
+    `${machines.length} machines selected. Treat each selected machine as an authoritative product that may need to appear in the same generated image/video prompt when the user asks for a bundled or combined scene.`,
+    '',
+    ...machines.map((machine, index) =>
+      [
+        `Selected machine ${index + 1}:`,
+        buildMachineContext(machine, template),
+      ].join('\n'),
+    ),
+  ].join('\n\n');
+}
+
 function buildImageTypeContext(imageType: ImageTypeValue, template: string): string {
   const variant = IMAGE_TYPE_VARIANTS[imageType];
   return substituteTemplate(template, {
@@ -596,6 +614,15 @@ function buildClientStudioContextText(context: ImageStudioAgentContext | undefin
     `- Selected machine images: ${formatMaybe(context.selectedMachineImageCount, '0')}`,
     `- Machine records loaded in UI: ${formatMaybe(context.machineCount, '0')}`,
   ];
+
+  if (context.selectedMachines && context.selectedMachines.length > 0) {
+    sections.push(
+      '- Selected machines:',
+      ...context.selectedMachines
+        .slice(0, 8)
+        .map((machine) => `  - ${machine.title} (${machine.imageCount} image(s)${machine.notes ? `; notes: ${clampText(machine.notes, 160)}` : ''})`),
+    );
+  }
 
   if (context.selectedMachineNotes) {
     sections.push(`- Selected machine notes preview: ${clampText(context.selectedMachineNotes, 360)}`);
@@ -699,7 +726,7 @@ async function buildReadOnlyAgentToolContext(input: {
     imageModel: string;
     videoModel: string;
   };
-  selectedMachine: ImageGenerationMachineSummary | null;
+  selectedMachines: ImageGenerationMachineSummary[];
 }): Promise<string> {
   const [machines, imageRuns, videoRuns] = await Promise.all([
     getImageGenerationMachines(),
@@ -707,7 +734,7 @@ async function buildReadOnlyAgentToolContext(input: {
     getRecentVideoRunToolSummaries(8),
   ]);
 
-  const selectedMachine = input.selectedMachine;
+  const selectedMachines = input.selectedMachines;
   const machineLines = machines.slice(0, 20).map((machine) => {
     const notes = clampText(machine.notes, 140);
     return `- ${machine.title} (${machine.images.length} image(s)${notes ? `; notes: ${notes}` : ''})`;
@@ -736,13 +763,17 @@ async function buildReadOnlyAgentToolContext(input: {
     machineLines.length > 0 ? machineLines.join('\n') : '- No machine records found.',
     '',
     'get_selected_machine:',
-    selectedMachine
-      ? [
-          `- Title: ${selectedMachine.title}`,
-          `- Notes: ${clampText(selectedMachine.notes, 700) || 'No notes saved.'}`,
-          `- Reference images: ${selectedMachine.images.length}`,
-          ...selectedMachine.images.slice(0, 8).map((image) => `  - ${image.label} (${image.fileName})`),
-        ].join('\n')
+    selectedMachines.length > 0
+      ? selectedMachines
+          .map((machine, index) =>
+            [
+              `- Selected machine ${index + 1}: ${machine.title}`,
+              `  - Notes: ${clampText(machine.notes, 700) || 'No notes saved.'}`,
+              `  - Reference images: ${machine.images.length}`,
+              ...machine.images.slice(0, 8).map((image) => `    - ${image.label} (${image.fileName})`),
+            ].join('\n'),
+          )
+          .join('\n')
       : '- No machine selected.',
     '',
     'list_recent_images:',
@@ -1205,6 +1236,19 @@ async function getMachineImageAttachments(machineId: string, limit = 4): Promise
   }));
 }
 
+async function getMachinesImageAttachments(machines: ImageGenerationMachineSummary[], limitPerMachine = 3): Promise<ImageAttachment[]> {
+  const batches = await Promise.all(
+    machines.map(async (machine) => {
+      const attachments = await getMachineImageAttachments(machine.id, limitPerMachine);
+      return attachments.map((attachment) => ({
+        ...attachment,
+        label: `${machine.title}: ${attachment.label}`,
+      }));
+    }),
+  );
+  return batches.flat();
+}
+
 async function getKbImageAttachments(category: 'logo' | 'post', limit: number): Promise<ImageAttachment[]> {
   const rows = await prisma.imageGenerationKBAsset.findMany({
     where: { category },
@@ -1348,10 +1392,12 @@ async function buildImageResultSummary(input: {
 
 function buildMachineAccuracySafetyBlock(input: {
   machine: ImageGenerationMachineSummary | null;
+  machines?: ImageGenerationMachineSummary[];
   machineReference: MachineReferenceResult | null;
   machineAttachments: ImageAttachment[];
 }): string {
-  if (!input.machine || input.machineAttachments.length === 0) {
+  const machines = input.machines ?? (input.machine ? [input.machine] : []);
+  if (machines.length === 0 || input.machineAttachments.length === 0) {
     return [
       'Runtime machine-accuracy guardrail:',
       '- No selected machine reference images are attached. Do not invent or imply a specific Arrow Systems machine unless the user supplied enough detail.',
@@ -1360,11 +1406,13 @@ function buildMachineAccuracySafetyBlock(input: {
 
   const sections = [
     'Runtime machine-accuracy guardrail:',
-    `- The selected machine is "${input.machine.title}".`,
+    machines.length === 1
+      ? `- The selected machine is "${machines[0].title}".`
+      : `- The selected machines are: ${machines.map((machine) => `"${machine.title}"`).join(', ')}.`,
     `- ${input.machineAttachments.length} authoritative machine reference image(s) are attached first in this request.`,
-    '- The machine in the generated image must match those attached reference images before satisfying creative direction, layout style, copy, environment, or brand treatment.',
-    '- Preserve visible machine shape, proportions, color blocking, panels, rollers, feed path, output path, controls, materials, branding accents, and supported outputs.',
-    '- Do not replace it with a generic printer, competitor machine, invented machine, alternate model, fictional attachment, unsupported colorway, or unsupported hardware capability.',
+    '- Every selected machine requested in the scene must match its attached reference images before satisfying creative direction, layout style, copy, environment, or brand treatment.',
+    '- Preserve visible machine shape, proportions, color blocking, panels, rollers, feed path, output path, controls, materials, branding accents, relative scale, and supported outputs.',
+    '- Do not replace selected machines with generic printers, competitor machines, invented machines, alternate models, fictional attachments, unsupported colorways, or unsupported hardware capabilities.',
   ];
 
   if (input.machineReference) {
@@ -1383,6 +1431,7 @@ function buildMachineAccuracySafetyBlock(input: {
 function appendMachineAccuracySafetyBlock(input: {
   finalPrompt: string;
   machine: ImageGenerationMachineSummary | null;
+  machines?: ImageGenerationMachineSummary[];
   machineReference: MachineReferenceResult | null;
   machineAttachments: ImageAttachment[];
 }): string {
@@ -1391,6 +1440,7 @@ function appendMachineAccuracySafetyBlock(input: {
     '',
     buildMachineAccuracySafetyBlock({
       machine: input.machine,
+      machines: input.machines,
       machineReference: input.machineReference,
       machineAttachments: input.machineAttachments,
     }),
@@ -1400,21 +1450,28 @@ function appendMachineAccuracySafetyBlock(input: {
 function buildLinkedInAdUserPrompt(input: {
   userPrompt: string;
   machine: ImageGenerationMachineSummary | null;
+  machines?: ImageGenerationMachineSummary[];
   machineReference: MachineReferenceResult | null;
   kb: ImageStudioKBResponse;
   machineAttachments: ImageAttachment[];
 }): string {
-  const machineLabel = input.machine?.title ?? 'the requested Arrow Systems product or concept';
+  const machines = input.machines ?? (input.machine ? [input.machine] : []);
+  const machineLabel =
+    machines.length > 1
+      ? machines.map((machine) => machine.title).join(' and ')
+      : input.machine?.title ?? 'the requested Arrow Systems product or concept';
   const machineReferenceInstruction =
-    input.machine && input.machineAttachments.length > 0
+    machines.length > 0 && input.machineAttachments.length > 0
       ? [
           `- ${input.machineAttachments.length} authoritative machine reference image(s) are attached first in this request.`,
-          '- Match the selected machine using those uploaded machine reference images and machine notes.',
-          '- Exact machine fidelity is the top priority. Creative direction, ad copy, and layout must adapt around the real machine, not redesign it.',
+          machines.length > 1
+            ? `- Match every selected machine (${machines.map((machine) => machine.title).join(', ')}) using those uploaded machine reference images and machine notes.`
+            : '- Match the selected machine using those uploaded machine reference images and machine notes.',
+          '- Exact machine fidelity is the top priority. Creative direction, ad copy, and layout must adapt around the real machines, not redesign them.',
         ]
-      : input.machine
+      : machines.length > 0
         ? [
-            '- No machine reference images are attached for the selected machine.',
+            '- No machine reference images are attached for the selected machine selection.',
             '- Use the selected machine notes, Arrow Systems KB, and user request. Do not invent unsupported hardware details.',
           ]
         : [
@@ -1434,11 +1491,20 @@ function buildLinkedInAdUserPrompt(input: {
     '- Use the Arrow Systems KB as the default brand source for logos, color treatment, and layout direction.',
     '- Build a real ad composition with headline hierarchy, supporting copy, feature callouts, badges, and CTA energy.',
     '- Include strong in-image marketing text and ad structure by default.',
-    input.machine
-      ? `- The machine in the final image must visually match ${machineLabel}.`
+    machines.length > 0
+      ? `- The machine(s) in the final image must visually match ${machineLabel}.`
       : `- The final image should center ${machineLabel} from the user's prompt.`,
     `- Brand colors: ${brandColors}`,
   ];
+
+  if (machines.length > 1) {
+    sections.push(
+      '',
+      'Selected machine notes:',
+      ...machines.map((machine) => `- ${machine.title}: ${clampText(machine.notes, 420) || 'No notes saved.'}`),
+      '- Compose them as a believable Arrow Systems package/deal when the prompt asks for multiple products together.',
+    );
+  }
 
   if (input.machineReference) {
     sections.push('', 'Machine appearance summary:', input.machineReference.appearanceSummary);
@@ -1891,6 +1957,7 @@ export function isImageTypeValue(value: unknown): value is ImageTypeValue {
 export async function createImageGenerationReply(input: {
   prompt: string;
   machineId?: string | null;
+  machineIds?: string[];
   imageType: ImageTypeValue;
   imageMode: boolean;
   generationMode?: ImageStudioGenerationMode;
@@ -1899,18 +1966,26 @@ export async function createImageGenerationReply(input: {
 }): Promise<ImageGenerationChatResponse> {
   const settingsRow = await ensureImageStudioSettingsRow();
   const settings = buildRuntimeSettings(settingsRow);
+  const resolvedMachineIds = Array.from(
+    new Set([...(input.machineIds ?? []), ...(input.machineId ? [input.machineId] : [])].map((id) => id.trim()).filter(Boolean)),
+  ).slice(0, 6);
   const [kb, machine] = await Promise.all([
     getImageStudioKBResponse(),
     input.machineId ? getImageGenerationMachineById(input.machineId) : Promise.resolve(null),
   ]);
+  const selectedMachines =
+    resolvedMachineIds.length > 0
+      ? (
+          await Promise.all(resolvedMachineIds.map((id) => getImageGenerationMachineById(id)))
+        ).filter((entry): entry is ImageGenerationMachineSummary => Boolean(entry))
+      : [];
+  const primaryMachine = selectedMachines[0] ?? machine ?? null;
 
-  if (input.machineId && !machine) {
+  if (resolvedMachineIds.length > 0 && selectedMachines.length !== resolvedMachineIds.length) {
     throw new Error('Selected machine was not found.');
   }
 
-  const machineContext = machine
-    ? buildMachineContext(machine, settings.prompts.machineContextTemplate)
-    : 'No machine selected. Use the Arrow Systems KB and the user request only.';
+  const machineContext = buildMachinesContext(selectedMachines, settings.prompts.machineContextTemplate);
   const kbContext = buildKbContext(kb, settings.prompts.kbContextTemplate);
   const imageTypeContext = buildImageTypeContext(input.imageType, settings.prompts.imageTypeContextTemplate);
   const conversationContext = buildConversationContext(input.messages);
@@ -1929,7 +2004,7 @@ export async function createImageGenerationReply(input: {
       imageModel: settings.imageModel,
       videoModel: settings.videoModel,
     },
-    selectedMachine: machine,
+    selectedMachines,
   });
   const sharedContext = [
     buildAgentToolPolicyText(),
@@ -1978,14 +2053,14 @@ export async function createImageGenerationReply(input: {
 
   const [plan, machineAttachments, logoAttachments, postAttachments] = await Promise.all([
     buildImagePlan({ sharedContext, prompts: settings.prompts }),
-    machine ? getMachineImageAttachments(machine.id, 4) : Promise.resolve([]),
+    selectedMachines.length > 0 ? getMachinesImageAttachments(selectedMachines, selectedMachines.length > 1 ? 3 : 4) : Promise.resolve([]),
     getKbImageAttachments('logo', 2),
     getKbImageAttachments('post', 3),
   ]);
 
   const machineReference =
-    machine && machineAttachments.length > 0
-      ? await extractMachineReference({ machine, prompts: settings.prompts, machineAttachments })
+    primaryMachine && selectedMachines.length === 1 && machineAttachments.length > 0
+      ? await extractMachineReference({ machine: primaryMachine, prompts: settings.prompts, machineAttachments })
       : null;
 
   const rawWriter =
@@ -1993,12 +2068,13 @@ export async function createImageGenerationReply(input: {
       ? {
           finalPrompt: buildLinkedInAdUserPrompt({
             userPrompt: input.prompt,
-            machine,
+            machine: primaryMachine,
+            machines: selectedMachines,
             machineReference,
             kb,
             machineAttachments,
           }),
-          alt: machine ? `${machine.title} LinkedIn ad` : 'LinkedIn ad',
+          alt: selectedMachines.length > 0 ? `${selectedMachines.map((item) => item.title).join(' and ')} LinkedIn ad` : 'LinkedIn ad',
         }
       : await buildFinalImagePrompt({
           prompt: input.prompt,
@@ -2010,7 +2086,8 @@ export async function createImageGenerationReply(input: {
     ...rawWriter,
     finalPrompt: appendMachineAccuracySafetyBlock({
       finalPrompt: rawWriter.finalPrompt,
-      machine,
+      machine: primaryMachine,
+      machines: selectedMachines,
       machineReference,
       machineAttachments,
     }),
@@ -2020,7 +2097,7 @@ export async function createImageGenerationReply(input: {
     input.imageType === 'linkedin_ad'
       ? buildLinkedInAdSystemPrompt({
           template: settings.prompts.linkedinAdImageSystemPrompt,
-          machine,
+          machine: primaryMachine,
         })
       : undefined;
 
@@ -2048,7 +2125,7 @@ export async function createImageGenerationReply(input: {
     replyText,
     planner: { ...plan, finalPrompt: writer.finalPrompt, alt: writer.alt },
     image: { ...generatedImage, alt: writer.alt },
-    machineId: input.machineId ?? null,
+    machineId: primaryMachine?.id ?? null,
     imageType: input.imageType,
   });
 

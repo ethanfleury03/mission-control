@@ -30,6 +30,12 @@ type SourceSnapshot = {
   dataUrl: string;
 };
 
+type VideoMachineContext = {
+  title: string;
+  notes: string;
+  imageCount: number;
+};
+
 type OpenRouterVideoSubmitPayload = {
   id?: string;
   polling_url?: string;
@@ -466,6 +472,50 @@ async function maybeRefreshVideoRuns(rows: VideoRunRow[]): Promise<VideoRunRow[]
   return refreshed;
 }
 
+async function getVideoMachineContext(machineIds: string[] | undefined): Promise<VideoMachineContext[]> {
+  const ids = Array.from(new Set((machineIds ?? []).map((id) => id.trim()).filter(Boolean))).slice(0, 6);
+  if (ids.length === 0) return [];
+  const rows = await prisma.imageGenerationMachine.findMany({
+    where: { id: { in: ids } },
+    include: {
+      images: {
+        select: { id: true },
+      },
+    },
+  });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const orderedRows = ids
+    .map((id) => byId.get(id))
+    .filter((row): row is (typeof rows)[number] => Boolean(row));
+  return orderedRows
+    .map((row) => ({
+      title: row.title,
+      notes: row.notes,
+      imageCount: row.images.length,
+    }));
+}
+
+function buildVideoPromptWithMachineContext(prompt: string, machines: VideoMachineContext[]): string {
+  if (machines.length === 0) return prompt;
+  return [
+    prompt,
+    '',
+    'Selected Arrow Systems machine context for this video:',
+    ...machines.map((machine, index) =>
+      [
+        `- Machine ${index + 1}: ${machine.title}`,
+        `  - Reference images available in Image Studio: ${machine.imageCount}`,
+        `  - Notes: ${machine.notes.trim() || 'No notes saved.'}`,
+      ].join('\n'),
+    ),
+    '',
+    'Video fidelity instructions:',
+    '- Preserve the selected machine identities, relative scale, industrial materials, controls, feed paths, output paths, and Arrow Systems branding cues from the source image and machine context.',
+    '- If multiple machines are selected, stage them together as a believable package/deal without merging them into one fictional machine.',
+    '- Do not introduce competitor branding, fictional attachments, unsupported hardware capabilities, or alternate machine models.',
+  ].join('\n');
+}
+
 export async function createVideoGenerationRun(input: {
   prompt: string;
   durationSeconds: VideoDurationSeconds;
@@ -477,6 +527,7 @@ export async function createVideoGenerationRun(input: {
     bytes: Uint8Array;
   } | null;
   sourceImageRunId?: string | null;
+  machineIds?: string[];
   messages?: ImageConversationMessage[];
 }): Promise<VideoGenerationRunSummary> {
   await ensureImageGenerationSchema();
@@ -492,9 +543,11 @@ export async function createVideoGenerationRun(input: {
     upload: input.upload ?? null,
     sourceImageRunId: input.sourceImageRunId ?? null,
   });
+  const machines = await getVideoMachineContext(input.machineIds);
+  const videoPrompt = buildVideoPromptWithMachineContext(prompt, machines);
 
   const submit = await createOpenRouterVideoJob({
-    prompt,
+    prompt: videoPrompt,
     durationSeconds: input.durationSeconds,
     sourceDataUrl: source.dataUrl,
   });

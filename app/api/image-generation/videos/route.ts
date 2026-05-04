@@ -26,6 +26,23 @@ function parseMessagesJson(raw: FormDataEntryValue | null): ImageConversationMes
   }
 }
 
+function parseMachineIdsJson(raw: FormDataEntryValue | null): string[] {
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return Array.from(
+      new Set(
+        parsed
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean),
+      ),
+    ).slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   const limitValue = Number.parseInt(request.nextUrl.searchParams.get('limit') ?? '', 10);
   const limit = Number.isFinite(limitValue) ? limitValue : undefined;
@@ -69,6 +86,7 @@ export async function POST(request: NextRequest) {
           }
         : null,
       sourceImageRunId,
+      machineIds: parseMachineIdsJson(form.get('machineIdsJson')),
       messages: parseMessagesJson(form.get('messagesJson')),
     });
 

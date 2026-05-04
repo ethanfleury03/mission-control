@@ -40,6 +40,17 @@ function readNonNegativeInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined;
 }
 
+function readStringArray(value: unknown, maxLength = 120, limit = 8): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => readLimitedString(entry, maxLength))
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  ).slice(0, limit);
+}
+
 function parseStudioContext(value: unknown, fallback: {
   generationMode: ImageStudioGenerationMode;
   imageType: ImageStudioAgentContext['imageType'];
@@ -137,6 +148,23 @@ function parseStudioContext(value: unknown, fallback: {
           : [],
       }
     : undefined;
+  const selectedMachines = Array.isArray(record.selectedMachines)
+    ? record.selectedMachines
+        .map((entry): NonNullable<ImageStudioAgentContext['selectedMachines']>[number] | null => {
+          const item = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : null;
+          const id = readLimitedString(item?.id, 120);
+          const title = readLimitedString(item?.title, 160);
+          if (!id || !title) return null;
+          return {
+            id,
+            title,
+            notes: readLimitedString(item?.notes, 800),
+            imageCount: readNonNegativeInteger(item?.imageCount) ?? 0,
+          };
+        })
+        .filter((entry): entry is NonNullable<ImageStudioAgentContext['selectedMachines']>[number] => Boolean(entry))
+        .slice(0, 8)
+    : undefined;
 
   return {
     generationMode: isGenerationMode(record.generationMode) ? record.generationMode : fallback.generationMode,
@@ -164,6 +192,7 @@ function parseStudioContext(value: unknown, fallback: {
     selectedMachineTitle: readLimitedString(record.selectedMachineTitle, 160),
     selectedMachineNotes: readLimitedString(record.selectedMachineNotes, 800),
     selectedMachineImageCount: readNonNegativeInteger(record.selectedMachineImageCount),
+    selectedMachines,
     machineCount: readNonNegativeInteger(record.machineCount),
     kbSummary,
     settingsSummary,
@@ -184,6 +213,7 @@ export async function POST(request: NextRequest) {
     const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
     const machineId =
       typeof body?.machineId === 'string' && body.machineId.trim().length > 0 ? body.machineId.trim() : null;
+    const machineIds = readStringArray(body?.machineIds);
     const imageType = body?.imageType;
     const imageMode = body?.imageMode === true;
     const generationMode = isGenerationMode(body?.generationMode) ? body.generationMode : imageMode ? 'image' : 'chat';
@@ -218,6 +248,7 @@ export async function POST(request: NextRequest) {
       await createImageGenerationReply({
         prompt,
         machineId,
+        machineIds,
         imageType,
         imageMode,
         generationMode,

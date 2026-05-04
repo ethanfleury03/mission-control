@@ -43,6 +43,7 @@ export async function updateImageStudioSettings(
 export async function sendImageGenerationPrompt(input: {
   prompt: string;
   machineId?: string | null;
+  machineIds?: string[];
   imageType: string;
   imageMode: boolean;
   generationMode: ImageStudioAgentContext['generationMode'];
@@ -70,6 +71,7 @@ export async function createVideoRun(input: {
   sourceKind: VideoSourceKind;
   sourceFile?: File | null;
   sourceImageRunId?: string | null;
+  machineIds?: string[];
   messages: ImageConversationMessage[];
 }): Promise<VideoGenerationRunSummary> {
   const form = new FormData();
@@ -77,6 +79,7 @@ export async function createVideoRun(input: {
   form.set('duration', String(input.duration));
   form.set('sourceKind', input.sourceKind);
   form.set('messagesJson', JSON.stringify(input.messages));
+  form.set('machineIdsJson', JSON.stringify(input.machineIds ?? []));
 
   if (input.sourceKind === 'upload' && input.sourceFile) {
     form.set('sourceFile', input.sourceFile);

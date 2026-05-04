@@ -135,6 +135,12 @@ export interface ImageStudioAgentContext {
   selectedMachineTitle?: string | null;
   selectedMachineNotes?: string | null;
   selectedMachineImageCount?: number;
+  selectedMachines?: Array<{
+    id: string;
+    title: string;
+    notes?: string | null;
+    imageCount: number;
+  }>;
   machineCount?: number;
   kbSummary?: {
     logoCount: number;
