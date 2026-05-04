@@ -34,6 +34,7 @@ const MAX_AGENT_SEARCHES = Number.parseInt(process.env.RAG_AGENT_MAX_SEARCHES ||
 
 export async function runSupportAgent(input: SupportAgentInput): Promise<RagAnswer> {
   const workingQuery = buildWorkingQuery(input.query, input.conversationHistory);
+  const retrievalQuery = buildRetrievalQuery(input.query, input.conversationHistory);
   const parsedQuery = await parseSupportQueryWithModel(workingQuery, {
     productFamily: input.filters?.productFamily,
     documentType: input.filters?.documentType,
@@ -75,7 +76,7 @@ export async function runSupportAgent(input: SupportAgentInput): Promise<RagAnsw
   }
 
   const { searchCalls, finalContext, combinedDebug } = await runSearchPlan({
-    query: workingQuery,
+    query: retrievalQuery,
     parsedQuery,
     filters: input.filters || {},
     mode: input.mode || 'answer',
@@ -263,7 +264,10 @@ function toSearchManualsInput(item: SearchPlanItem, parsed: ParsedSupportQuery, 
     query: item.query,
     productFamily: filters.productFamily || parsed.product_family || undefined,
     productModel: filters.productModel || parsed.product_model || undefined,
-    documentType: filters.documentType || item.documentType || undefined,
+    // Only UI-selected document type is a hard filter. Agent-inferred doc types
+    // are often helpful ranking hints, but too risky as filters for short
+    // manual lookups like "clean the caper".
+    documentType: filters.documentType || undefined,
     softwareVersion: filters.softwareVersion || filters.version || parsed.software_version || undefined,
     intent: parsed.intent,
     restrictDocumentIds: filters.documentIds || (filters.documentId ? [filters.documentId] : undefined),
@@ -528,6 +532,23 @@ function buildWorkingQuery(query: string, history: SupportAgentInput['conversati
     .map((message) => `${message.role}: ${message.content}`)
     .join('\n');
   return recent ? `${recent}\nuser: ${query}` : query;
+}
+
+function buildRetrievalQuery(query: string, history: SupportAgentInput['conversationHistory'] = []): string {
+  const normalizedCurrent = normalizeRetrievalText(query);
+  const recentUserMessages = history
+    .filter((message) => message.role === 'user')
+    .map((message) => normalizeRetrievalText(message.content))
+    .filter((message) => message && message.toLowerCase() !== normalizedCurrent.toLowerCase())
+    .slice(-2);
+  return [...recentUserMessages, normalizedCurrent].filter(Boolean).join(' ');
+}
+
+function normalizeRetrievalText(text: string): string {
+  return text
+    .replace(/\b(user|assistant)\s*:/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isSensitiveSecretRequest(query: string): boolean {

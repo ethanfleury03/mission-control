@@ -112,6 +112,10 @@ function isCrossProductQuery(query: string): boolean {
 }
 
 function buildKeywordQuery(query: string, parsed: ParsedSupportQuery): string {
+  const cleanQuery = query
+    .replace(/\b(user|assistant)\s*:/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   const additions = [
     parsed.product_family,
     parsed.product_model,
@@ -121,7 +125,7 @@ function buildKeywordQuery(query: string, parsed: ParsedSupportQuery): string {
     ...parsed.part_numbers,
     ...parsed.symptoms,
   ].filter(Boolean);
-  return [...new Set([query, ...additions])].join(' ');
+  return [...new Set([cleanQuery, ...additions])].join(' ');
 }
 
 function mergeAndScoreResults(input: {
