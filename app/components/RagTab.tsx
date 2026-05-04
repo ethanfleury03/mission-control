@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 import { DOCUMENT_TYPES, PRODUCT_FAMILIES } from '@/lib/rag/types';
 import { cn } from '../lib/utils';
@@ -780,7 +781,11 @@ function ChatBubble({
   return (
     <article className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div className={cn('max-w-[min(52rem,92%)] rounded-md border px-4 py-3 shadow-sm', isUser ? 'border-brand bg-brand text-white' : 'border-neutral-200 bg-white text-neutral-900')}>
-        <div className="whitespace-pre-wrap text-sm leading-6">{turn.content}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap text-sm leading-6">{turn.content}</div>
+        ) : (
+          <RagMarkdown content={turn.content} />
+        )}
         {turn.response ? (
           <div className="mt-4 space-y-3 border-t border-neutral-200 pt-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -807,6 +812,29 @@ function ChatBubble({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function RagMarkdown({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-headings:text-neutral-950 prose-p:my-2 prose-p:leading-6 prose-li:my-1 prose-ul:my-2 prose-ol:my-2 prose-strong:text-neutral-950">
+      <ReactMarkdown
+        components={{
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
+              {children}
+            </a>
+          ),
+          code: ({ children }) => (
+            <code className="rounded bg-neutral-100 px-1 py-0.5 text-[0.85em] text-neutral-900">
+              {children}
+            </code>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 
