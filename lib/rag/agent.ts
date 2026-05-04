@@ -81,7 +81,7 @@ export async function runSupportAgent(input: SupportAgentInput): Promise<RagAnsw
     filters: input.filters || {},
     mode: input.mode || 'answer',
   });
-  const exactProcedureChunk = findCaperProcedureChunk(finalContext, workingQuery);
+  const exactProcedureChunk = findExactProcedureChunk(finalContext, workingQuery, parsedQuery);
   const answerContext = exactProcedureChunk ? [exactProcedureChunk] : finalContext;
   const citations = buildCitations(answerContext, workingQuery);
   const confidence = calculateAgentConfidence({
@@ -268,7 +268,7 @@ function toSearchManualsInput(item: SearchPlanItem, parsed: ParsedSupportQuery, 
     productModel: filters.productModel || parsed.product_model || undefined,
     // Only UI-selected document type is a hard filter. Agent-inferred doc types
     // are often helpful ranking hints, but too risky as filters for short
-    // manual lookups like "clean the caper".
+    // manual lookups where the exact section may live in a broader manual.
     documentType: filters.documentType || undefined,
     softwareVersion: filters.softwareVersion || filters.version || parsed.software_version || undefined,
     intent: parsed.intent,
@@ -360,7 +360,6 @@ async function generateSupportAnswer(input: {
             'Cite every technical claim with the document title/filename and page range.',
             'Do not invent part numbers, passwords, specs, firmware steps, or procedures.',
             'Preserve exact product terms and section names from the source text. Do not call a user term a typo when that exact term appears in the sources.',
-            'Never normalize "caper" to "capper" unless the user explicitly asks about capper or the source text only says capper.',
             'If a source chunk contains a section heading or procedure that directly matches the user question, answer from that section first and do not say the procedure is missing.',
             'Separate explicit source instructions from any inferred or adapted guidance. Label inferred guidance clearly and keep it secondary.',
             'Distinguish DuraFlex, DuraCore, DuraBolt, AnyJet, Cutter, RIP, and Dura-Printer/MCS.',
@@ -427,47 +426,133 @@ async function generateSupportAnswer(input: {
 
 function buildDirectProcedureAnswer(input: {
   query: string;
+  parsedQuery: ParsedSupportQuery;
   context: ChunkCandidate[];
   citations: RagCitation[];
   confidence: number;
 }): string | null {
-  const source = findCaperProcedureChunk(input.context, input.query);
+  const source = findExactProcedureChunk(input.context, input.query, input.parsedQuery);
   if (!source) return null;
 
+  const heading = cleanHeading(source.headingPath) || extractSectionHeading(source.text) || 'matching procedure section';
+  const steps = extractProcedureSentences(source.text, heading);
   const pages = source.pageStart === source.pageEnd ? `page ${source.pageStart}` : `pages ${source.pageStart}-${source.pageEnd}`;
   return [
     'Answer',
     '',
-    'The DuraCore manual has a direct procedure for Caper Cleaning and Visual Inspection.',
+    `The indexed manual has a direct match for this question in ${heading}.`,
     '',
-    'Documented steps',
-    '1. In the DMI Control tab, click Extend Capper for Cleaning.',
-    '2. Inspect the exposed cap for excess ink buildup.',
-    '3. Gently wipe off visible excess ink.',
-    '4. Work efficiently so the printhead is not exposed to air for too long.',
-    '5. Click Re-cap Printheads when finished.',
+    'Documented guidance',
+    ...(steps.length > 0 ? steps.map((step, index) => `${index + 1}. ${step}`) : [`1. ${bestExcerpt(source.text, input.query)}`]),
     '',
     'Source',
-    `- ${source.documentTitle} / ${source.filename}, section 7.8.7 Caper Cleaning and Visual Inspection, ${pages}.`,
+    `- ${source.documentTitle} / ${source.filename}, ${heading}, ${pages}.`,
     '',
     'Confidence',
-    'High - the retrieved manual chunk directly contains the caper cleaning procedure.',
+    'High - the retrieved manual chunk directly matches the question and contains actionable source text.',
   ].join('\n');
 }
 
-function isCaperOrCapperQuery(query: string): boolean {
-  return /\bcap{1,2}er\b/i.test(query);
+function findExactProcedureChunk(context: ChunkCandidate[], query: string, parsed: ParsedSupportQuery): ChunkCandidate | null {
+  const queryTerms = meaningfulTerms([
+    query,
+    parsed.product_model,
+    parsed.software_version,
+    ...parsed.symptoms,
+    ...parsed.error_codes,
+    ...parsed.part_numbers,
+  ].filter(Boolean).join(' '));
+  if (queryTerms.length === 0) return null;
+
+  const scored = context
+    .map((chunk) => {
+      const heading = cleanHeading(chunk.headingPath) || extractSectionHeading(chunk.text);
+      const headingTerms = meaningfulTerms(heading || '');
+      const textTerms = meaningfulTerms(chunk.text.slice(0, 900));
+      const headingOverlap = overlapRatio(queryTerms, headingTerms);
+      const textOverlap = overlapRatio(queryTerms, textTerms);
+      const procedural = looksProcedural(chunk.text) || looksProcedural(heading || '');
+      const score = headingOverlap * 0.65 + textOverlap * 0.25 + (procedural ? 0.1 : 0);
+      return { chunk, score, headingOverlap, textOverlap, procedural };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (!best || !best.procedural) return null;
+  if (best.headingOverlap >= 0.5 && best.textOverlap >= 0.25) return best.chunk;
+  if (best.headingOverlap >= 0.34 && best.textOverlap >= 0.45) return best.chunk;
+  return null;
 }
 
-function findCaperProcedureChunk(context: ChunkCandidate[], query: string): ChunkCandidate | null {
-  if (!isCaperOrCapperQuery(query)) return null;
-  return (
-    context.find((chunk) =>
-      /7\.8\.7\s+Caper Cleaning and Visual Inspection/i.test(chunk.text) &&
-      /Extend Capper for Cleaning/i.test(chunk.text) &&
-      /Re-?\s*cap\s+Printheads/i.test(chunk.text),
-    ) || null
+function meaningfulTerms(text: string): string[] {
+  const stop = new Set([
+    'about',
+    'after',
+    'again',
+    'also',
+    'before',
+    'does',
+    'from',
+    'have',
+    'into',
+    'manual',
+    'please',
+    'procedure',
+    'section',
+    'that',
+    'their',
+    'there',
+    'this',
+    'what',
+    'when',
+    'where',
+    'which',
+    'with',
+    'would',
+    'your',
+  ]);
+  return Array.from(
+    new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .map((term) => term.replace(/([a-z])\1+/g, '$1'))
+        .filter((term) => term.length > 2 && !stop.has(term)),
+    ),
   );
+}
+
+function overlapRatio(queryTerms: string[], candidateTerms: string[]): number {
+  if (queryTerms.length === 0 || candidateTerms.length === 0) return 0;
+  const candidateSet = new Set(candidateTerms);
+  const matches = queryTerms.filter((term) => candidateSet.has(term)).length;
+  return matches / queryTerms.length;
+}
+
+function looksProcedural(text: string): boolean {
+  return /\b(click|select|press|open|use|using|check|inspect|wipe|clean|remove|replace|install|connect|disconnect|calibrate|adjust|verify|ensure|repeat|finished|when finished)\b/i.test(text);
+}
+
+function cleanHeading(heading: string | null | undefined): string {
+  return (heading || '').replace(/\s+/g, ' ').trim();
+}
+
+function extractSectionHeading(text: string): string {
+  const match = text.replace(/\s+/g, ' ').match(/\b([1-9]\d?(?:\.\d+){1,5}\s+[A-Z][A-Za-z0-9 /&()_-]{3,90})\b/);
+  return match?.[1]?.trim() || '';
+}
+
+function extractProcedureSentences(text: string, heading: string): string[] {
+  const compact = text
+    .replace(heading, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return compact
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 20 && looksProcedural(sentence))
+    .slice(0, 5)
+    .map((sentence) => (sentence.length > 240 ? `${sentence.slice(0, 237).trim()}...` : sentence));
 }
 
 async function generateEscalationSummary(input: {
@@ -698,11 +783,7 @@ function calculateAgentConfidence(input: {
   filters: RagFilters;
 }): number {
   if (input.finalContext.length === 0) return 0.08;
-  if (input.finalContext.some((chunk) =>
-    /7\.8\.7\s+Caper Cleaning and Visual Inspection/i.test(chunk.text) &&
-    /Extend Capper for Cleaning/i.test(chunk.text) &&
-    /Re-?\s*cap\s+Printheads/i.test(chunk.text),
-  )) {
+  if (findExactProcedureChunk(input.finalContext, input.searchCalls[0]?.query || '', input.parsedQuery)) {
     return 0.88;
   }
   const top = input.finalContext[0];
