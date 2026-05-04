@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, LogOut, Search } from 'lucide-react';
+import { ExternalLink, LogOut } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { getHubApps, type HubAppId } from '../lib/hubApps';
 
@@ -61,22 +61,6 @@ export function Header({ activeApp }: HeaderProps) {
       </div>
 
       <div className="hidden md:block flex-1 min-w-0" />
-
-      <div className="relative ml-auto w-full max-w-md min-w-[12rem] flex items-stretch gap-0">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none z-10" />
-        <input
-          type="text"
-          placeholder="Search hub, tasks, tools..."
-          className="w-full h-8 pl-9 pr-11 bg-neutral-100 border border-neutral-200 rounded-l-md rounded-r-none text-xs text-neutral-900 placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand/40"
-        />
-        <button
-          type="button"
-          className="h-8 w-10 shrink-0 bg-brand hover:bg-brand-hover text-white rounded-r-md border border-brand-hover flex items-center justify-center transition-colors"
-          aria-label="Search"
-        >
-          <Search className="w-4 h-4" />
-        </button>
-      </div>
 
       {status === 'authenticated' && email ? (
         <div className="hidden lg:flex items-center gap-2 shrink-0 pl-2">

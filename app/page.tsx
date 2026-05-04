@@ -6,7 +6,6 @@ import { useSession } from 'next-auth/react';
 import { AdminTab } from './components/AdminTab';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
-import { BottomBar } from './components/BottomBar';
 import { BlogsTab } from './components/BlogsTab';
 import { ImageGenerationTab } from './components/ImageGenerationTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
@@ -106,8 +105,6 @@ export default function ArrowHub() {
           </main>
         )}
       </div>
-
-      <BottomBar />
     </div>
   );
 }
