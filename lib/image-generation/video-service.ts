@@ -13,6 +13,7 @@ import type {
 const OPENROUTER_VIDEOS_API_URL = 'https://openrouter.ai/api/v1/videos';
 const VIDEO_REQUEST_TIMEOUT_MS = 120_000;
 const VIDEO_POLL_TIMEOUT_MS = 45_000;
+const DEFAULT_VIDEO_MAX_PENDING_MS = 20 * 60_000;
 const VIDEO_LIST_LIMIT = 12;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const DEFAULT_VIDEO_RESOLUTION = '720p';
@@ -76,6 +77,11 @@ function getOpenRouterApiKey(): string | null {
 
 function getConfiguredVideoModel(): string {
   return process.env.IMAGE_OPENROUTER_VIDEO_MODEL?.trim() || DEFAULT_IMAGE_STUDIO_VIDEO_MODEL;
+}
+
+function getVideoMaxPendingMs(): number {
+  const parsed = Number.parseInt(process.env.IMAGE_VIDEO_MAX_PENDING_MS || String(DEFAULT_VIDEO_MAX_PENDING_MS), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VIDEO_MAX_PENDING_MS;
 }
 
 function generateId(prefix: string): string {
@@ -390,6 +396,20 @@ async function syncVideoRun(row: VideoRunRow): Promise<VideoRunRow> {
   const currentStatus = normalizeVideoStatus(row.status);
   if (isTerminalStatus(currentStatus)) {
     return row;
+  }
+
+  const pendingMs = Date.now() - row.createdAt.getTime();
+  if (pendingMs > getVideoMaxPendingMs()) {
+    const duration = isVideoDurationSeconds(row.durationSeconds) ? row.durationSeconds : 4;
+    const errorMessage = `Video provider did not finish this ${duration}-second job within ${Math.round(getVideoMaxPendingMs() / 60_000)} minutes. Try again or use the last successful duration.`;
+    return prisma.imageGenerationVideoRun.update({
+      where: { id: row.id },
+      data: {
+        status: 'failed',
+        errorMessage,
+        assistantReply: buildFailedReply(duration, errorMessage),
+      },
+    }) as Promise<VideoRunRow>;
   }
 
   const statusPayload = await pollOpenRouterVideoJob(row.openrouterJobId);

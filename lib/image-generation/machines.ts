@@ -3,6 +3,7 @@ import type { ImageTypeValue } from './types';
 export const NO_MACHINE_VALUE = '__no_machine__';
 
 export const IMAGE_TYPE_OPTIONS: Array<{ value: ImageTypeValue; label: string }> = [
+  { value: 'none', label: 'No Template' },
   { value: 'linkedin_ad', label: 'LinkedIn Ad' },
   { value: 'youtube_thumbnail', label: 'YouTube Thumbnail' },
   { value: 'blog_image', label: 'Blog Image' },
@@ -12,6 +13,11 @@ export const IMAGE_TYPE_VARIANTS: Record<
   ImageTypeValue,
   { label: string; aspectIntent: string }
 > = {
+  none: {
+    label: 'No Template',
+    aspectIntent:
+      'No preset template. Follow the user prompt first, then use Brand KB and any selected machine references for visual accuracy and brand consistency.',
+  },
   linkedin_ad: {
     label: 'LinkedIn Ad',
     aspectIntent: 'Portrait-leaning social ad framing with space for campaign copy.',

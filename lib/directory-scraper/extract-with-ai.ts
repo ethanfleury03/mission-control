@@ -14,7 +14,7 @@ const CHUNK_MAX_CHARS = 22_000;
 /** Timeout per OpenRouter request (ms). */
 const REQUEST_TIMEOUT_MS = 120_000;
 
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 
 export interface AiExtractionOptions {
   visibleText: string;

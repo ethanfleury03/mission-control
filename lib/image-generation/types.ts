@@ -1,4 +1,4 @@
-export type ImageTypeValue = 'linkedin_ad' | 'youtube_thumbnail' | 'blog_image';
+export type ImageTypeValue = 'none' | 'linkedin_ad' | 'youtube_thumbnail' | 'blog_image';
 export type VideoDurationSeconds = 4 | 6 | 8;
 export type VideoGenerationStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 export type VideoSourceKind = 'upload' | 'generated';

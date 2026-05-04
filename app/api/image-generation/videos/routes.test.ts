@@ -25,7 +25,7 @@ async function createPendingVideoRun(id: string, jobId: string) {
       sourceImageMimeType: 'image/png',
       sourceImageByteSize: 4,
       sourceImageBytes: Buffer.from([1, 2, 3, 4]),
-      videoModel: 'google/veo-3.1-fast',
+      videoModel: 'kwaivgi/kling-v3.0-pro',
       openrouterJobId: jobId,
       status: 'pending',
       durationSeconds: 6,
@@ -38,7 +38,7 @@ async function createPendingVideoRun(id: string, jobId: string) {
 describe('video generation routes', () => {
   beforeEach(() => {
     process.env.IMAGE_OPENROUTER_API_KEY = 'test-key';
-    process.env.IMAGE_OPENROUTER_VIDEO_MODEL = 'google/veo-3.1-fast';
+    process.env.IMAGE_OPENROUTER_VIDEO_MODEL = 'kwaivgi/kling-v3.0-pro';
   });
 
   afterEach(async () => {
@@ -88,7 +88,7 @@ describe('video generation routes', () => {
         sourceImageMimeType: 'image/png',
         sourceImageByteSize: 4,
         sourceImageBytes: Buffer.from([1, 2, 3, 4]),
-        videoModel: 'google/veo-3.1-fast',
+        videoModel: 'kwaivgi/kling-v3.0-pro',
         openrouterJobId: 'job-list',
         status: 'completed',
         durationSeconds: 4,
@@ -153,7 +153,7 @@ describe('video generation routes', () => {
         sourceImageMimeType: 'image/png',
         sourceImageByteSize: 4,
         sourceImageBytes: Buffer.from([1, 2, 3, 4]),
-        videoModel: 'google/veo-3.1-fast',
+        videoModel: 'kwaivgi/kling-v3.0-pro',
         openrouterJobId: 'job-content',
         status: 'completed',
         durationSeconds: 4,

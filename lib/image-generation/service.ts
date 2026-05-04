@@ -527,8 +527,12 @@ function buildLinkedInAdSystemPrompt(input: {
 }): string {
   return substituteTemplate(input.template, {
     COMPANY_NAME: 'Arrow Systems',
-    MACHINE_NAME: input.machine?.title ?? 'the selected machine',
-    BROCHURE_SUMMARY: input.machine?.notes.trim() || 'Use the selected machine notes and image references.',
+    MACHINE_NAME: input.machine?.title ?? 'the requested Arrow Systems product or concept',
+    BROCHURE_SUMMARY:
+      input.machine?.notes.trim() ||
+      (input.machine
+        ? 'Use the selected machine image references.'
+        : 'No machine is selected. Use the user request and Arrow Systems KB only.'),
     USER_REQUEST: 'Use the user message in this request as the rep request and creative direction.',
   });
 }
@@ -1400,7 +1404,23 @@ function buildLinkedInAdUserPrompt(input: {
   kb: ImageStudioKBResponse;
   machineAttachments: ImageAttachment[];
 }): string {
-  const machineLabel = input.machine?.title ?? 'the selected machine';
+  const machineLabel = input.machine?.title ?? 'the requested Arrow Systems product or concept';
+  const machineReferenceInstruction =
+    input.machine && input.machineAttachments.length > 0
+      ? [
+          `- ${input.machineAttachments.length} authoritative machine reference image(s) are attached first in this request.`,
+          '- Match the selected machine using those uploaded machine reference images and machine notes.',
+          '- Exact machine fidelity is the top priority. Creative direction, ad copy, and layout must adapt around the real machine, not redesign it.',
+        ]
+      : input.machine
+        ? [
+            '- No machine reference images are attached for the selected machine.',
+            '- Use the selected machine notes, Arrow Systems KB, and user request. Do not invent unsupported hardware details.',
+          ]
+        : [
+            '- No machine is selected and no machine reference images are attached.',
+            '- Use the user request and Arrow Systems KB. Do not invent a specific model unless the user asks for one.',
+          ];
   const brandColors =
     input.kb.colors.length > 0
       ? input.kb.colors.map((color) => `${color.name} ${color.hex}`).join(', ')
@@ -1410,13 +1430,13 @@ function buildLinkedInAdUserPrompt(input: {
     `User request: ${input.userPrompt}`,
     '',
     'Important:',
-    `- ${input.machineAttachments.length} authoritative machine reference image(s) are attached first in this request.`,
-    '- Match the selected machine using those uploaded machine reference images and machine notes.',
-    '- Exact machine fidelity is the top priority. Creative direction, ad copy, and layout must adapt around the real machine, not redesign it.',
+    ...machineReferenceInstruction,
     '- Use the Arrow Systems KB as the default brand source for logos, color treatment, and layout direction.',
     '- Build a real ad composition with headline hierarchy, supporting copy, feature callouts, badges, and CTA energy.',
     '- Include strong in-image marketing text and ad structure by default.',
-    `- The machine in the final image must visually match ${machineLabel}.`,
+    input.machine
+      ? `- The machine in the final image must visually match ${machineLabel}.`
+      : `- The final image should center ${machineLabel} from the user's prompt.`,
     `- Brand colors: ${brandColors}`,
   ];
 
@@ -1476,7 +1496,7 @@ function mapImageGenerationRun(row: {
     },
     machineId: row.machineId,
     machineTitle: machineTitle ?? null,
-    imageType: isImageTypeValue(row.imageType) ? row.imageType : 'linkedin_ad',
+    imageType: isImageTypeValue(row.imageType) ? row.imageType : 'none',
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -1933,14 +1953,6 @@ export async function createImageGenerationReply(input: {
       prompts: settings.prompts,
     });
     return { mode: 'help', replyText };
-  }
-
-  if (input.imageType === 'linkedin_ad' && !machine) {
-    throw new Error(LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE);
-  }
-
-  if (input.imageType === 'linkedin_ad' && (machine?.images.length ?? 0) === 0) {
-    throw new Error(LINKEDIN_MACHINE_REFERENCE_REQUIRED_MESSAGE);
   }
 
   const routing = await routeUserIntent({

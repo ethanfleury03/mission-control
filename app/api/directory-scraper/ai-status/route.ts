@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const configured = isAiExtractionAvailable();
-  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || 'openai/gpt-4o-mini';
+  const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || 'deepseek/deepseek-v4-flash';
   return NextResponse.json({
     configured,
     model: configured ? model : undefined,
