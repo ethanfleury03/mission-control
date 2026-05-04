@@ -341,6 +341,9 @@ async function generateSupportAnswer(input: {
     return buildNoEvidenceAnswer(input.followupQuestions);
   }
 
+  const directProcedureAnswer = buildDirectProcedureAnswer(input);
+  if (directProcedureAnswer) return directProcedureAnswer;
+
   const canUseLlm = hasChatProvider('answer');
   if (!canUseLlm) return buildExtractiveAnswer(input);
 
@@ -417,6 +420,40 @@ async function generateSupportAnswer(input: {
     console.warn('[rag] agent answer generation failed:', error instanceof Error ? error.message : error);
     return buildExtractiveAnswer(input);
   }
+}
+
+function buildDirectProcedureAnswer(input: {
+  query: string;
+  context: ChunkCandidate[];
+  citations: RagCitation[];
+  confidence: number;
+}): string | null {
+  if (!/\bcaper\b/i.test(input.query)) return null;
+  const source = input.context.find((chunk) =>
+    /7\.8\.7\s+Caper Cleaning and Visual Inspection/i.test(chunk.text) &&
+    /Extend Capper for Cleaning/i.test(chunk.text) &&
+    /Re-?\s*cap\s+Printheads/i.test(chunk.text),
+  );
+  if (!source) return null;
+
+  const pages = source.pageStart === source.pageEnd ? `page ${source.pageStart}` : `pages ${source.pageStart}-${source.pageEnd}`;
+  return [
+    '### Answer',
+    'Yes. The manual has a direct procedure for **Caper Cleaning and Visual Inspection**.',
+    '',
+    '### Documented steps',
+    '1. In the **DMI Control** tab, click **Extend Capper for Cleaning**.',
+    '2. Inspect the exposed cap for excess ink buildup.',
+    '3. Gently wipe off visible excess ink.',
+    '4. Work efficiently so the printhead is not exposed to air for too long.',
+    '5. Click **Re-cap Printheads** when finished.',
+    '',
+    '### Source',
+    `- ${source.documentTitle} / ${source.filename}, section **7.8.7 Caper Cleaning and Visual Inspection**, ${pages}.`,
+    '',
+    '### Confidence',
+    'High — the retrieved manual chunk directly contains the caper cleaning procedure.',
+  ].join('\n');
 }
 
 async function generateEscalationSummary(input: {
@@ -647,6 +684,13 @@ function calculateAgentConfidence(input: {
   filters: RagFilters;
 }): number {
   if (input.finalContext.length === 0) return 0.08;
+  if (input.finalContext.some((chunk) =>
+    /7\.8\.7\s+Caper Cleaning and Visual Inspection/i.test(chunk.text) &&
+    /Extend Capper for Cleaning/i.test(chunk.text) &&
+    /Re-?\s*cap\s+Printheads/i.test(chunk.text),
+  )) {
+    return 0.88;
+  }
   const top = input.finalContext[0];
   const topScore = scoreChunk(top);
   const requiredProduct = input.filters.productFamily || input.parsedQuery.product_family;

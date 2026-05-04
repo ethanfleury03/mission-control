@@ -113,7 +113,7 @@ export function buildChunks(input: {
     const shouldStartCleanSection =
       headingChanged &&
       isNumberedSectionHeading(block.headingPath) &&
-      currentTokens >= 180;
+      currentTokens >= 80;
     const wouldOverflow = currentTokens + block.tokenCount > MAX_TOKENS;
     if (shouldStartCleanSection) {
       flush({ preserveOverlap: false });
@@ -146,7 +146,7 @@ function buildBlocks(pages: ExtractedPage[]): TextBlock[] {
   let headingPath = '';
 
   for (const page of pages) {
-    const paragraphs = splitPageIntoParagraphs(page.combinedText);
+    const paragraphs = splitPageIntoParagraphs(insertInlineSectionBreaks(page.combinedText));
     for (const paragraph of paragraphs) {
       if (isLowValueParagraph(paragraph)) continue;
       const heading = detectHeading(paragraph);
@@ -203,11 +203,20 @@ function splitPageIntoParagraphs(text: string): string[] {
   return paragraphs.length > 0 ? paragraphs : [text.trim()].filter(Boolean);
 }
 
+function insertInlineSectionBreaks(text: string): string {
+  const sectionHeading = /(\d+(?:\.\d+){1,5}\s+[A-Z][A-Za-z0-9 /&()_-]{3,90})/g;
+  return text
+    .replace(/(\d+(?:\.\d+){1,5})\s*\n\s*([A-Z][A-Za-z0-9 /&()_-]{3,90})/g, '$1 $2')
+    .replace(sectionHeading, '\n\n$1\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 function detectHeading(paragraph: string): string | null {
   const compact = paragraph.trim().replace(/\s+/g, ' ');
   if (!compact || compact.length > 120) return null;
   if (/^#{1,4}\s+/.test(compact)) return compact.replace(/^#{1,4}\s+/, '');
-  if (/^\d+(?:\.\d+){0,4}\s+[A-Z][A-Za-z0-9 /&()_-]+$/.test(compact)) return compact;
+  const numbered = compact.match(/^((?:[1-9]\d?|[1-9]\d*(?:\.\d+){1,5})\s+[A-Z][A-Za-z0-9 /&()_-]+?)(?=\s{2,}|$)/);
+  if (numbered) return numbered[1].trim();
   if (/^[A-Z][A-Z0-9 /&()_-]{5,}$/.test(compact) && compact.length < 80) return compact;
   if (/^(?:Procedure|Troubleshooting|Installation|Maintenance|Calibration|Release Notes|Spare Parts|System Requirements)\b/i.test(compact)) {
     return compact;

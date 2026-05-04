@@ -113,7 +113,7 @@ async function extractPdfWithPdfParse(bytes: Buffer): Promise<ExtractedDocumentT
 
 function shouldUseWorkerlessPdfFallback(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /deserialize cloned data|fake worker|worker|DOMMatrix|canvas/i.test(message);
+  return /deserialize cloned data|cannot transfer object|fake worker|worker|DOMMatrix|canvas/i.test(message);
 }
 
 async function extractPdfWithPdfJs(bytes: Buffer, fallbackReason: string): Promise<ExtractedDocumentText> {
