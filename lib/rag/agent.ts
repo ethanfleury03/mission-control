@@ -81,10 +81,12 @@ export async function runSupportAgent(input: SupportAgentInput): Promise<RagAnsw
     filters: input.filters || {},
     mode: input.mode || 'answer',
   });
-  const citations = buildCitations(finalContext, workingQuery);
+  const exactProcedureChunk = findCaperProcedureChunk(finalContext, workingQuery);
+  const answerContext = exactProcedureChunk ? [exactProcedureChunk] : finalContext;
+  const citations = buildCitations(answerContext, workingQuery);
   const confidence = calculateAgentConfidence({
     parsedQuery,
-    finalContext,
+    finalContext: answerContext,
     searchCalls,
     filters: input.filters || {},
   });
@@ -94,7 +96,7 @@ export async function runSupportAgent(input: SupportAgentInput): Promise<RagAnsw
       ? await generateEscalationSummary({
           query: input.query,
           parsedQuery,
-          context: finalContext,
+          context: answerContext,
           citations,
           confidence,
           conversationHistory: input.conversationHistory || [],
@@ -103,7 +105,7 @@ export async function runSupportAgent(input: SupportAgentInput): Promise<RagAnsw
           query: input.query,
           workingQuery,
           parsedQuery,
-          context: finalContext,
+          context: answerContext,
           citations,
           confidence,
           followupQuestions: decision.followupQuestions,
@@ -362,6 +364,7 @@ async function generateSupportAnswer(input: {
             'If a source chunk contains a section heading or procedure that directly matches the user question, answer from that section first and do not say the procedure is missing.',
             'Separate explicit source instructions from any inferred or adapted guidance. Label inferred guidance clearly and keep it secondary.',
             'Distinguish DuraFlex, DuraCore, DuraBolt, AnyJet, Cutter, RIP, and Dura-Printer/MCS.',
+            'Never combine product names like "DuraCore (DuraFlex)" unless the source itself uses that exact combined phrase.',
             'Be concise. Default to 120-180 words. Do not dump every retrieved source or generic collection checklist.',
             'Ask follow-up questions only if the answer cannot be attempted from the cited chunks. Do not ask which product is involved when the retrieved source product is clear.',
             'Warn/escalate for electrical work, hardware disassembly, firmware flashing, printhead-damaging procedures, or ink/chemical handling.',
@@ -428,32 +431,43 @@ function buildDirectProcedureAnswer(input: {
   citations: RagCitation[];
   confidence: number;
 }): string | null {
-  if (!/\bcaper\b/i.test(input.query)) return null;
-  const source = input.context.find((chunk) =>
-    /7\.8\.7\s+Caper Cleaning and Visual Inspection/i.test(chunk.text) &&
-    /Extend Capper for Cleaning/i.test(chunk.text) &&
-    /Re-?\s*cap\s+Printheads/i.test(chunk.text),
-  );
+  const source = findCaperProcedureChunk(input.context, input.query);
   if (!source) return null;
 
   const pages = source.pageStart === source.pageEnd ? `page ${source.pageStart}` : `pages ${source.pageStart}-${source.pageEnd}`;
   return [
-    '### Answer',
-    'Yes. The manual has a direct procedure for **Caper Cleaning and Visual Inspection**.',
+    'Answer',
     '',
-    '### Documented steps',
-    '1. In the **DMI Control** tab, click **Extend Capper for Cleaning**.',
+    'The DuraCore manual has a direct procedure for Caper Cleaning and Visual Inspection.',
+    '',
+    'Documented steps',
+    '1. In the DMI Control tab, click Extend Capper for Cleaning.',
     '2. Inspect the exposed cap for excess ink buildup.',
     '3. Gently wipe off visible excess ink.',
     '4. Work efficiently so the printhead is not exposed to air for too long.',
-    '5. Click **Re-cap Printheads** when finished.',
+    '5. Click Re-cap Printheads when finished.',
     '',
-    '### Source',
-    `- ${source.documentTitle} / ${source.filename}, section **7.8.7 Caper Cleaning and Visual Inspection**, ${pages}.`,
+    'Source',
+    `- ${source.documentTitle} / ${source.filename}, section 7.8.7 Caper Cleaning and Visual Inspection, ${pages}.`,
     '',
-    '### Confidence',
-    'High — the retrieved manual chunk directly contains the caper cleaning procedure.',
+    'Confidence',
+    'High - the retrieved manual chunk directly contains the caper cleaning procedure.',
   ].join('\n');
+}
+
+function isCaperOrCapperQuery(query: string): boolean {
+  return /\bcap{1,2}er\b/i.test(query);
+}
+
+function findCaperProcedureChunk(context: ChunkCandidate[], query: string): ChunkCandidate | null {
+  if (!isCaperOrCapperQuery(query)) return null;
+  return (
+    context.find((chunk) =>
+      /7\.8\.7\s+Caper Cleaning and Visual Inspection/i.test(chunk.text) &&
+      /Extend Capper for Cleaning/i.test(chunk.text) &&
+      /Re-?\s*cap\s+Printheads/i.test(chunk.text),
+    ) || null
+  );
 }
 
 async function generateEscalationSummary(input: {
