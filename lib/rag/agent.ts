@@ -355,10 +355,12 @@ async function generateSupportAnswer(input: {
             'Cite every technical claim with the document title/filename and page range.',
             'Do not invent part numbers, passwords, specs, firmware steps, or procedures.',
             'Preserve exact product terms and section names from the source text. Do not call a user term a typo when that exact term appears in the sources.',
+            'Never normalize "caper" to "capper" unless the user explicitly asks about capper or the source text only says capper.',
             'If a source chunk contains a section heading or procedure that directly matches the user question, answer from that section first and do not say the procedure is missing.',
             'Separate explicit source instructions from any inferred or adapted guidance. Label inferred guidance clearly and keep it secondary.',
             'Distinguish DuraFlex, DuraCore, DuraBolt, AnyJet, Cutter, RIP, and Dura-Printer/MCS.',
-            'If evidence is weak, say so and ask targeted follow-up questions.',
+            'Be concise. Default to 120-180 words. Do not dump every retrieved source or generic collection checklist.',
+            'Ask follow-up questions only if the answer cannot be attempted from the cited chunks. Do not ask which product is involved when the retrieved source product is clear.',
             'Warn/escalate for electrical work, hardware disassembly, firmware flashing, printhead-damaging procedures, or ink/chemical handling.',
             'Before finalizing, self-check that sources match product/version, citations are present, unsupported claims are removed, and confidence is not overstated.',
           ].join('\n'),
@@ -370,9 +372,16 @@ async function generateSupportAnswer(input: {
               userQuestion: input.query,
               workingQuery: input.workingQuery,
               parsedQuery: input.parsedQuery,
-              answerFormat: answerFormatForIntent(input.parsedQuery.intent),
+              answerFormat: conciseAnswerFormatForIntent(input.parsedQuery.intent),
+              styleRules: [
+                'Use markdown headings with short labels only.',
+                'Prefer 3-5 bullets over long paragraphs.',
+                'Include at most one Caveat section.',
+                'Do not include Follow-up questions unless they are required to avoid unsafe guidance.',
+                'Do not repeat the full source list; cite the one or two strongest source chunks inline.',
+              ],
               confidenceGuidance: confidenceExplanation(input.confidence, input.parsedQuery, input.context),
-              followupQuestions: input.followupQuestions,
+              followupQuestions: input.confidence < 0.45 ? input.followupQuestions : [],
               searchesPerformed: input.searchCalls.map((call) => ({
                 query: call.query,
                 filters: call.filters,
@@ -401,7 +410,7 @@ async function generateSupportAnswer(input: {
         },
       ],
       temperature: 0.05,
-      maxTokens: 2200,
+      maxTokens: 900,
     });
     return ensureSourcesSection(result.content, input.citations, input.confidence);
   } catch (error) {
@@ -786,6 +795,13 @@ function answerFormatForIntent(intent: string): string[] {
   if (intent === 'release_notes' || intent === 'software_release_notes') return ['Short summary', 'Changes by category', 'Impact / who cares', 'Source release notes', 'Confidence'];
   if (intent === 'parts' || intent === 'spare_parts') return ['Part/procedure found', 'Exact source', 'Caveats', 'Confirm model/version if needed', 'Confidence'];
   return ['Likely issue / short answer', 'What the docs say', 'Step-by-step checks', 'What info to collect if it still fails', 'Sources', 'Confidence'];
+}
+
+function conciseAnswerFormatForIntent(intent: string): string[] {
+  if (intent === 'installation') return ['Answer', 'Steps', 'Caveat', 'Sources', 'Confidence'];
+  if (intent === 'release_notes' || intent === 'software_release_notes') return ['Answer', 'Changes', 'Sources', 'Confidence'];
+  if (intent === 'parts' || intent === 'spare_parts') return ['Answer', 'Caveat', 'Sources', 'Confidence'];
+  return ['Answer', 'Documented steps', 'Caveat', 'Sources', 'Confidence'];
 }
 
 function headingForIntent(intent: string): string {

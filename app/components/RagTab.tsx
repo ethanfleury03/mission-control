@@ -817,9 +817,17 @@ function ChatBubble({
 
 function RagMarkdown({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-headings:text-neutral-950 prose-p:my-2 prose-p:leading-6 prose-li:my-1 prose-ul:my-2 prose-ol:my-2 prose-strong:text-neutral-950">
+    <div className="text-sm leading-6 text-neutral-800">
       <ReactMarkdown
         components={{
+          h1: ({ children }) => <h4 className="mb-2 mt-3 text-sm font-semibold text-neutral-950">{children}</h4>,
+          h2: ({ children }) => <h4 className="mb-2 mt-3 text-sm font-semibold text-neutral-950">{children}</h4>,
+          h3: ({ children }) => <h4 className="mb-2 mt-3 text-sm font-semibold text-neutral-950">{children}</h4>,
+          p: ({ children }) => <p className="my-2">{children}</p>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          strong: ({ children }) => <strong className="font-semibold text-neutral-950">{children}</strong>,
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
               {children}
