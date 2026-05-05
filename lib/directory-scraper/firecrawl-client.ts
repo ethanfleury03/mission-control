@@ -4,7 +4,7 @@
  */
 
 import * as cheerio from 'cheerio';
-import { validateScrapeUrl } from './validate-scrape-url';
+import { validateScrapeUrl, validateScrapeUrlPublic } from './validate-scrape-url';
 import { normalizeUrl } from './utils';
 import type { PageLink } from './ai-locate-roster';
 
@@ -148,7 +148,7 @@ export async function firecrawlScrape(url: string): Promise<FirecrawlScrapeResul
     return { ok: false, error: 'FIRECRAWL_API_KEY is not set' };
   }
 
-  const v = validateScrapeUrl(url);
+  const v = await validateScrapeUrlPublic(url);
   if (!v.ok) {
     return { ok: false, error: v.error ?? 'URL blocked' };
   }

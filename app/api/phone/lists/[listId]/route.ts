@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deletePhoneList, getPhoneListById, updatePhoneList } from '@/lib/phone/service';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function GETHandler(
   _request: NextRequest,
   context: { params: Promise<{ listId: string }> },
 ) {
@@ -14,7 +15,7 @@ export async function GET(
   return NextResponse.json(list);
 }
 
-export async function PATCH(
+async function PATCHHandler(
   request: NextRequest,
   context: { params: Promise<{ listId: string }> },
 ) {
@@ -42,7 +43,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   _request: NextRequest,
   context: { params: Promise<{ listId: string }> },
 ) {
@@ -54,3 +55,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const PATCH = withActiveUser(PATCHHandler);
+export const DELETE = withActiveUser(DELETEHandler);

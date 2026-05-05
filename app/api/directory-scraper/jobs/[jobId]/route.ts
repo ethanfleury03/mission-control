@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteJob, getJob, getJobSnapshot } from '@/lib/directory-scraper/job-store';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+async function GETHandler(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   const { searchParams } = new URL(request.url);
   const full = searchParams.get('full') === '1';
@@ -33,9 +34,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
   return NextResponse.json(snap);
 }
 
-export async function DELETE(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+async function DELETEHandler(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   const deleted = await deleteJob(jobId);
   if (!deleted) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withActiveUser(GETHandler);
+export const DELETE = withActiveUser(DELETEHandler);

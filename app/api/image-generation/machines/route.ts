@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withActiveUser } from '../../_lib/with-active-user';
 import {
   createImageGenerationMachine,
   getImageGenerationMachines,
@@ -8,13 +9,13 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json({
     machines: await getImageGenerationMachines(),
   });
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   if (!form) {
     return NextResponse.json({ error: 'Expected multipart form data.' }, { status: 400 });
@@ -54,3 +55,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);

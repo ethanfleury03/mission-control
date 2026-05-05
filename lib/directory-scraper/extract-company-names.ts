@@ -31,6 +31,7 @@ import type { FirecrawlScrapeSuccess } from './firecrawl-client';
 import { firecrawlScrape } from './firecrawl-client';
 import { sleep } from './utils';
 import { collectPageLinks, extractPageRosterWithAi } from './ai-page-roster-extraction';
+import { fetchPublicHttpUrl } from './validate-scrape-url';
 
 const DEFAULT_PAGINATION_PAGE_DELAY_MS = 700;
 const DEFAULT_PAGINATION_CHALLENGE_DELAY_MS = 2200;
@@ -192,8 +193,7 @@ function detectAntiBotMarkers(html: string): string | null {
 
 async function fetchHtmlSnapshot(url: string): Promise<{ ok: boolean; status: number; html: string; finalUrl: string }> {
   try {
-    const response = await fetch(url, {
-      redirect: 'follow',
+    const response = await fetchPublicHttpUrl(url, {
       headers: {
         'user-agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

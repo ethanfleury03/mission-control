@@ -5,10 +5,11 @@ import { BLOG_PUBLISHER_AGENT_ID } from '../_lib/agents';
 import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { applyBlogHandoff, extractBlogHandoffs } from '../_lib/handoff';
 import { backendFetch } from '../../_lib/backend';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 const execFileAsync = promisify(execFile);
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const disabled = ensureBlogsEnabled();
   if (disabled) return disabled;
 
@@ -121,3 +122,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: err?.message || 'Approve/publish failed' }, { status: 500 });
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

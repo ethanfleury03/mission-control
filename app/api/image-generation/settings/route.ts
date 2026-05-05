@@ -7,15 +7,16 @@ import {
   updateImageStudioSettings,
 } from '@/lib/image-generation/service';
 import type { ImageStudioPromptSet } from '@/lib/image-generation/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json(await getImageStudioSettingsResponse());
 }
 
-export async function PATCH(request: NextRequest) {
+async function PATCHHandler(request: NextRequest) {
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -56,3 +57,6 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const PATCH = withActiveUser(PATCHHandler);

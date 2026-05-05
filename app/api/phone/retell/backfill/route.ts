@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { backfillRetellHistory } from '@/lib/phone/service';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   let body: Record<string, unknown> = {};
   try {
     body = await request.json();
@@ -23,3 +24,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

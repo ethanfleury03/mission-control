@@ -5,6 +5,7 @@ import { BLOG_PUBLISHER_AGENT_ID, BLOG_WRITER_AGENT_ID } from '../_lib/agents';
 import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { applyBlogHandoff, extractBlogHandoffs, extractPreviewUrl, fetchPreviewAsMarkdown } from '../_lib/handoff';
 import { backendFetch } from '../../_lib/backend';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 const execFileAsync = promisify(execFile);
 
@@ -148,7 +149,7 @@ function dispatchWriterAsync(params: {
   });
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const disabled = ensureBlogsEnabled();
   if (disabled) return disabled;
 
@@ -213,3 +214,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: err?.message || 'Failed to start blog run' }, { status: 500 });
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

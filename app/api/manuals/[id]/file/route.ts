@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getManualFile } from '@/lib/manuals/service';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function GETHandler(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -25,3 +26,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withActiveUser(GETHandler);

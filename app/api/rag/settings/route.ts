@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { getChatModelConfig, getEmbeddingModel, getEmbeddingProvider, getOpenRouterBaseUrl } from '@/lib/rag/config';
 import { collectRagHealth } from '@/lib/rag/health';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   const health = await collectRagHealth();
   const answer = getChatModelConfig('answer');
   const query = getChatModelConfig('query_parser');
@@ -44,3 +45,5 @@ export async function GET() {
     health,
   });
 }
+
+export const GET = withActiveUser(GETHandler);

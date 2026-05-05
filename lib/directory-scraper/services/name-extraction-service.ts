@@ -14,7 +14,7 @@ import type {
   ScrapeFetchMode,
   ScrapeJobInput,
 } from '../types';
-import { validateScrapeUrl } from '../validate-scrape-url';
+import { assertPublicHttpUrlAsync, validateScrapeUrlPublic } from '../validate-scrape-url';
 
 export interface NameExtractionServiceResult {
   candidates: ExtractedCompanyCandidate[];
@@ -34,7 +34,7 @@ export async function runNameExtractionService(
     throw validationError('SCRAPER_URL_REQUIRED', 'extracting_names', 'Directory URL is required.');
   }
 
-  const urlCheck = validateScrapeUrl(sourceUrl);
+  const urlCheck = await validateScrapeUrlPublic(sourceUrl);
   if (!urlCheck.ok) {
     throw validationError('URL_BLOCKED', 'extracting_names', urlCheck.error ?? 'Directory URL is not allowed.');
   }
@@ -86,12 +86,17 @@ export async function runNameExtractionService(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1280, height: 720 },
     });
-    await context.route('**/*', (route) => {
+    await context.route('**/*', async (route) => {
       const resourceType = route.request().resourceType();
       if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
         return route.abort();
       }
-      return route.continue();
+      try {
+        await assertPublicHttpUrlAsync(route.request().url(), 'Scraper request');
+        return route.continue();
+      } catch {
+        return route.abort();
+      }
     });
     const page = await context.newPage();
     const result = input.paginationQuery

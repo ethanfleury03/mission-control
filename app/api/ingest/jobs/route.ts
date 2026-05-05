@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { listIngestionJobs } from '@/lib/rag/db';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   try {
     const limit = Number(request.nextUrl.searchParams.get('limit') || 100);
     return NextResponse.json({ jobs: await listIngestionJobs(Number.isFinite(limit) ? limit : 100) });
@@ -16,3 +17,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);

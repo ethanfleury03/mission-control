@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDocumentChunks, listDocuments } from '@/lib/rag/db';
 import { searchRag } from '@/lib/rag/retrieval';
 import type { RagFilters } from '@/lib/rag/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const query = typeof body.query === 'string' ? body.query.trim() : '';
   if (!query) return NextResponse.json({ error: 'Query is required.' }, { status: 400 });
@@ -126,3 +127,5 @@ function inferExpectedMissingReason(input: {
   }
   return 'Expected document was not selected; inspect vector/keyword scores and metadata filters.';
 }
+
+export const POST = withActiveUser(POSTHandler);

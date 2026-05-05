@@ -6,6 +6,7 @@ import { resolveCountryRecord } from '@/lib/geo-intelligence/boundaries';
 import { buildCountryIdentity } from '@/lib/geo-intelligence/normalize';
 import { ensureGeoIntelligenceSchema } from '@/lib/geo-intelligence/schema';
 import type { GeoDealerStatus } from '@/lib/geo-intelligence/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,7 +108,7 @@ function mapDealerData(body: Record<string, unknown>) {
   };
 }
 
-export async function GET() {
+async function GETHandler() {
   try {
     await ensureGeoIntelligenceSchema();
     const dealers = await prisma.geoDealer.findMany({
@@ -123,7 +124,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   await ensureGeoIntelligenceSchema();
   const body = await parseBody(request);
   if (!body || typeof body !== 'object') {
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(prismaGeoDealerToDomain(dealer), { status: 201 });
 }
 
-export async function PATCH(request: NextRequest) {
+async function PATCHHandler(request: NextRequest) {
   await ensureGeoIntelligenceSchema();
   const body = await parseBody(request);
   if (!body || typeof body !== 'object') {
@@ -168,7 +169,7 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json(prismaGeoDealerToDomain(dealer));
 }
 
-export async function DELETE(request: NextRequest) {
+async function DELETEHandler(request: NextRequest) {
   await ensureGeoIntelligenceSchema();
   const body = await parseBody(request);
   if (!body || typeof body !== 'object') {
@@ -184,3 +185,8 @@ export async function DELETE(request: NextRequest) {
   await prisma.geoDealer.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);
+export const PATCH = withActiveUser(PATCHHandler);
+export const DELETE = withActiveUser(DELETEHandler);

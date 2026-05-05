@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -263,7 +264,7 @@ function dedupeLeads(leads: ScrapeLead[]) {
   return [...unique.values()].sort((a, b) => b.confidence - a.confidence);
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   let body: {
     keywords?: unknown;
     regions?: unknown;
@@ -324,3 +325,5 @@ export async function POST(request: NextRequest) {
     },
   });
 }
+
+export const POST = withActiveUser(POSTHandler);

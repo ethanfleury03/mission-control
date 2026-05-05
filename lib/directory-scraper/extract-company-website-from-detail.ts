@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import { gotoDomContentLoaded } from './navigation-timeout';
 import { sleep } from './utils';
-import { assertPublicHttpUrl } from './validate-scrape-url';
+import { assertPublicHttpUrlAsync } from './validate-scrape-url';
 import { getDirectoryScraperWorkerConfig } from './worker-config';
 
 const BLOCKED_EXTERNAL_HOST_SNIPPETS = [
@@ -102,8 +102,9 @@ export async function extractCompanyWebsiteFromDetail(
 ): Promise<DetailWebsiteExtractionResult> {
   try {
     const config = getDirectoryScraperWorkerConfig();
-    assertPublicHttpUrl(detailUrl, 'Directory detail page');
+    await assertPublicHttpUrlAsync(detailUrl, 'Directory detail page');
     await gotoDomContentLoaded(page, detailUrl, config.websiteDiscoveryNavigationTimeoutMs);
+    await assertPublicHttpUrlAsync(page.url(), 'Directory detail final URL');
     if (config.websiteDiscoverySettleMs > 0) {
       await sleep(config.websiteDiscoverySettleMs);
     }

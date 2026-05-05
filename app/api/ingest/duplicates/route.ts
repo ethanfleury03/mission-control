@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { findDocumentByHash } from '@/lib/rag/db';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const hashes = Array.isArray(body.hashes) ? body.hashes.filter((item: unknown) => typeof item === 'string') : [];
   const duplicates = [];
@@ -17,3 +18,5 @@ export async function POST(request: NextRequest) {
   }
   return NextResponse.json({ duplicates });
 }
+
+export const POST = withActiveUser(POSTHandler);

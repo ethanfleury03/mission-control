@@ -2,6 +2,7 @@ import type { Browser, Page } from 'playwright';
 import { enrichCompany } from '../enrich-company';
 import { retryableError } from '../errors';
 import { launchChromiumForScraper } from '../playwright-launch';
+import { assertPublicHttpUrlAsync } from '../validate-scrape-url';
 import { runWithEnrichmentBudget } from '../enrichment-timeout';
 import { getDirectoryScraperWorkerConfig } from '../worker-config';
 import { sleep } from '../utils';
@@ -56,6 +57,18 @@ export async function runEnrichmentService(
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1280, height: 720 },
+    });
+    await context.route('**/*', async (route) => {
+      const resourceType = route.request().resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+        return route.abort();
+      }
+      try {
+        await assertPublicHttpUrlAsync(route.request().url(), 'Scraper enrichment request');
+        return route.continue();
+      } catch {
+        return route.abort();
+      }
     });
     const basePage = await context.newPage();
 

@@ -3,13 +3,14 @@ import { prisma } from '@/lib/prisma';
 import { normalizeDomain } from '@/lib/lead-generation/adapters';
 import { inferColumnMap, parseCsvLine, rowValue, type CsvColumnMap } from '@/lib/lead-generation/csv-import';
 import { buildLeadGenIdentity } from '@/lib/lead-generation/identity';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_ROWS = 500;
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'Expected multipart form' }, { status: 400 });
 
@@ -91,3 +92,5 @@ export async function POST(request: NextRequest) {
     truncated: lines.length - 1 > MAX_ROWS,
   });
 }
+
+export const POST = withActiveUser(POSTHandler);

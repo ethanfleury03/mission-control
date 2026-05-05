@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addLog, createJob, getAllJobs } from '@/lib/directory-scraper/job-store';
 import type { ScrapeJobInput } from '@/lib/directory-scraper/types';
-import { validateScrapeUrl } from '@/lib/directory-scraper/validate-scrape-url';
+import { validateScrapeUrlPublic } from '@/lib/directory-scraper/validate-scrape-url';
 import { isFirecrawlConfigured } from '@/lib/directory-scraper/firecrawl-client';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   try {
     const jobs = await getAllJobs();
     return NextResponse.json(jobs);
@@ -23,7 +24,7 @@ function shouldAutoEnableWebsiteDiscovery(input: ScrapeJobInput): boolean {
   return Boolean(input.paginationQuery && input.scrapeFetchMode === 'playwright' && input.enableAiNameFallback);
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   try {
     const body = await request.json();
     const fetchMode =
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const v = validateScrapeUrl(input.url);
+    const v = await validateScrapeUrlPublic(input.url);
     if (!v.ok) {
       return NextResponse.json(
         { error: v.error ?? 'URL not allowed', code: 'URL_BLOCKED' },
@@ -126,3 +127,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);

@@ -11,6 +11,7 @@ import type {
   VideoDurationSeconds,
   VideoSourceKind,
 } from '@/lib/image-generation/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -207,7 +208,7 @@ function parseStudioContext(value: unknown, fallback: {
   };
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   try {
     const body = await request.json();
     const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
@@ -265,3 +266,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

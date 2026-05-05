@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { ingestUploadedFile, type DuplicateBehavior } from '@/lib/rag/ingestion';
 import type { DocumentType, ProductFamily } from '@/lib/rag/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'Expected multipart form data.' }, { status: 400 });
 
@@ -101,3 +102,5 @@ function normalizeDuplicateBehavior(value: FormDataEntryValue | null): Duplicate
   if (value === 'replace' || value === 'new_version') return value;
   return 'skip';
 }
+
+export const POST = withActiveUser(POSTHandler);

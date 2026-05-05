@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { getDashboardStats } from '@/lib/rag/db';
 import { collectRagHealth } from '@/lib/rag/health';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   const health = await collectRagHealth();
   try {
     return NextResponse.json({ ...(await getDashboardStats()), health });
@@ -45,3 +46,5 @@ function emptyDashboardStats() {
     },
   };
 }
+
+export const GET = withActiveUser(GETHandler);

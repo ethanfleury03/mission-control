@@ -9,6 +9,7 @@ import {
   type ExistingAccountForImport,
 } from '@/lib/lead-generation/scraper-import';
 import { normalizeLeadGenCountryKey } from '@/lib/lead-generation/identity';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,7 +75,7 @@ async function flushIngestionEvents(buffer: any[]) {
  * 3. normalizedName + country (only when domain missing)
  * 4. create new
  */
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   let body: ImportBody;
   try {
     body = await request.json();
@@ -309,3 +310,5 @@ export async function POST(request: NextRequest) {
     accounts: sampleAccounts,
   });
 }
+
+export const POST = withActiveUser(POSTHandler);

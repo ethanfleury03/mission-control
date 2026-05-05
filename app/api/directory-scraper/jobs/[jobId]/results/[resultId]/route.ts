@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteResult } from '@/lib/directory-scraper/job-store';
+import { withActiveUser } from '../../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function DELETE(
+async function DELETEHandler(
   _request: NextRequest,
   context: { params: Promise<{ jobId: string; resultId: string }> },
 ) {
@@ -13,3 +14,5 @@ export async function DELETE(
   if (!removed) return NextResponse.json({ error: 'Result not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
+
+export const DELETE = withActiveUser(DELETEHandler);

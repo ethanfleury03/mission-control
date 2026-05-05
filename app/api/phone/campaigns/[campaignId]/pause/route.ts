@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pausePhoneCampaign } from '@/lib/phone/service';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(
+async function POSTHandler(
   _request: NextRequest,
   context: { params: Promise<{ campaignId: string }> },
 ) {
@@ -18,3 +19,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

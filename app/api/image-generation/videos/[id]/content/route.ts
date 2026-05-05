@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getVideoGenerationRunContent } from '@/lib/image-generation/video-service';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ function getSafeVideoMimeType(mimeType: string, fileName: string): string {
   return 'video/mp4';
 }
 
-export async function GET(
+async function GETHandler(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -97,3 +98,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withActiveUser(GETHandler);

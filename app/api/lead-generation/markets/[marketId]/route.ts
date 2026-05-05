@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { prismaMarketToDomain } from '@/lib/lead-generation/db-mappers';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
+async function GETHandler(_request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
   const { marketId } = await context.params;
   const m = await prisma.leadGenMarket.findUnique({ where: { id: marketId } });
   if (!m) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -14,7 +15,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ ma
   return NextResponse.json(prismaMarketToDomain(m, count));
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
+async function PATCHHandler(request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
   const { marketId } = await context.params;
   const existing = await prisma.leadGenMarket.findUnique({ where: { id: marketId } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -49,7 +50,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ m
   return NextResponse.json(prismaMarketToDomain(m, count));
 }
 
-export async function DELETE(_request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
+async function DELETEHandler(_request: NextRequest, context: { params: Promise<{ marketId: string }> }) {
   const { marketId } = await context.params;
   try {
     await prisma.leadGenMarket.delete({ where: { id: marketId } });
@@ -58,3 +59,7 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
   }
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withActiveUser(GETHandler);
+export const PATCH = withActiveUser(PATCHHandler);
+export const DELETE = withActiveUser(DELETEHandler);

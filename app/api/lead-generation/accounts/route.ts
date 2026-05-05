@@ -3,12 +3,13 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { prismaAccountToDomain } from '@/lib/lead-generation/db-mappers';
 import { buildLeadGenIdentity } from '@/lib/lead-generation/identity';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** GET ?marketId=&country=&reviewState=&leadPipelineStage=&sourceType=&q= */
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const marketId = searchParams.get('marketId') ?? undefined;
   const country = searchParams.get('country') ?? undefined;
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 }
 
 /** POST single account { marketId, name, ... } */
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -107,3 +108,6 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(prismaAccountToDomain(a), { status: 201 });
 }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);

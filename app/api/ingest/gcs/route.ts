@@ -1,23 +1,48 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
-import { downloadRagGcsObject, getRagUploadBucket } from '@/lib/rag/gcsUpload';
+import { downloadRagGcsObject, getRagUploadBucket, verifyRagGcsIngestToken } from '@/lib/rag/gcsUpload';
 import { ingestRemoteUploadedFile, type DuplicateBehavior } from '@/lib/rag/ingestion';
 import type { DocumentType, ProductFamily } from '@/lib/rag/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Expected JSON body.' }, { status: 400 });
 
   const filename = normalizeString(body.filename);
   const objectName = normalizeString(body.objectName);
   const bucket = normalizeString(body.bucket) || getRagUploadBucket();
+  const ingestToken = normalizeString(body.ingestToken);
+  const contentType = normalizeString(body.contentType) || 'application/octet-stream';
+  const sizeBytes = Number(body.sizeBytes || 0);
   if (!filename) return NextResponse.json({ error: 'filename is required.' }, { status: 400 });
   if (!objectName) return NextResponse.json({ error: 'objectName is required.' }, { status: 400 });
   if (!bucket) return NextResponse.json({ error: 'Large-file uploads are not configured. Set RAG_UPLOAD_BUCKET.' }, { status: 400 });
+  if (!ingestToken) {
+    return NextResponse.json({ error: 'Large upload authorization is missing. Refresh the page and retry the upload.' }, { status: 400 });
+  }
+
+  try {
+    const tokenPayload = verifyRagGcsIngestToken(ingestToken);
+    if (
+      tokenPayload.bucket !== bucket ||
+      tokenPayload.objectName !== objectName ||
+      tokenPayload.filename !== filename ||
+      tokenPayload.contentType !== contentType ||
+      tokenPayload.sizeBytes !== sizeBytes
+    ) {
+      return NextResponse.json({ error: 'Large upload authorization does not match this upload. Refresh the page and retry.' }, { status: 400 });
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Large upload authorization failed. Refresh the page and retry the upload.' },
+      { status: 400 },
+    );
+  }
 
   const batchId = normalizeString(body.batchId) || randomUUID();
   const duplicateBehavior = normalizeDuplicateBehavior(body.duplicateBehavior);
@@ -33,7 +58,7 @@ export async function POST(request: NextRequest) {
     const result = await ingestRemoteUploadedFile({
       filename,
       bytes,
-      mimeType: normalizeString(body.contentType) || 'application/octet-stream',
+      mimeType: contentType,
       sourcePath: gcsUri,
       options: {
         batchId,
@@ -108,3 +133,5 @@ function humanGcsIngestionFailure(error: unknown): string {
   if (/pdf/i.test(message)) return 'PDF text extraction failed. Try OCR mode or check if the PDF is corrupted.';
   return message || 'Large manual ingestion failed. Review staging logs for details.';
 }
+
+export const POST = withActiveUser(POSTHandler);

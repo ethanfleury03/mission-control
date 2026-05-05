@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updatePhoneCampaign } from '@/lib/phone/service';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(
+async function PATCHHandler(
   request: NextRequest,
   context: { params: Promise<{ campaignId: string }> },
 ) {
@@ -34,3 +35,5 @@ export async function PATCH(
     );
   }
 }
+
+export const PATCH = withActiveUser(PATCHHandler);

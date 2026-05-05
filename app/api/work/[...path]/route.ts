@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { backendFetch, backendUrl } from '../../_lib/backend';
+import { backendFetch } from '../../_lib/backend';
+import { scopedBackendUrl, UnsafeBackendPathError } from '../../_lib/backend-path';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 type RouteContext = {
   params: Promise<{ path?: string[] }>;
@@ -12,9 +14,15 @@ async function getRouteParams(context: RouteContext): Promise<{ path?: string[] 
 
 async function proxy(request: NextRequest, context: RouteContext) {
   const params = await getRouteParams(context);
-  const path = (params.path || []).join('/');
-  const url = new URL(backendUrl(`/work/${path}`));
-  url.search = request.nextUrl.search;
+  let url: URL;
+  try {
+    url = scopedBackendUrl('/work', params.path, request.nextUrl.search);
+  } catch (error) {
+    if (error instanceof UnsafeBackendPathError) {
+      return NextResponse.json({ error: 'invalid_backend_path' }, { status: 400 });
+    }
+    throw error;
+  }
 
   const method = request.method;
   const init: RequestInit = {
@@ -42,7 +50,12 @@ async function proxy(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function GET(request: NextRequest, context: RouteContext)    { return proxy(request, context); }
-export async function POST(request: NextRequest, context: RouteContext)   { return proxy(request, context); }
-export async function PATCH(request: NextRequest, context: RouteContext)  { return proxy(request, context); }
-export async function DELETE(request: NextRequest, context: RouteContext) { return proxy(request, context); }
+async function GETHandler(request: NextRequest, context: RouteContext)    { return proxy(request, context); }
+async function POSTHandler(request: NextRequest, context: RouteContext)   { return proxy(request, context); }
+async function PATCHHandler(request: NextRequest, context: RouteContext)  { return proxy(request, context); }
+async function DELETEHandler(request: NextRequest, context: RouteContext) { return proxy(request, context); }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);
+export const PATCH = withActiveUser(PATCHHandler);
+export const DELETE = withActiveUser(DELETEHandler);

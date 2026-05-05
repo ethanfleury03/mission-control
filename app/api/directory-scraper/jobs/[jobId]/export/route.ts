@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJob, patchJobMeta } from '@/lib/directory-scraper/job-store';
 import { exportToCsv } from '@/lib/directory-scraper/export-csv';
 import { exportToGoogleSheets, isSheetsConfigured } from '@/lib/directory-scraper/export-sheets';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+async function POSTHandler(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   const job = await getJob(jobId);
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
@@ -74,3 +75,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
 
   return NextResponse.json({ error: 'Invalid export target' }, { status: 400 });
 }
+
+export const POST = withActiveUser(POSTHandler);

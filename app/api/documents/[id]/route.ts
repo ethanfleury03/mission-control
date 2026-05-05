@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { deleteDocument, getDocument } from '@/lib/rag/db';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function GETHandler(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
     const document = await getDocument(id);
@@ -19,7 +20,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function DELETEHandler(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
     const deleted = await deleteDocument(id);
@@ -32,3 +33,6 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const DELETE = withActiveUser(DELETEHandler);

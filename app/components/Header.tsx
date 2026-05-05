@@ -1,11 +1,12 @@
 'use client';
 
-import { ExternalLink, LogOut } from 'lucide-react';
+import { ExternalLink, LogOut, Search } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
-import { getHubApps, type HubAppId } from '../lib/hubApps';
+import { getHubApps, type HubApp, type HubAppId } from '../lib/hubApps';
 
 interface HeaderProps {
   activeApp: HubAppId;
+  appOverride?: Partial<Pick<HubApp, 'currentDescription' | 'description' | 'searchPlaceholder'>>;
 }
 
 function getUserInitials(name: string | null | undefined, email: string | null | undefined): string {
@@ -15,8 +16,9 @@ function getUserInitials(name: string | null | undefined, email: string | null |
   return source.slice(0, 2).toUpperCase();
 }
 
-export function Header({ activeApp }: HeaderProps) {
-  const current = getHubApps({ includeAdmin: true }).find((a) => a.id === activeApp);
+export function Header({ activeApp, appOverride }: HeaderProps) {
+  const baseCurrent = getHubApps({ includeAdmin: true }).find((a) => a.id === activeApp);
+  const current = baseCurrent ? { ...baseCurrent, ...appOverride } : undefined;
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? null;
   const name = session?.user?.name ?? null;
@@ -56,11 +58,37 @@ export function Header({ activeApp }: HeaderProps) {
         <span className="text-2xs text-neutral-500 uppercase tracking-wider">Current app</span>
         <span className="text-sm font-medium text-neutral-900 truncate">
           {current?.label ?? 'Hub'}
-          <span className="text-neutral-500 font-normal"> — {current?.description ?? ''}</span>
+          <span className="text-neutral-500 font-normal">
+            {' '}
+            — {current?.currentDescription ?? current?.description ?? ''}
+          </span>
         </span>
       </div>
 
-      <div className="hidden md:block flex-1 min-w-0" />
+      <div className="hidden md:flex flex-1 min-w-0 justify-center px-2">
+        <form
+          className="flex h-10 w-full max-w-lg overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 shadow-sm focus-within:border-brand/40 focus-within:ring-2 focus-within:ring-brand/10"
+          onSubmit={(event) => event.preventDefault()}
+          role="search"
+        >
+          <label className="relative flex min-w-0 flex-1 items-center">
+            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-neutral-400" />
+            <span className="sr-only">Search Arrow Hub</span>
+            <input
+              type="search"
+              className="h-full w-full bg-transparent pl-9 pr-3 text-sm text-neutral-800 outline-none placeholder:text-neutral-400"
+              placeholder={current?.searchPlaceholder ?? 'Search hub...'}
+            />
+          </label>
+          <button
+            type="submit"
+            className="inline-flex h-full w-11 items-center justify-center bg-brand text-white transition-colors hover:bg-brand-hover"
+            aria-label="Search"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        </form>
+      </div>
 
       {status === 'authenticated' && email ? (
         <div className="hidden lg:flex items-center gap-2 shrink-0 pl-2">

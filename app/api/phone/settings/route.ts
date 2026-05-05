@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPhoneSettingsResponse, updatePhoneSettings } from '@/lib/phone/service';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json(await getPhoneSettingsResponse());
 }
 
-export async function PATCH(request: NextRequest) {
+async function PATCHHandler(request: NextRequest) {
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -49,3 +50,6 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const PATCH = withActiveUser(PATCHHandler);

@@ -9,7 +9,7 @@ import {
   sleep,
 } from './utils';
 import type { CancelSignal } from './extract-directory-entries';
-import { assertPublicHttpUrl } from './validate-scrape-url';
+import { assertPublicHttpUrlAsync } from './validate-scrape-url';
 import { gotoDomContentLoaded } from './navigation-timeout';
 import { runWithTimeout } from './async-timeout';
 
@@ -105,9 +105,10 @@ export async function extractContactFromSite(
   let merged: ContactInfo = { emails: [], phones: [], addresses: [], contactPageUrls: [], socialLinks: [] };
 
   try {
-    assertPublicHttpUrl(siteUrl, 'Company site');
+    await assertPublicHttpUrlAsync(siteUrl, 'Company site');
     await step(`Contact crawl: loading homepage ${siteUrl.slice(0, 80)}${siteUrl.length > 80 ? '…' : ''}`);
     await gotoDomContentLoaded(page, siteUrl, 20_000);
+    await assertPublicHttpUrlAsync(page.url(), 'Company site final URL');
     await sleep(300);
     await step('Contact crawl: parsing homepage DOM…');
     merged = mergeContacts(
@@ -136,9 +137,10 @@ export async function extractContactFromSite(
   for (const link of contactLinks.slice(0, 3)) {
     if (await Promise.resolve(signal())) break;
     try {
-      assertPublicHttpUrl(link, 'Contact page');
+      await assertPublicHttpUrlAsync(link, 'Contact page');
       await step(`Contact crawl: loading subpage ${link.slice(0, 90)}${link.length > 90 ? '…' : ''}`);
       await gotoDomContentLoaded(page, link, 15_000);
+      await assertPublicHttpUrlAsync(page.url(), 'Contact page final URL');
       await sleep(250);
       await step('Contact crawl: parsing subpage DOM…');
       merged = mergeContacts(

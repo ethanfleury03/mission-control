@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { updateImageGenerationMachine } from '@/lib/image-generation/service';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(
+async function PATCHHandler(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -33,3 +34,5 @@ export async function PATCH(
     );
   }
 }
+
+export const PATCH = withActiveUser(PATCHHandler);

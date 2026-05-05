@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { isAiExtractionAvailable } from '@/lib/directory-scraper/extract-with-ai';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   const configured = isAiExtractionAvailable();
   const model = process.env.DIRECTORY_SCRAPER_AI_MODEL?.trim() || 'deepseek/deepseek-v4-flash';
   return NextResponse.json({
@@ -15,3 +16,5 @@ export async function GET() {
       : 'Set OPENROUTER_API_KEY in your .env to enable AI-powered company-name extraction. Get a key at https://openrouter.ai',
   });
 }
+
+export const GET = withActiveUser(GETHandler);

@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { runSupportAgent } from '@/lib/rag/agent';
 import type { RagFilters } from '@/lib/rag/types';
+import { withActiveUser } from '../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const query = typeof body.query === 'string' ? body.query.trim() : '';
   if (!query) return NextResponse.json({ error: 'Query is required.' }, { status: 400 });
@@ -40,3 +41,5 @@ function normalizeFilter(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }
+
+export const POST = withActiveUser(POSTHandler);

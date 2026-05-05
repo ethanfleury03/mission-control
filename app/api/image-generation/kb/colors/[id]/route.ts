@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withActiveUser } from '../../../../_lib/with-active-user';
 import {
   deleteImageStudioKBColor,
   updateImageStudioKBColor,
@@ -8,7 +9,7 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(
+async function PATCHHandler(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -37,7 +38,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -53,3 +54,6 @@ export async function DELETE(
     );
   }
 }
+
+export const PATCH = withActiveUser(PATCHHandler);
+export const DELETE = withActiveUser(DELETEHandler);

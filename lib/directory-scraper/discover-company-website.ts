@@ -1,4 +1,4 @@
-import { validateScrapeUrl } from './validate-scrape-url';
+import { fetchPublicHttpUrl, validateScrapeUrl, validateScrapeUrlPublic } from './validate-scrape-url';
 import { serperSearch, type SerperOrganicItem } from './serper-client';
 import { normalizeDomain } from './utils';
 
@@ -82,9 +82,8 @@ async function urlLooksReachable(url: string, signal?: AbortSignal): Promise<boo
     const t = setTimeout(() => controller.abort(), 10_000);
     if (signal) signal.addEventListener('abort', () => controller.abort(), { once: true });
     try {
-      const res = await fetch(url, {
+      const res = await fetchPublicHttpUrl(url, {
         method,
-        redirect: 'follow',
         signal: controller.signal,
         headers: method === 'GET' ? { Range: 'bytes=0-0' } : undefined,
       });
@@ -268,7 +267,7 @@ export async function discoverCompanyWebsite(
 
   const picked = pickBestFromSerpTop(companyName, serp.organic ?? [], directoryHost, rejectHosts);
   if (picked) {
-    const v = validateScrapeUrl(picked.url);
+    const v = await validateScrapeUrlPublic(picked.url);
     if (v.ok) {
       return {
         website: picked.url,
@@ -284,7 +283,7 @@ export async function discoverCompanyWebsite(
     if (rejectHosts?.has(host)) continue;
     const httpsUrl = `https://${host}/`;
     candidatesTried.push(httpsUrl);
-    const v = validateScrapeUrl(httpsUrl);
+    const v = await validateScrapeUrlPublic(httpsUrl);
     if (!v.ok) continue;
     if (await urlLooksReachable(httpsUrl, options?.signal)) {
       return {

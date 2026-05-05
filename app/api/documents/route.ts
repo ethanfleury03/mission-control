@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { listDocuments } from '@/lib/rag/db';
+import { withActiveUser } from '../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   try {
     return NextResponse.json({ documents: await listDocuments() });
   } catch (error) {
@@ -15,3 +16,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);

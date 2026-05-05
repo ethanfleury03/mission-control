@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPhoneCalls } from '@/lib/phone/service';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const data = await getPhoneCalls({
     from: searchParams.get('from') ?? undefined,
@@ -20,3 +21,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(data);
 }
+
+export const GET = withActiveUser(GETHandler);

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addLog, getJob, requestJobCancel, updateJobStatus } from '@/lib/directory-scraper/job-store';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+async function POSTHandler(_request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   const job = await getJob(jobId);
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
@@ -33,3 +34,5 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ j
   });
   return NextResponse.json({ ok: true, status: 'cancelling' });
 }
+
+export const POST = withActiveUser(POSTHandler);

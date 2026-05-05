@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVideoGenerationRunById } from '@/lib/image-generation/video-service';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function GETHandler(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -18,3 +19,5 @@ export async function GET(
 
   return NextResponse.json(run);
 }
+
+export const GET = withActiveUser(GETHandler);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { applyBlogHandoff, extractBlogHandoffs, type BlogHandoff } from '../_lib/handoff';
 import { backendFetch } from '../../_lib/backend';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 async function findItemIdByRunId(runId: string): Promise<string | null> {
   const boardRes = await backendFetch(`/work/board?contextKey=${encodeURIComponent('blog:content')}`, { cache: 'no-store' });
@@ -15,7 +16,7 @@ async function findItemIdByRunId(runId: string): Promise<string | null> {
   return null;
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const disabled = ensureBlogsEnabled();
   if (disabled) return disabled;
 
@@ -53,3 +54,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: err?.message || 'handoff apply failed' }, { status: 500 });
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

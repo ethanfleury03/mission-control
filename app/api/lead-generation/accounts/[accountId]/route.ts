@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { prismaAccountToDomain } from '@/lib/lead-generation/db-mappers';
 import { buildLeadGenIdentity } from '@/lib/lead-generation/identity';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
+async function GETHandler(_request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
   const { accountId } = await context.params;
   const a = await prisma.leadGenAccount.findUnique({ where: { id: accountId } });
   if (!a) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(prismaAccountToDomain(a));
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
+async function PATCHHandler(request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
   const { accountId } = await context.params;
   const existing = await prisma.leadGenAccount.findUnique({ where: { id: accountId } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -70,7 +71,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ a
   return NextResponse.json(prismaAccountToDomain(a));
 }
 
-export async function DELETE(_request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
+async function DELETEHandler(_request: NextRequest, context: { params: Promise<{ accountId: string }> }) {
   const { accountId } = await context.params;
   try {
     await prisma.leadGenAccount.delete({ where: { id: accountId } });
@@ -79,3 +80,7 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
   }
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withActiveUser(GETHandler);
+export const PATCH = withActiveUser(PATCHHandler);
+export const DELETE = withActiveUser(DELETEHandler);

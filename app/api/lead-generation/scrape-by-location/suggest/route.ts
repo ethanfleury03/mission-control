@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ function extractJson(text: string) {
   return JSON.parse(stripped);
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
   if (!prompt) return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
@@ -71,3 +72,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(fallbackSuggestions(prompt));
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

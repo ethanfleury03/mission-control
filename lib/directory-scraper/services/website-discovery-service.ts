@@ -3,6 +3,7 @@ import { findDominantPlaceholderDomain } from '../discover-company-website';
 import type { CancelSignal } from '../extract-directory-entries';
 import { extractCompanyWebsiteFromDetail } from '../extract-company-website-from-detail';
 import { launchChromiumForScraper } from '../playwright-launch';
+import { assertPublicHttpUrlAsync } from '../validate-scrape-url';
 import type {
   CompanyResult,
   JobPhase,
@@ -105,11 +106,16 @@ export async function runWebsiteDiscoveryService(
     );
     await Promise.all(
       contexts.map((context) =>
-        context.route('**/*', (route) => {
+        context.route('**/*', async (route) => {
           if (shouldAbortDiscoveryResource(route.request().resourceType())) {
             return route.abort();
           }
-          return route.continue();
+          try {
+            await assertPublicHttpUrlAsync(route.request().url(), 'Scraper discovery request');
+            return route.continue();
+          } catch {
+            return route.abort();
+          }
         }),
       ),
     );

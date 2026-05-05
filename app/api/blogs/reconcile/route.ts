@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ensureBlogsEnabled } from '../_lib/feature-gate';
 import { backendFetch } from '../../_lib/backend';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 const BLOG_CONTEXT = 'blog:content';
 
@@ -35,7 +36,7 @@ async function patchItem(item: WorkItem, metadataPatch: Record<string, any>, sta
   });
 }
 
-export async function POST() {
+async function POSTHandler() {
   const disabled = ensureBlogsEnabled();
   if (disabled) return disabled;
 
@@ -100,3 +101,5 @@ export async function POST() {
     return NextResponse.json({ error: err?.message || 'Reconcile failed' }, { status: 500 });
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

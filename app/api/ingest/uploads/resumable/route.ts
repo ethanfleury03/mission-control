@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { createRagResumableUpload } from '@/lib/rag/gcsUpload';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'Expected JSON body.' }, { status: 400 });
@@ -40,3 +41,5 @@ function humanUploadSetupError(error: unknown): string {
   }
   return message || 'Could not create a large-file upload session.';
 }
+
+export const POST = withActiveUser(POSTHandler);

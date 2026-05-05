@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { createFeedback, listFeedback } from '@/lib/rag/db';
+import { withActiveUser } from '../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   try {
     const limit = Number(request.nextUrl.searchParams.get('limit') || 50);
     return NextResponse.json({ feedback: await listFeedback(Number.isFinite(limit) ? limit : 50) });
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const rating = typeof body.rating === 'string' ? body.rating.trim() : '';
   const queryId = typeof body.queryId === 'string' && body.queryId.trim() ? body.queryId.trim() : null;
@@ -39,3 +40,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);

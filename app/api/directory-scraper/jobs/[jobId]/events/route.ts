@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJobSnapshot } from '@/lib/directory-scraper/job-store';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ function writeEvent(event: string, data: unknown) {
   return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-export async function GET(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+async function GETHandler(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   const { searchParams } = new URL(request.url);
   const resultsLimit = Number(searchParams.get('resultsLimit') ?? '150');
@@ -78,3 +79,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
     },
   });
 }
+
+export const GET = withActiveUser(GETHandler);

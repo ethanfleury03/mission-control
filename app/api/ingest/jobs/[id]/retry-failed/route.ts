@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getIngestionJob } from '@/lib/rag/db';
 import { ingestLocalFile } from '@/lib/rag/ingestion';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
     const job = await getIngestionJob(id);
@@ -30,3 +31,5 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     );
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

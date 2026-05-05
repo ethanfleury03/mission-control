@@ -216,6 +216,10 @@ if [ "$MC_ENV" = "stage" ]; then
   mc_copy_secret_if_present mc-google-sa-key "$MC_GOOGLE_SA_KEY_SECRET"
   mc_copy_secret_if_present mc-webhook-url "$MC_WEBHOOK_URL_SECRET"
   mc_copy_secret_if_present mc-webhook-secret "$MC_WEBHOOK_SECRET_SECRET"
+  mc_copy_secret_if_present mc-outreach-crm-service-token "$MC_OUTREACH_SERVICE_TOKEN_SECRET"
+  mc_copy_secret_if_present mc-outreach-crm-webhook-secret "$MC_OUTREACH_WEBHOOK_SECRET_SECRET"
+  mc_copy_secret_if_present mc-outreach-crm-openclaw-gateway-url "$MC_OUTREACH_OPENCLAW_GATEWAY_URL_SECRET"
+  mc_copy_secret_if_present mc-outreach-crm-openclaw-webhook-url "$MC_OUTREACH_OPENCLAW_WEBHOOK_URL_SECRET"
 else
   mc_upsert_secret "$MC_OPENROUTER_SECRET" "${OPENROUTER_API_KEY:-}"
   mc_upsert_secret "$MC_IMAGE_OPENROUTER_SECRET" "${IMAGE_OPENROUTER_API_KEY:-}"
@@ -227,6 +231,10 @@ else
   mc_upsert_secret "$MC_GOOGLE_SA_KEY_SECRET" "${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}"
   mc_upsert_secret "$MC_WEBHOOK_URL_SECRET" "${MISSION_CONTROL_WEBHOOK_URL:-}"
   mc_upsert_secret "$MC_WEBHOOK_SECRET_SECRET" "${MISSION_CONTROL_WEBHOOK_SECRET:-}"
+  mc_upsert_secret "$MC_OUTREACH_SERVICE_TOKEN_SECRET" "${OUTREACH_CRM_SERVICE_TOKEN:-$(openssl rand -base64 32)}"
+  mc_upsert_secret "$MC_OUTREACH_WEBHOOK_SECRET_SECRET" "${OUTREACH_CRM_WEBHOOK_SECRET:-$(openssl rand -base64 32)}"
+  mc_upsert_secret "$MC_OUTREACH_OPENCLAW_GATEWAY_URL_SECRET" "${OUTREACH_CRM_OPENCLAW_GATEWAY_URL:-}"
+  mc_upsert_secret "$MC_OUTREACH_OPENCLAW_WEBHOOK_URL_SECRET" "${OUTREACH_CRM_OPENCLAW_WEBHOOK_URL:-}"
 fi
 
 if ! gcloud secrets describe "$MC_GOOGLE_ID_SECRET" >/dev/null 2>&1 || ! gcloud secrets describe "$MC_GOOGLE_SECRET_SECRET" >/dev/null 2>&1; then
@@ -261,7 +269,9 @@ bind_secret_access() {
 mc_info "Granting Secret Manager access"
 for S in "$MC_AUTH_SECRET" "$MC_GOOGLE_ID_SECRET" "$MC_GOOGLE_SECRET_SECRET" "$MC_APP_DB_SECRET" \
          "$MC_OPENROUTER_SECRET" "$MC_IMAGE_OPENROUTER_SECRET" "$MC_FIRECRAWL_SECRET" "$MC_SERPER_SECRET" \
-         "$MC_HUBSPOT_TOKEN_SECRET" "$MC_HUBSPOT_PORTAL_SECRET" "$MC_GOOGLE_SA_EMAIL_SECRET" "$MC_GOOGLE_SA_KEY_SECRET"; do
+         "$MC_HUBSPOT_TOKEN_SECRET" "$MC_HUBSPOT_PORTAL_SECRET" "$MC_GOOGLE_SA_EMAIL_SECRET" "$MC_GOOGLE_SA_KEY_SECRET" \
+         "$MC_OUTREACH_SERVICE_TOKEN_SECRET" "$MC_OUTREACH_WEBHOOK_SECRET_SECRET" \
+         "$MC_OUTREACH_OPENCLAW_GATEWAY_URL_SECRET" "$MC_OUTREACH_OPENCLAW_WEBHOOK_URL_SECRET"; do
   bind_secret_access "$MC_WEB_SA" "$S"
 done
 for S in "$MC_API_DB_SECRET" "$MC_WEBHOOK_URL_SECRET" "$MC_WEBHOOK_SECRET_SECRET"; do

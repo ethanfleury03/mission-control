@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { backendFetch, backendUrl } from '../../_lib/backend';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 const PATH = '/api/org/context';
 
@@ -35,5 +36,8 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export async function GET(request: NextRequest)  { return proxy(request); }
-export async function POST(request: NextRequest) { return proxy(request); }
+async function GETHandler(request: NextRequest)  { return proxy(request); }
+async function POSTHandler(request: NextRequest) { return proxy(request); }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);

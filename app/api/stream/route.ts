@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
+import { withActiveUser } from '../_lib/with-active-user';
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const encoder = new TextEncoder();
   
   const stream = new ReadableStream({
@@ -19,3 +20,5 @@ export async function GET(req: NextRequest) {
     },
   });
 }
+
+export const GET = withActiveUser(GETHandler);

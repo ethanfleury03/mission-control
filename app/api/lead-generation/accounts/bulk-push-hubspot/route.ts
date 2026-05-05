@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pushLeadGenAccountById } from '@/lib/hubspot/push-account';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   let body: { accountIds?: string[] };
   try {
     body = await request.json();
@@ -30,3 +31,5 @@ export async function POST(request: NextRequest) {
   const ok = results.filter((r) => r.ok).length;
   return NextResponse.json({ pushed: ok, failed: results.length - ok, results });
 }
+
+export const POST = withActiveUser(POSTHandler);

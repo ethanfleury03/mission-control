@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ingestFolder, ingestUploadedFile } from '@/lib/rag/ingestion';
+import { withActiveUser } from '../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const contentType = request.headers.get('content-type') || '';
 
   try {
@@ -47,3 +48,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

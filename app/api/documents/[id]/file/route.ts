@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { inlineContentDisposition } from '@/app/api/_lib/content-disposition';
 import { getDocument } from '@/lib/rag/db';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function GETHandler(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const document = await getDocument(id);
   if (!document) return NextResponse.json({ error: 'Document not found.' }, { status: 404 });
@@ -41,3 +42,5 @@ function contentTypeFromFilename(filename: string): string {
   if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   return 'application/octet-stream';
 }
+
+export const GET = withActiveUser(GETHandler);

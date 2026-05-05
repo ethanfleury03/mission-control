@@ -1,5 +1,5 @@
 import type { Frame, Page } from 'playwright';
-import { assertPublicHttpUrl } from './validate-scrape-url';
+import { assertPublicHttpUrlAsync } from './validate-scrape-url';
 import { sleep } from './utils';
 import { MAX_LOAD_MORE_CLICKS } from './name-extraction-constants';
 
@@ -65,8 +65,9 @@ export async function collectInnerTextForUrl(
   options?: { cancelled?: () => boolean | Promise<boolean> },
 ): Promise<PageTextSnapshot | null> {
   try {
-    assertPublicHttpUrl(startUrl, 'Follow-up roster URL');
+    await assertPublicHttpUrlAsync(startUrl, 'Follow-up roster URL');
     await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 35_000 });
+    await assertPublicHttpUrlAsync(page.url(), 'Follow-up roster final URL');
     await sleep(600);
     await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
 

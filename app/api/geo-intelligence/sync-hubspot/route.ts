@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { syncHubSpotGeoSnapshots } from '@/lib/geo-intelligence/hubspot-sync';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+async function POSTHandler() {
   try {
     const result = await syncHubSpotGeoSnapshots();
     return NextResponse.json(result);
@@ -13,3 +14,5 @@ export async function POST() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

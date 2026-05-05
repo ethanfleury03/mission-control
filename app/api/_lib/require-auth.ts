@@ -59,39 +59,49 @@ export async function requireAuth(): Promise<Allowed | Denied> {
   }
 
   let resolvedAppUserId = appUserId;
+  let appUser: Awaited<ReturnType<typeof import('@/lib/prisma').prisma.appUser.findUnique>> | null = null;
   try {
     const { prisma } = await import('@/lib/prisma');
-    const appUser = appUserId
+    appUser = appUserId
       ? await prisma.appUser.findUnique({ where: { id: appUserId } })
       : await prisma.appUser.findUnique({ where: { email: email.toLowerCase() } });
-    if (appUser?.status === 'disabled') {
-      const { recordAuthEvent } = await import('@/lib/auth/audit-log');
-      await recordAuthEvent({
-        type: 'api_rejected_disabled',
-        actorEmail: appUser.email,
-        targetEmail: appUser.email,
-        action: 'require_auth',
-      });
-      return {
-        response: NextResponse.json({ error: 'account_disabled' }, { status: 403 }),
-      };
-    }
+  } catch (error) {
+    console.error('App user session metadata lookup failed', error);
+    return {
+      response: NextResponse.json({ error: 'auth_lookup_failed' }, { status: 503 }),
+    };
+  }
 
-    if (appUser) {
-      resolvedAppUserId = appUser.id;
-      role = appUser.role;
-      status = appUser.status;
-      const stale =
-        !appUser.lastSeenAt || Date.now() - appUser.lastSeenAt.getTime() > 5 * 60 * 1000;
-      if (stale) {
+  if (appUser?.status === 'disabled') {
+    const { recordAuthEvent } = await import('@/lib/auth/audit-log');
+    await recordAuthEvent({
+      type: 'api_rejected_disabled',
+      actorEmail: appUser.email,
+      targetEmail: appUser.email,
+      action: 'require_auth',
+    });
+    return {
+      response: NextResponse.json({ error: 'account_disabled' }, { status: 403 }),
+    };
+  }
+
+  if (appUser) {
+    resolvedAppUserId = appUser.id;
+    role = appUser.role;
+    status = appUser.status;
+    const stale =
+      !appUser.lastSeenAt || Date.now() - appUser.lastSeenAt.getTime() > 5 * 60 * 1000;
+    if (stale) {
+      try {
+        const { prisma } = await import('@/lib/prisma');
         await prisma.appUser.update({
           where: { id: appUser.id },
           data: { lastSeenAt: new Date() },
         });
+      } catch (error) {
+        console.warn('App user lastSeenAt update failed', error);
       }
     }
-  } catch (error) {
-    console.warn('App user session metadata lookup failed', error);
   }
 
   return { authed: { appUserId: resolvedAppUserId, email, hd, role, status } };

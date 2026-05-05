@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { cancelIngestionJob } from '@/lib/rag/db';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
     const canceled = await cancelIngestionJob(id);
@@ -23,3 +24,5 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     );
   }
 }
+
+export const POST = withActiveUser(POSTHandler);

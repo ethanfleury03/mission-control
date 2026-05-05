@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addLog, clearJobCancellation, getJob, resumeJob, updateResult, updateJobStatus } from '@/lib/directory-scraper/job-store';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+async function POSTHandler(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   const job = await getJob(jobId);
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
@@ -55,3 +56,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
 
   return NextResponse.json({ resetCount, resumed: true, status: 'queued' });
 }
+
+export const POST = withActiveUser(POSTHandler);

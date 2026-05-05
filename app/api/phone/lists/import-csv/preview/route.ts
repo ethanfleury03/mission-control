@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { previewPhoneListImport } from '@/lib/phone/service';
+import { withActiveUser } from '../../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   const form = await request.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'Expected multipart form' }, { status: 400 });
 
@@ -17,3 +18,5 @@ export async function POST(request: Request) {
   const preview = await previewPhoneListImport(text);
   return NextResponse.json(preview);
 }
+
+export const POST = withActiveUser(POSTHandler);

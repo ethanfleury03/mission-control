@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { backendFetch, backendUrl } from '../../_lib/backend';
+import { backendFetch } from '../../_lib/backend';
+import { scopedBackendUrl, UnsafeBackendPathError } from '../../_lib/backend-path';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 type RouteContext = {
   params: Promise<{ path?: string[] }>;
@@ -12,9 +14,15 @@ async function getRouteParams(context: RouteContext): Promise<{ path?: string[] 
 
 async function proxy(request: NextRequest, context: RouteContext) {
   const params = await getRouteParams(context);
-  const path = (params.path || []).join('/');
-  const url = new URL(backendUrl(`/api/${path}`));
-  url.search = request.nextUrl.search;
+  let url: URL;
+  try {
+    url = scopedBackendUrl('/api', params.path, request.nextUrl.search);
+  } catch (error) {
+    if (error instanceof UnsafeBackendPathError) {
+      return NextResponse.json({ error: 'invalid_backend_path' }, { status: 400 });
+    }
+    throw error;
+  }
 
   try {
     const res = await backendFetch(url.toString(), { method: 'GET' });
@@ -31,6 +39,8 @@ async function proxy(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+async function GETHandler(request: NextRequest, context: RouteContext) {
   return proxy(request, context);
 }
+
+export const GET = withActiveUser(GETHandler);

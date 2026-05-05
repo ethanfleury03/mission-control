@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { updateDocumentMetadata } from '@/lib/rag/db';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function PATCHHandler(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const body = await request.json().catch(() => ({}));
   try {
@@ -33,3 +34,5 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     );
   }
 }
+
+export const PATCH = withActiveUser(PATCHHandler);

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildGeoCountryDrilldownSnapshot } from '@/lib/geo-intelligence/dashboard';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function GETHandler(
   request: NextRequest,
   context: { params: Promise<{ countryCode: string }> },
 ) {
@@ -23,3 +24,5 @@ export async function GET(
 
   return NextResponse.json(snapshot);
 }
+
+export const GET = withActiveUser(GETHandler);

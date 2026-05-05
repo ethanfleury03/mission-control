@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getIngestionJob } from '@/lib/rag/db';
+import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function GETHandler(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
     const job = await getIngestionJob(id);
@@ -18,3 +19,5 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);

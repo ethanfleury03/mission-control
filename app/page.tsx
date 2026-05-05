@@ -4,17 +4,20 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { AdminTab } from './components/AdminTab';
+import { AiHelpDeskTab } from './components/AiHelpDeskTab';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
 import { BlogsTab } from './components/BlogsTab';
 import { ImageGenerationTab } from './components/ImageGenerationTab';
 import { LeadGenerationTab } from './components/lead-generation/LeadGenerationTab';
 import { ManualsTab } from './components/ManualsTab';
+import { OutreachCrmTab } from './components/outreach-crm/OutreachCrmTab';
 import { PhoneTab } from './components/PhoneTab';
 import { RagTab } from './components/RagTab';
 import { DEFAULT_HUB_APP, getHubApps, type HubAppId } from './lib/hubApps';
 import { BLOGS_ENABLED } from '@/lib/features';
 import { isAdminEmail } from '@/lib/auth/constants';
+import { HELP_DESK_DEVELOPER_EMAIL } from '@/lib/help-desk/types';
 
 const SIDEBAR_COLLAPSED_KEY = 'mc_sidebar_collapsed';
 
@@ -36,7 +39,17 @@ export default function ArrowHub() {
   const [mounted, setMounted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isAdmin = isAdminEmail(session?.user?.email);
-  const availableApps = getHubApps({ includeAdmin: isAdmin });
+  const isHelpDeskDeveloper = (session?.user?.email ?? '').trim().toLowerCase() === HELP_DESK_DEVELOPER_EMAIL;
+  const availableApps = getHubApps({ includeAdmin: isAdmin }).map((app) =>
+    app.id === 'AI_HELP_DESK' && isHelpDeskDeveloper
+      ? {
+          ...app,
+          description: 'Developer ticket command center',
+          currentDescription: 'developer workspace',
+          searchPlaceholder: 'Search tickets, requesters, next steps...',
+        }
+      : app,
+  );
   const resolvedActiveApp =
     (activeApp === 'BLOGS' && !BLOGS_ENABLED) ||
     (activeApp === 'ADMIN' && !isAdmin)
@@ -70,7 +83,17 @@ export default function ArrowHub() {
 
   return (
     <div className="h-screen flex flex-col bg-bg-primary overflow-hidden hub-shell">
-      <Header activeApp={resolvedActiveApp} />
+      <Header
+        activeApp={resolvedActiveApp}
+        appOverride={
+          resolvedActiveApp === 'AI_HELP_DESK' && isHelpDeskDeveloper
+            ? {
+                currentDescription: 'developer workspace',
+                searchPlaceholder: 'Search tickets, requesters, next steps...',
+              }
+            : undefined
+        }
+      />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         <LeftSidebar
@@ -99,6 +122,10 @@ export default function ArrowHub() {
           <ManualsTab />
         ) : resolvedActiveApp === 'RAG' ? (
           <RagTab />
+        ) : resolvedActiveApp === 'AI_HELP_DESK' ? (
+          <AiHelpDeskTab />
+        ) : resolvedActiveApp === 'OUTREACH_CRM' ? (
+          <OutreachCrmTab />
         ) : (
           <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-[#0b1222]">
             <GeoIntelligenceEntry />

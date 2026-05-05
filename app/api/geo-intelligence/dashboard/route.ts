@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildGeoDashboardSnapshot } from '@/lib/geo-intelligence/dashboard';
 import { ARROW_ORIGIN } from '@/lib/geo-intelligence/constants';
 import type { GeoDashboardSnapshot } from '@/lib/geo-intelligence/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,7 @@ function emptySnapshot(reason: string): GeoDashboardSnapshot {
   };
 }
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   try {
     const snapshot = await buildGeoDashboardSnapshot({
@@ -71,3 +72,5 @@ export async function GET(request: NextRequest) {
     throw error;
   }
 }
+
+export const GET = withActiveUser(GETHandler);

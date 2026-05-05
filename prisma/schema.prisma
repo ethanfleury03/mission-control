@@ -535,6 +535,156 @@ model PhoneSettings {
   @@map("phone_settings")
 }
 
+// --- Outreach CRM / Sasha email automation ---------------------------------
+
+model OutreachCrmSyncState {
+  id              String    @id @default("sasha-outreach")
+  campaignName    String    @default("Sasha-Outreach")
+  status          String    @default("idle")
+  source          String    @default("")
+  lastSyncedAt    DateTime?
+  lastAttemptedAt DateTime?
+  lastError       String    @default("")
+  dashboardJson   String    @default("{}")
+  summaryJson     String    @default("{}")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("outreach_crm_sync_states")
+}
+
+model OutreachCrmContact {
+  id                    String    @id @default(cuid())
+  campaignName          String    @default("Sasha-Outreach")
+  email                 String
+  hubspotContactId      String    @default("")
+  name                  String    @default("")
+  firstName             String    @default("")
+  lastName              String    @default("")
+  company               String    @default("")
+  jobtitle              String    @default("")
+  phone                 String    @default("")
+  website               String    @default("")
+  stage                 String    @default("")
+  status                String    @default("")
+  sendStatus            String    @default("")
+  draftStatus           String    @default("")
+  replyStatus           String    @default("")
+  positiveReply         Boolean   @default(false)
+  humanReviewRequired   Boolean   @default(false)
+  stopped               Boolean   @default(false)
+  active                Boolean   @default(true)
+  inSourceList          Boolean   @default(false)
+  eligibleForAutomation Boolean   @default(false)
+  touchCount            Int       @default(0)
+  lastOutboundAt        DateTime?
+  nextFollowupAllowedAt DateTime?
+  lastReplyAt           DateTime?
+  sourceUpdatedAt       DateTime?
+  lastSyncedAt          DateTime?
+  hubspotUrl            String    @default("")
+  gmailThreadUrl        String    @default("")
+  stopReason            String    @default("")
+  lastReplySnippet      String    @default("")
+  ownerId               String    @default("")
+  assignedTo            String    @default("")
+  snapshotJson          String    @default("{}")
+  rawStateJson          String    @default("{}")
+  rawHubspotJson        String    @default("{}")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  events OutreachCrmEvent[]
+  jobs   OutreachAutomationJob[]
+
+  @@unique([campaignName, email])
+  @@index([hubspotContactId])
+  @@index([stage])
+  @@index([active])
+  @@index([inSourceList])
+  @@index([eligibleForAutomation])
+  @@index([nextFollowupAllowedAt])
+  @@index([lastReplyAt])
+  @@map("outreach_crm_contacts")
+}
+
+model OutreachCrmEvent {
+  id             String              @id @default(cuid())
+  eventType      String
+  campaignName   String              @default("Sasha-Outreach")
+  contactId      String?
+  contact        OutreachCrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  email          String              @default("")
+  jobId          String?
+  idempotencyKey String              @unique
+  payloadJson    String              @default("{}")
+  summary        String              @default("")
+  occurredAt     DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+
+  deliveries OutreachWebhookDelivery[]
+
+  @@index([campaignName, occurredAt])
+  @@index([eventType])
+  @@index([contactId, occurredAt])
+  @@index([jobId])
+  @@map("outreach_crm_events")
+}
+
+model OutreachAutomationJob {
+  id                 String              @id @default(cuid())
+  actionType         String
+  status             String              @default("queued")
+  campaignName       String              @default("Sasha-Outreach")
+  contactId          String?
+  contact            OutreachCrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  email              String              @default("")
+  replyThreadId      String              @default("")
+  dryRun             Boolean             @default(false)
+  transport          String              @default("")
+  agentId            String              @default("")
+  idempotencyKey     String              @unique
+  instructions       String              @default("")
+  requestJson        String              @default("{}")
+  guardrailJson      String              @default("{}")
+  resultJson         String              @default("{}")
+  rawOutput          String              @default("")
+  blockedReasonsJson String              @default("[]")
+  createdBy          String              @default("")
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([campaignName, createdAt])
+  @@index([actionType])
+  @@index([status])
+  @@index([contactId])
+  @@index([email])
+  @@map("outreach_automation_jobs")
+}
+
+model OutreachWebhookDelivery {
+  id             String           @id @default(cuid())
+  eventId        String
+  event          OutreachCrmEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  targetUrl      String
+  status         String           @default("queued")
+  attemptCount   Int              @default(0)
+  nextAttemptAt  DateTime?
+  lastAttemptAt  DateTime?
+  lastStatusCode Int?
+  lastError      String           @default("")
+  payloadJson    String           @default("{}")
+  headersJson    String           @default("{}")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([eventId])
+  @@index([status, nextAttemptAt])
+  @@map("outreach_webhook_deliveries")
+}
+
 model ImageGenerationSettings {
   id                String   @id @default("default")
   provider          String   @default("openrouter")
@@ -673,4 +823,99 @@ model Manual {
   @@index([createdAt])
   @@index([updatedAt])
   @@map("manuals")
+}
+
+model HelpDeskTicket {
+  id              String    @id @default(cuid())
+  title           String
+  description     String
+  category        String    @default("other")
+  urgency         String    @default("normal")
+  status          String    @default("open")
+  requestedDate   DateTime?
+  nextStep        String    @default("")
+  businessImpact  String    @default("")
+  attachmentNote  String    @default("")
+  createdByUserId String    @default("")
+  createdByName   String    @default("")
+  createdByEmail  String
+  requesterColor  String    @default("")
+  team            String    @default("")
+  assignedToEmail String    @default("ethan@arrsys.com")
+  visibility      String    @default("team")
+  sortOrder       Int       @default(0)
+  archivedAt      DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  comments       HelpDeskTicketComment[]
+  aiPlans        HelpDeskTicketAIPlan[]
+  activityEvents HelpDeskTicketActivityEvent[]
+
+  @@index([createdByEmail])
+  @@index([status])
+  @@index([visibility])
+  @@index([archivedAt])
+  @@index([finishedAt])
+  @@index([updatedAt])
+  @@map("help_desk_tickets")
+}
+
+model HelpDeskTicketComment {
+  id           String         @id @default(cuid())
+  ticketId     String
+  ticket       HelpDeskTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorUserId String         @default("")
+  authorName   String         @default("")
+  authorEmail  String
+  body         String
+  visibility   String         @default("public")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([ticketId, createdAt])
+  @@index([ticketId, visibility, createdAt])
+  @@index([authorEmail])
+  @@map("help_desk_ticket_comments")
+}
+
+model HelpDeskTicketAIPlan {
+  id                      String         @id @default(cuid())
+  ticketId                String
+  ticket                  HelpDeskTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  status                  String         @default("ready")
+  summary                 String         @default("")
+  stepsJson               String         @default("[]")
+  suggestedPrompt         String         @default("")
+  filesToInspectJson      String         @default("[]")
+  questionsToAskJson      String         @default("[]")
+  validationChecklistJson String         @default("[]")
+  riskNotesJson           String         @default("[]")
+  errorMessage            String         @default("")
+  generatedAt             DateTime       @default(now())
+  generatedByModel        String         @default("")
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  @@index([ticketId, generatedAt])
+  @@index([status])
+  @@map("help_desk_ticket_ai_plans")
+}
+
+model HelpDeskTicketActivityEvent {
+  id           String         @id @default(cuid())
+  ticketId     String
+  ticket       HelpDeskTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  type         String
+  actorUserId  String         @default("")
+  actorName    String         @default("")
+  actorEmail   String         @default("")
+  summary      String         @default("")
+  metadataJson String         @default("{}")
+  createdAt    DateTime       @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([type])
+  @@map("help_desk_ticket_activity_events")
 }

@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { DirectoryEntry } from './types';
 import { normalizeUrl, sleep, dedupeDirectoryEntries } from './utils';
-import { assertPublicHttpUrl } from './validate-scrape-url';
+import { assertPublicHttpUrlAsync } from './validate-scrape-url';
 
 const MAX_PAGES = 50;
 const MAX_ENTRIES = 2000;
@@ -107,8 +107,9 @@ export async function extractDirectoryEntries(
     seenPageUrls.add(currentUrl);
 
     try {
-      assertPublicHttpUrl(currentUrl, 'Directory page');
+      await assertPublicHttpUrlAsync(currentUrl, 'Directory page');
       await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+      await assertPublicHttpUrlAsync(page.url(), 'Directory final URL');
       await sleep(800);
     } catch (err: any) {
       break;

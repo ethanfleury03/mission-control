@@ -33,6 +33,7 @@ export interface ChatCompletionResult {
 export interface RunChatCompletionInput {
   task: RagChatTask;
   messages: ChatMessage[];
+  provider?: RagChatProvider;
   responseFormat?: 'json' | 'text';
   temperature?: number;
   maxTokens?: number;
@@ -125,8 +126,8 @@ export async function chatCompletion(input: {
 
 export async function runChatCompletion(input: RunChatCompletionInput): Promise<ChatCompletionResult> {
   const config = getChatModelConfig(input.task);
+  const provider = input.provider || config.provider;
   const model = input.model || config.model;
-  const provider = config.provider;
   const apiKey = readProviderKey(provider);
   if (!apiKey) {
     throw new Error(

@@ -2,6 +2,8 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
   BrainCircuit,
+  Mail,
+  MessageSquareText,
   Orbit,
   Newspaper,
   Target,
@@ -20,7 +22,9 @@ export type HubAppId =
   | 'PHONE'
   | 'MANUALS'
   | 'RAG'
-  | 'ADMIN';
+  | 'AI_HELP_DESK'
+  | 'ADMIN'
+  | 'OUTREACH_CRM';
 
 export const DEFAULT_HUB_APP: HubAppId = 'GEO_INTELLIGENCE';
 
@@ -28,6 +32,8 @@ export interface HubApp {
   id: HubAppId;
   label: string;
   description: string;
+  currentDescription?: string;
+  searchPlaceholder?: string;
   icon: LucideIcon;
 }
 
@@ -75,10 +81,26 @@ const ALL_HUB_APPS: HubApp[] = [
     icon: BrainCircuit,
   },
   {
+    id: 'AI_HELP_DESK',
+    label: 'AI Help Desk',
+    description: 'Submit requests & track tickets',
+    currentDescription: 'client ticket portal',
+    searchPlaceholder: 'Search tickets, comments, requesters...',
+    icon: MessageSquareText,
+  },
+  {
     id: 'ADMIN',
     label: 'Admin',
     description: 'Users & security logs',
     icon: Shield,
+  },
+  {
+    id: 'OUTREACH_CRM',
+    label: 'Outreach CRM',
+    description: 'Email outreach pipeline',
+    currentDescription: 'Sasha campaign pipeline',
+    searchPlaceholder: 'Search hub, contacts, campaigns...',
+    icon: Mail,
   },
 ];
 

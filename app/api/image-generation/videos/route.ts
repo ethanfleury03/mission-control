@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { createVideoGenerationRun, getVideoGenerationRuns, isVideoDurationSeconds } from '@/lib/image-generation/video-service';
 import type { ImageConversationMessage, VideoSourceKind } from '@/lib/image-generation/types';
+import { withActiveUser } from '../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,7 @@ function parseMachineIdsJson(raw: FormDataEntryValue | null): string[] {
   }
 }
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const limitValue = Number.parseInt(request.nextUrl.searchParams.get('limit') ?? '', 10);
   const limit = Number.isFinite(limitValue) ? limitValue : undefined;
 
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   if (!form) {
     return NextResponse.json({ error: 'Expected multipart form data.' }, { status: 400 });
@@ -98,3 +99,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withActiveUser(GETHandler);
+export const POST = withActiveUser(POSTHandler);

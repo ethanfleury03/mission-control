@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { CancelSignal } from './extract-directory-entries';
 import type { Page } from 'playwright';
-import { assertPublicHttpUrl } from './validate-scrape-url';
+import { assertPublicHttpUrlAsync } from './validate-scrape-url';
 import type { CompanyResult, DirectoryEntry } from './types';
 import { extractContactFromSite } from './extract-contact-info';
 import { gotoDomContentLoaded } from './navigation-timeout';
@@ -96,8 +96,9 @@ export async function enrichCompany(
           : 'Step: load directory listing page for contact scrape',
       );
       try {
-        assertPublicHttpUrl(listingUrl, 'Directory listing page');
+        await assertPublicHttpUrlAsync(listingUrl, 'Directory listing page');
         await gotoDomContentLoaded(page, listingUrl, 20_000);
+        await assertPublicHttpUrlAsync(page.url(), 'Directory listing final URL');
         await sleep(400);
         await log('Step: listing page loaded');
       } catch {
@@ -162,7 +163,7 @@ export async function enrichCompany(
     const listingHadPhone = !!result.phone;
 
     if (visitWebsite && result.companyWebsite && !(await Promise.resolve(signal()))) {
-      assertPublicHttpUrl(result.companyWebsite, 'Company website');
+      await assertPublicHttpUrlAsync(result.companyWebsite, 'Company website');
       const companyDomain = normalizeDomain(result.companyWebsite);
       await log(`Step: crawl company website for contact (${companyDomain})`);
       const contact = await extractContactFromSite(page, result.companyWebsite, signal, companyDomain, (m) =>

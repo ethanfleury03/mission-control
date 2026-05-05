@@ -7,11 +7,13 @@ const PUBLIC_PATHS = [
   '/healthz',
   '/favicon.ico',
   '/api/healthz',
+  '/api/phone/retell/webhook',
 ];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
   if (pathname.startsWith('/api/auth/')) return true;
+  if (pathname.startsWith('/api/outreach-crm/v1/')) return true;
   if (pathname.startsWith('/_next/')) return true;
   if (pathname.startsWith('/assets/')) return true;
   if (pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|woff2?|ttf|css|js|map)$/i)) return true;
@@ -30,6 +32,17 @@ function isMutatingApiRequest(method: string, pathname: string): boolean {
 
 export default auth((req) => {
   const { pathname, search } = req.nextUrl;
+  if (
+    pathname.startsWith('/api/outreach-crm/v1/') &&
+    isReadOnlyModeEnabled() &&
+    isMutatingApiRequest(req.method, pathname)
+  ) {
+    return NextResponse.json(
+      { error: 'read_only', message: 'Mission Control is temporarily read-only for database maintenance.' },
+      { status: 503 },
+    );
+  }
+
   if (isPublic(pathname)) return NextResponse.next();
   if (isAuthBypassEnabled()) return NextResponse.next();
 
@@ -48,6 +61,17 @@ export default auth((req) => {
     signInUrl.searchParams.set('callbackUrl', pathname + search);
     return NextResponse.redirect(signInUrl);
   }
+
+  if (req.auth.appStatus === 'disabled') {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'account_disabled' }, { status: 403 });
+    }
+    const signInUrl = new URL('/signin', req.nextUrl.origin);
+    signInUrl.searchParams.set('error', 'AccessDenied');
+    signInUrl.searchParams.set('signedOut', '1');
+    return NextResponse.redirect(signInUrl);
+  }
+
   return NextResponse.next();
 });
 
