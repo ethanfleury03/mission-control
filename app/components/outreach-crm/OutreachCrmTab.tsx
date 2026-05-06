@@ -10,16 +10,22 @@ import {
   ChevronRight,
   Clock3,
   ExternalLink,
+  FileText,
   Inbox,
   LayoutDashboard,
   Loader2,
   MessageCircle,
+  Pencil,
+  Plus,
   RefreshCw,
+  Save,
   Search,
   Send,
   ThumbsUp,
+  Trash2,
   UserCheck,
   UsersRound,
+  X,
   XCircle,
   type LucideIcon,
 } from 'lucide-react';
@@ -27,10 +33,44 @@ import {
 import { cn } from '@/app/lib/utils';
 import type { OutreachDashboardResponse, OutreachReply } from '@/lib/outreach-crm/types';
 
-type OutreachView = 'overview' | 'replies';
+type OutreachView = 'overview' | 'replies' | 'templates';
+
+interface OutreachEmailTemplate {
+  id: string;
+  name: string;
+  category: string;
+  subject: string;
+  body: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy: string;
+}
+
+interface TemplateFormState {
+  id: string | null;
+  name: string;
+  category: string;
+  subject: string;
+  body: string;
+  description: string;
+  isActive: boolean;
+}
 
 const PAGE_SIZE = 8;
 const REPLY_PAGE_SIZE = 14;
+
+const EMPTY_TEMPLATE_FORM: TemplateFormState = {
+  id: null,
+  name: '',
+  category: 'first_touch',
+  subject: '',
+  body: '',
+  description: '',
+  isActive: true,
+};
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
@@ -442,6 +482,215 @@ function FollowUpHealth({ dashboard }: { dashboard: OutreachDashboardResponse })
   );
 }
 
+function TemplateEditor({
+  form,
+  saving,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  form: TemplateFormState;
+  saving: boolean;
+  onChange: (patch: Partial<TemplateFormState>) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Email Templates</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">
+            {form.id ? 'Edit Template' : 'New Template'}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-700">
+            <input
+              type="checkbox"
+              checked={form.isActive}
+              onChange={(event) => onChange({ isActive: event.target.checked })}
+              className="h-4 w-4 rounded border-stone-300 text-brand focus:ring-brand/20"
+            />
+            Active
+          </label>
+          {form.id ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:border-brand/30 hover:text-brand"
+            >
+              <X className="h-4 w-4" />
+              Cancel
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <label className="block">
+          <span className="text-xs font-semibold text-stone-700">Template name</span>
+          <input
+            value={form.name}
+            onChange={(event) => onChange({ name: event.target.value })}
+            placeholder="First touch - operations leader"
+            className="mt-1 h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none transition-colors placeholder:text-stone-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-stone-700">Category</span>
+          <select
+            value={form.category}
+            onChange={(event) => onChange({ category: event.target.value })}
+            className="mt-1 h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+          >
+            <option value="first_touch">First touch</option>
+            <option value="follow_up">Follow-up</option>
+            <option value="reply_positive">Positive reply</option>
+            <option value="reply_needs_review">Needs review</option>
+            <option value="general">General</option>
+          </select>
+        </label>
+        <label className="block lg:col-span-2">
+          <span className="text-xs font-semibold text-stone-700">Subject</span>
+          <input
+            value={form.subject}
+            onChange={(event) => onChange({ subject: event.target.value })}
+            placeholder="Quick question about {{company}} operations"
+            className="mt-1 h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none transition-colors placeholder:text-stone-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+          />
+        </label>
+        <label className="block lg:col-span-2">
+          <span className="text-xs font-semibold text-stone-700">Description</span>
+          <input
+            value={form.description}
+            onChange={(event) => onChange({ description: event.target.value })}
+            placeholder="When Sasha should use this template"
+            className="mt-1 h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none transition-colors placeholder:text-stone-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+          />
+        </label>
+        <label className="block lg:col-span-2">
+          <span className="text-xs font-semibold text-stone-700">Body</span>
+          <textarea
+            value={form.body}
+            onChange={(event) => onChange({ body: event.target.value })}
+            placeholder="Hi {{firstName}},"
+            rows={10}
+            className="mt-1 min-h-56 w-full resize-y rounded-md border border-stone-200 bg-white px-3 py-3 text-sm leading-6 text-stone-800 outline-none transition-colors placeholder:text-stone-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-brand px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {form.id ? 'Save Template' : 'Create Template'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function TemplateList({
+  templates,
+  loading,
+  onEdit,
+  onDelete,
+}: {
+  templates: OutreachEmailTemplate[];
+  loading: boolean;
+  onEdit: (template: OutreachEmailTemplate) => void;
+  onDelete: (template: OutreachEmailTemplate) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white shadow-sm">
+      <div className="border-b border-stone-200 px-4 py-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Template Library</p>
+        <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">Saved Templates</h2>
+      </div>
+      <div className="divide-y divide-stone-200">
+        {loading ? (
+          <div className="flex items-center gap-2 px-4 py-8 text-sm text-stone-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading templates...
+          </div>
+        ) : templates.length ? (
+          templates.map((template) => (
+            <article key={template.id} className="px-4 py-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-stone-950">{template.name}</h3>
+                    <span className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                      {template.category.replaceAll('_', ' ')}
+                    </span>
+                    <span
+                      className={cn(
+                        'rounded-md border px-2 py-1 text-[10px] font-semibold',
+                        template.isActive
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-stone-200 bg-stone-50 text-stone-500',
+                      )}
+                    >
+                      {template.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  {template.description ? (
+                    <p className="mt-1 text-xs leading-5 text-stone-500">{template.description}</p>
+                  ) : null}
+                  {template.subject ? (
+                    <p className="mt-2 truncate text-xs font-medium text-stone-700">Subject: {template.subject}</p>
+                  ) : null}
+                  <p
+                    className="mt-2 text-xs leading-5 text-stone-600"
+                    style={{
+                      display: '-webkit-box',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: 3,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {template.body || 'No body text saved.'}
+                  </p>
+                  <p className="mt-2 text-[11px] text-stone-400">Updated {formatDateTime(template.updatedAt)}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(template)}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 transition-colors hover:border-brand/30 hover:text-brand"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(template)}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))
+        ) : (
+          <div className="px-4 py-12 text-center">
+            <FileText className="mx-auto h-9 w-9 text-stone-300" />
+            <p className="mt-2 text-sm font-semibold text-stone-800">No templates yet.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function OutreachCrmTab() {
   const [dashboard, setDashboard] = useState<OutreachDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -453,6 +702,12 @@ export function OutreachCrmTab() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [view, setView] = useState<OutreachView>('overview');
+  const [templates, setTemplates] = useState<OutreachEmailTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateStatus, setTemplateStatus] = useState('');
+  const [templateForm, setTemplateForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM);
 
   const loadDashboard = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (mode === 'initial') setLoading(true);
@@ -474,6 +729,28 @@ export function OutreachCrmTab() {
   useEffect(() => {
     void loadDashboard('initial');
   }, [loadDashboard]);
+
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    setTemplateStatus('');
+    try {
+      const response = await fetch('/api/outreach-crm/templates', { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Unable to load templates.');
+      setTemplates(Array.isArray(data.templates) ? data.templates : []);
+      setTemplatesLoaded(true);
+    } catch (err) {
+      setTemplateStatus(err instanceof Error ? err.message : 'Unable to load templates.');
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === 'templates' && !templatesLoaded) {
+      void loadTemplates();
+    }
+  }, [loadTemplates, templatesLoaded, view]);
 
   const runDeepSync = useCallback(async () => {
     setSyncing(true);
@@ -499,6 +776,64 @@ export function OutreachCrmTab() {
       setSyncing(false);
     }
   }, [loadDashboard]);
+
+  const resetTemplateForm = useCallback(() => {
+    setTemplateForm(EMPTY_TEMPLATE_FORM);
+  }, []);
+
+  const saveTemplate = useCallback(async () => {
+    setTemplateSaving(true);
+    setTemplateStatus('');
+    try {
+      const endpoint = templateForm.id ? `/api/outreach-crm/templates/${templateForm.id}` : '/api/outreach-crm/templates';
+      const response = await fetch(endpoint, {
+        method: templateForm.id ? 'PUT' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(templateForm),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Template save failed.');
+      setTemplateStatus(templateForm.id ? 'Template saved.' : 'Template created.');
+      resetTemplateForm();
+      await loadTemplates();
+    } catch (err) {
+      setTemplateStatus(err instanceof Error ? err.message : 'Template save failed.');
+    } finally {
+      setTemplateSaving(false);
+    }
+  }, [loadTemplates, resetTemplateForm, templateForm]);
+
+  const editTemplate = useCallback((template: OutreachEmailTemplate) => {
+    setTemplateStatus('');
+    setTemplateForm({
+      id: template.id,
+      name: template.name,
+      category: template.category || 'general',
+      subject: template.subject || '',
+      body: template.body || '',
+      description: template.description || '',
+      isActive: template.isActive,
+    });
+  }, []);
+
+  const deleteTemplate = useCallback(
+    async (template: OutreachEmailTemplate) => {
+      const confirmed = window.confirm(`Delete "${template.name}"?`);
+      if (!confirmed) return;
+      setTemplateStatus('');
+      try {
+        const response = await fetch(`/api/outreach-crm/templates/${template.id}`, { method: 'DELETE' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Template delete failed.');
+        if (templateForm.id === template.id) resetTemplateForm();
+        setTemplateStatus('Template deleted.');
+        await loadTemplates();
+      } catch (err) {
+        setTemplateStatus(err instanceof Error ? err.message : 'Template delete failed.');
+      }
+    },
+    [loadTemplates, resetTemplateForm, templateForm.id],
+  );
 
   useEffect(() => {
     setPage(0);
@@ -571,6 +906,7 @@ export function OutreachCrmTab() {
                 {[
                   { id: 'overview' as const, label: 'Executive Overview', icon: LayoutDashboard },
                   { id: 'replies' as const, label: 'Reply Inbox', icon: Inbox },
+                  { id: 'templates' as const, label: 'Email Templates', icon: FileText },
                 ].map((tab) => {
                   const Icon = tab.icon;
                   return (
@@ -596,17 +932,20 @@ export function OutreachCrmTab() {
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-          <MetricCard label="Total Contacts" value={dashboard.kpis.totalContacts} icon={UsersRound} />
-          <MetricCard label="Active" value={dashboard.kpis.active} icon={UserCheck} tone="green" />
-          <MetricCard label="Initial Sent" value={dashboard.kpis.initialSent} icon={Send} />
-          <MetricCard label="Replies" value={dashboard.kpis.replies} icon={MessageCircle} />
-          <MetricCard label="Positive" value={dashboard.kpis.positive} icon={ThumbsUp} tone="green" />
-          <MetricCard label="Bounced/Stopped" value={dashboard.kpis.bouncedStopped} icon={Ban} tone="red" />
-          <MetricCard label="Due Follow-Up" value={dashboard.kpis.dueFollowUp} icon={Clock3} />
-        </section>
+        {view !== 'templates' ? (
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+            <MetricCard label="Total Contacts" value={dashboard.kpis.totalContacts} icon={UsersRound} />
+            <MetricCard label="Active" value={dashboard.kpis.active} icon={UserCheck} tone="green" />
+            <MetricCard label="Initial Sent" value={dashboard.kpis.initialSent} icon={Send} />
+            <MetricCard label="Replies" value={dashboard.kpis.replies} icon={MessageCircle} />
+            <MetricCard label="Positive" value={dashboard.kpis.positive} icon={ThumbsUp} tone="green" />
+            <MetricCard label="Bounced/Stopped" value={dashboard.kpis.bouncedStopped} icon={Ban} tone="red" />
+            <MetricCard label="Due Follow-Up" value={dashboard.kpis.dueFollowUp} icon={Clock3} />
+          </section>
+        ) : null}
 
-        <section className="rounded-lg border border-stone-200 bg-white p-2.5 shadow-sm">
+        {view !== 'templates' ? (
+          <section className="rounded-lg border border-stone-200 bg-white p-2.5 shadow-sm">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
             <label className="relative flex min-w-0 flex-1 items-center">
               <Search className="pointer-events-none absolute left-3 h-4 w-4 text-stone-400" />
@@ -657,14 +996,49 @@ export function OutreachCrmTab() {
               {dashboard.sourceWarnings[0]}
             </div>
           ) : null}
-        </section>
+          </section>
+        ) : null}
 
-        <section
-          className={cn(
-            'grid items-start gap-3',
-            view === 'overview' ? 'xl:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]' : 'xl:grid-cols-1',
-          )}
-        >
+        {view === 'templates' ? (
+          <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <TemplateEditor
+              form={templateForm}
+              saving={templateSaving}
+              onChange={(patch) => setTemplateForm((current) => ({ ...current, ...patch }))}
+              onSave={() => void saveTemplate()}
+              onCancel={resetTemplateForm}
+            />
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={resetTemplateForm}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 shadow-sm transition-colors hover:border-brand/30 hover:text-brand"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Template
+                </button>
+              </div>
+              {templateStatus ? (
+                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  {templateStatus}
+                </div>
+              ) : null}
+              <TemplateList
+                templates={templates}
+                loading={templatesLoading}
+                onEdit={editTemplate}
+                onDelete={(template) => void deleteTemplate(template)}
+              />
+            </div>
+          </section>
+        ) : (
+          <section
+            className={cn(
+              'grid items-start gap-3',
+              view === 'overview' ? 'xl:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]' : 'xl:grid-cols-1',
+            )}
+          >
           <div className="self-start rounded-lg border border-stone-200 bg-white shadow-sm">
             <div className="border-b border-stone-200 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Reply Center</p>
@@ -687,7 +1061,8 @@ export function OutreachCrmTab() {
               <FollowUpHealth dashboard={dashboard} />
             </aside>
           ) : null}
-        </section>
+          </section>
+        )}
       </div>
     </main>
   );
