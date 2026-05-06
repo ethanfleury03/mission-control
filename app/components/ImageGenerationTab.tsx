@@ -2264,7 +2264,7 @@ function MachineMultiSelectField({
           <span className="truncate">{label}</span>
           <ChevronDown className="h-4 w-4 shrink-0 text-stone-400 transition-transform group-open:rotate-180" />
         </summary>
-        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-72 w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-[0_18px_45px_rgba(0,0,0,0.12)] sm:bottom-auto sm:top-full sm:mb-0 sm:mt-2">
+        <div className="absolute bottom-full left-0 z-50 mb-2 max-h-72 w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
           <button
             type="button"
             onClick={() => onChange([])}
