@@ -2,10 +2,10 @@
 
 Production-only read-only gateway for Mission Control Outreach CRM Deep Sync.
 
-The service accepts Mission Control signed `deep_sync` requests, reads a reconciled
-Sasha outreach `state.json` snapshot from Cloud Storage, and returns strict
-`activitySnapshot` JSON. It does not call Gmail, draft/send email, modify HubSpot,
-or write data anywhere.
+The service accepts Mission Control signed `deep_sync` requests, reads reconciled
+Sasha, Mark, Aaron, and Jordan outreach `state.json` snapshots from Cloud
+Storage, and returns strict `activitySnapshot` JSON. It does not call Gmail,
+draft/send email, modify HubSpot, or write data anywhere.
 
 Expected state object:
 
@@ -30,7 +30,7 @@ Deploy with:
 bash deploy/gcp/deploy-outreach-deep-sync.sh prod "$PROJECT_ID" us-central1
 ```
 
-Refresh the state snapshot with:
+Refresh the state snapshots with:
 
 ```bash
 bash deploy/gcp/upload-prod-outreach-state.sh "$PROJECT_ID"

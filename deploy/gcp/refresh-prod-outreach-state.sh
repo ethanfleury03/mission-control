@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Refresh Sasha outreach state locally, upload it for prod Deep Sync, then ask
+# Refresh local outreach state, upload all agent snapshots for prod Deep Sync, then ask
 # Mission Control to ingest the fresh snapshot.
 #
 # This script is intentionally prod-only. It uses local read-only Gmail
-# reconciliation helpers from OpenClaw, uploads state.json to GCS, and triggers
+# reconciliation helpers from OpenClaw, uploads state snapshots to GCS, and triggers
 # the existing Mission Control deep_sync action.
 #
 # Usage:
@@ -219,7 +219,7 @@ HTTP_CODE="$(
     -X POST "$WEB_URL/api/outreach-crm/v1/actions" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    --data '{"actionType":"deep_sync","dryRun":false,"instructions":"Scheduled prod Sasha outreach state refresh. Read-only; do not draft or send."}' \
+    --data '{"actionType":"deep_sync","dryRun":false,"instructions":"Scheduled prod multi-agent outreach state refresh. Read-only; do not draft or send."}' \
     || true
 )"
 

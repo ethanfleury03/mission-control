@@ -6,6 +6,7 @@ substitutions:
   _SERVICE: mc-outreach-deep-sync
   _SERVICE_ACCOUNT: mc-outreach-deep-sync-sa
   _STATE_GCS_URI: ''
+  _AGENTS_GCS_URI: ''
   _OUTREACH_WEBHOOK_SECRET_SECRET: mc-outreach-crm-webhook-secret
 
 serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/mc-build-runner@$PROJECT_ID.iam.gserviceaccount.com'
@@ -54,7 +55,7 @@ steps:
           --timeout 180s \
           --concurrency 10 \
           --service-account "${_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com" \
-          --set-env-vars "SASHA_OUTREACH_STATE_GCS_URI=${_STATE_GCS_URI}" \
+          --set-env-vars "SASHA_OUTREACH_STATE_GCS_URI=${_STATE_GCS_URI},SASHA_OUTREACH_AGENTS_GCS_URI=${_AGENTS_GCS_URI}" \
           --set-secrets "OUTREACH_CRM_WEBHOOK_SECRET=${_OUTREACH_WEBHOOK_SECRET_SECRET}:latest"
 
 images:

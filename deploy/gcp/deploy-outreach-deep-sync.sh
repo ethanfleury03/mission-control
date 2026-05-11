@@ -60,6 +60,7 @@ ensure_random_secret "$MC_OUTREACH_SERVICE_TOKEN_SECRET"
 STATE_BUCKET="${MC_OUTREACH_STATE_BUCKET:-${PROJECT_ID}-sasha-outreach-state}"
 STATE_OBJECT="prod/state.json"
 STATE_GCS_URI="gs://${STATE_BUCKET}/${STATE_OBJECT}"
+AGENTS_GCS_URI="gs://${STATE_BUCKET}/prod/agents.json"
 CLOUDBUILD_BUCKET="${PROJECT_ID}_cloudbuild"
 GCS_SOURCE_STAGING="gs://${CLOUDBUILD_BUCKET}/source"
 
@@ -88,7 +89,7 @@ mc_info "Building and deploying $MC_OUTREACH_DEEP_SYNC_SERVICE"
 gcloud builds submit "$REPO_ROOT" \
   --gcs-source-staging-dir="$GCS_SOURCE_STAGING" \
   --config="$SCRIPT_DIR/cloudbuild.outreach-deep-sync.yaml" \
-  --substitutions="_REGION=$REGION,_AR_REPO=$MC_AR_REPO,_SERVICE=$MC_OUTREACH_DEEP_SYNC_SERVICE,_SERVICE_ACCOUNT=$MC_OUTREACH_DEEP_SYNC_SA,_STATE_GCS_URI=$STATE_GCS_URI,_OUTREACH_WEBHOOK_SECRET_SECRET=$MC_OUTREACH_WEBHOOK_SECRET_SECRET"
+  --substitutions="_REGION=$REGION,_AR_REPO=$MC_AR_REPO,_SERVICE=$MC_OUTREACH_DEEP_SYNC_SERVICE,_SERVICE_ACCOUNT=$MC_OUTREACH_DEEP_SYNC_SA,_STATE_GCS_URI=$STATE_GCS_URI,_AGENTS_GCS_URI=$AGENTS_GCS_URI,_OUTREACH_WEBHOOK_SECRET_SECRET=$MC_OUTREACH_WEBHOOK_SECRET_SECRET"
 
 BRIDGE_URL="$(gcloud run services describe "$MC_OUTREACH_DEEP_SYNC_SERVICE" --region="$REGION" --project="$PROJECT_ID" --format='value(status.url)')"
 [ -n "$BRIDGE_URL" ] || mc_die "could not read $MC_OUTREACH_DEEP_SYNC_SERVICE URL"
@@ -123,6 +124,6 @@ State object: $STATE_GCS_URI
 Mission Ctrl: ${WEB_URL:-"(web service not found yet)"}
 
 Before the first Sync, upload the current state:
-  bash deploy/gcp/upload-prod-outreach-state.sh "$PROJECT_ID" /Users/sasha/.openclaw/workspace/scripts/sasha_outreach/state.json "$REGION"
+  bash deploy/gcp/upload-prod-outreach-state.sh "$PROJECT_ID" /Users/sasha/.openclaw/workspace/scripts/sasha_outreach "$REGION"
 ================================================================
 EOF

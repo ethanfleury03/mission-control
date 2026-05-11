@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Read-only Sasha Outreach deep sync gateway for Mission Control.
+"""Read-only multi-agent Arrow Outreach deep sync gateway for Mission Control.
 
-This service intentionally reads a reconciled outreach state snapshot and returns
+This service intentionally reads reconciled outreach state snapshots and returns
 strict JSON only. It never drafts, sends, modifies Gmail, or writes HubSpot.
 """
 from __future__ import annotations
@@ -12,6 +12,7 @@ import hmac
 import json
 import os
 import re
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,44 @@ from urllib.request import Request, urlopen
 
 AGENT_ID = "sasha-outreach"
 DEFAULT_STATE_PATH = Path(__file__).resolve().parent / "state.json"
+DEFAULT_AGENTS = [
+    {
+        "id": "sasha",
+        "display_name": "Sasha",
+        "email": "sasha@arrsys.com",
+        "hubspot_list_name": "Sasha-Outreach",
+        "hubspot_list_id": "102",
+        "state_path": "state.json",
+        "enabled": True,
+    },
+    {
+        "id": "mark",
+        "display_name": "Mark",
+        "email": "markodell@arrsys.com",
+        "hubspot_list_name": "Mark-Outreach",
+        "hubspot_list_id": "103",
+        "state_path": "agents/mark/state.json",
+        "enabled": True,
+    },
+    {
+        "id": "aaron",
+        "display_name": "Aaron",
+        "email": "aaron@arrsys.com",
+        "hubspot_list_name": "Aaron-Outreach",
+        "hubspot_list_id": "104",
+        "state_path": "agents/aaron/state.json",
+        "enabled": True,
+    },
+    {
+        "id": "jordan",
+        "display_name": "Jordan",
+        "email": "jordan@arrsys.com",
+        "hubspot_list_name": "Jordan-Outreach",
+        "hubspot_list_id": "105",
+        "state_path": "agents/jordan/state.json",
+        "enabled": True,
+    },
+]
 FORBIDDEN_KEYS = {
     "sentMessage",
     "draftMessage",
@@ -74,16 +113,22 @@ def clean_snippet(value: Any, limit: int = 1000) -> str:
 
 
 def metadata_access_token() -> str:
-    req = Request(
-        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
-        headers={"Metadata-Flavor": "Google"},
-    )
-    with urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    return data["access_token"]
+    try:
+        req = Request(
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+            headers={"Metadata-Flavor": "Google"},
+        )
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["access_token"]
+    except Exception:
+        token = subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True, timeout=10).strip()
+        if not token:
+            raise
+        return token
 
 
-def read_gcs_json(uri: str) -> dict[str, Any]:
+def read_gcs_json(uri: str) -> Any:
     if not uri.startswith("gs://"):
         raise ValueError("GCS URI must start with gs://")
     bucket_and_object = uri[5:]
@@ -98,8 +143,40 @@ def read_gcs_json(uri: str) -> dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def load_state(path: Path) -> dict[str, Any]:
-    gcs_uri = os.environ.get("SASHA_OUTREACH_STATE_GCS_URI", "").strip()
+def derive_gcs_uri(base_uri: str, relative_path: str) -> str:
+    if not base_uri.startswith("gs://"):
+        return ""
+    bucket_and_object = base_uri[5:]
+    bucket, _, object_name = bucket_and_object.partition("/")
+    prefix = object_name.rsplit("/", 1)[0] if "/" in object_name else ""
+    relative = relative_path.strip().lstrip("/")
+    object_path = f"{prefix}/{relative}" if prefix else relative
+    return f"gs://{bucket}/{object_path}"
+
+
+def agent_state_gcs_uri(agent: dict[str, Any]) -> str:
+    explicit = str(agent.get("state_gcs_uri") or agent.get("stateGcsUri") or "").strip()
+    if explicit:
+        return explicit
+    base_uri = os.environ.get("SASHA_OUTREACH_STATE_GCS_URI", "").strip()
+    if not base_uri:
+        return ""
+    agent_id = str(agent.get("id") or "").strip().lower()
+    if agent_id == "sasha":
+        return base_uri
+    return derive_gcs_uri(base_uri, f"agents/{agent_id}/state.json")
+
+
+def agents_gcs_uri() -> str:
+    explicit = os.environ.get("SASHA_OUTREACH_AGENTS_GCS_URI", "").strip()
+    if explicit:
+        return explicit
+    base_uri = os.environ.get("SASHA_OUTREACH_STATE_GCS_URI", "").strip()
+    return derive_gcs_uri(base_uri, "agents.json") if base_uri else ""
+
+
+def load_state(path: Path, gcs_uri: str = "", label: str = "outreach") -> dict[str, Any]:
+    gcs_uri = gcs_uri.strip()
     if gcs_uri:
         try:
             data = read_gcs_json(gcs_uri)
@@ -113,10 +190,58 @@ def load_state(path: Path) -> dict[str, Any]:
     else:
         data = {"contacts": {}, "threads": {}, "missingStatePath": str(path)}
     if not isinstance(data, dict):
-        raise ValueError("Sasha outreach state must be a JSON object")
+        raise ValueError(f"{label} outreach state must be a JSON object")
     data.setdefault("contacts", {})
     data.setdefault("threads", {})
     return data
+
+
+def load_agents() -> list[dict[str, Any]]:
+    registry: Any = {}
+    uri = agents_gcs_uri()
+    if uri:
+        try:
+            registry = read_gcs_json(uri)
+        except HTTPError as exc:
+            if exc.code != 404:
+                raise
+    configured = registry.get("agents") if isinstance(registry, dict) else None
+    raw_agents = configured if isinstance(configured, list) and configured else DEFAULT_AGENTS
+    defaults = {agent["id"]: agent for agent in DEFAULT_AGENTS}
+    agents: list[dict[str, Any]] = []
+    for raw in raw_agents:
+        if not isinstance(raw, dict) or not raw.get("id"):
+            continue
+        agent_id = str(raw.get("id")).strip().lower()
+        fallback = defaults.get(agent_id, {})
+        agent = {**fallback, **raw}
+        if agent.get("enabled") is False:
+            continue
+        agent["id"] = agent_id
+        agent["display_name"] = agent.get("display_name") or agent.get("displayName") or agent_id.title()
+        agent["email"] = agent.get("email") or fallback.get("email") or ""
+        agent["hubspot_list_name"] = agent.get("hubspot_list_name") or agent.get("hubspotListName") or fallback.get("hubspot_list_name") or ""
+        agent["hubspot_list_id"] = str(agent.get("hubspot_list_id") or agent.get("hubspotListId") or fallback.get("hubspot_list_id") or "")
+        agent["state_gcs_uri"] = agent_state_gcs_uri(agent)
+        agent["state_abs_path"] = str(DEFAULT_STATE_PATH.parent / str(agent.get("state_path") or fallback.get("state_path") or "state.json"))
+        agents.append(agent)
+    return agents
+
+
+def iter_agent_contacts(agents: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str, dict[str, Any]]]:
+    rows: list[tuple[dict[str, Any], str, dict[str, Any]]] = []
+    for agent in agents:
+        state = load_state(Path(str(agent.get("state_abs_path") or DEFAULT_STATE_PATH)), str(agent.get("state_gcs_uri") or ""), str(agent.get("id") or "agent"))
+        contacts = state.get("contacts") if isinstance(state, dict) else {}
+        if not isinstance(contacts, dict):
+            continue
+        for key, value in contacts.items():
+            if not isinstance(value, dict):
+                continue
+            email = norm_email(value.get("email") or key)
+            if email:
+                rows.append((agent, email, value))
+    return rows
 
 
 def extract_json_objects(text: str) -> list[Any]:
@@ -136,18 +261,28 @@ def extract_json_objects(text: str) -> list[Any]:
 def extract_contacts_from_payload(obj: Any) -> list[str]:
     emails: list[str] = []
 
+    def add(value: Any) -> None:
+        e = norm_email(value)
+        if looks_like_email(e):
+            emails.append(e)
+
+    def walk_contact_list(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    add(item.get("email"))
+                else:
+                    add(item)
+
     def walk(x: Any) -> None:
         if isinstance(x, dict):
-            if "email" in x:
-                e = norm_email(x.get("email"))
-                if looks_like_email(e):
-                    emails.append(e)
             if "contact" in x and isinstance(x.get("contact"), dict):
-                e = norm_email(x["contact"].get("email"))
-                if looks_like_email(e):
-                    emails.append(e)
-            for v in x.values():
-                walk(v)
+                add(x["contact"].get("email"))
+            for key in ("contacts", "requestedContacts", "requested_contacts", "emails"):
+                walk_contact_list(x.get(key))
+            payload = x.get("payload")
+            if isinstance(payload, dict):
+                walk(payload)
         elif isinstance(x, list):
             for v in x:
                 walk(v)
@@ -171,7 +306,6 @@ def parse_message(message: str) -> dict[str, Any]:
     m = re.search(r"callbackUrl\s*[:=]\s*['\"]?(https?://[^\s'\"]+)", message or "")
     if m and not parsed["callbackUrl"]:
         parsed["callbackUrl"] = m.group(1)
-    parsed["contacts"].extend(norm_email(x) for x in re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", message or "", re.I))
     seen = set()
     parsed["contacts"] = [x for x in parsed["contacts"] if x and not (x in seen or seen.add(x))]
     return parsed
@@ -187,7 +321,7 @@ def classify_contact(c: dict[str, Any]) -> tuple[str, bool, bool, bool, str, str
     has_reply_evidence = bool(c.get("last_reply_at") or c.get("last_reply_snippet") or c.get("last_reply_subject"))
 
     if positive:
-        return "positive", True, False, False, "", "Marked positive/interested in Sasha outreach state."
+        return "positive", True, False, False, "", "Marked positive/interested in outreach state."
     if reply_status in {"positive", "interested"}:
         return "positive", True, False, False, "", "Reply status indicates positive/interested."
     if reply_status in {"out_of_office", "ooo", "auto_reply"} or "out of office" in snippet or "automatic reply" in snippet:
@@ -206,15 +340,25 @@ def classify_contact(c: dict[str, Any]) -> tuple[str, bool, bool, bool, str, str
     return "no_reply", False, False, False, "", "Outbound exists and no meaningful reply evidence was found."
 
 
-def contact_record(email: str, c: dict[str, Any] | None, unmatched: bool = False) -> dict[str, Any]:
+def contact_record(agent: dict[str, Any], email: str, c: dict[str, Any] | None, unmatched: bool = False) -> dict[str, Any]:
     c = c or {}
     status, positive, human, stopped, stop_reason, reason = classify_contact(c) if c else ("no_reply", False, False, False, "", "No local outreach evidence found for this contact.")
     thread_id = c.get("sent_thread_id") or c.get("last_reply_thread_id")
     if not thread_id and isinstance(c.get("thread_ids"), list) and c.get("thread_ids"):
         thread_id = c["thread_ids"][0]
     occurred = iso_or_null(c.get("last_reply_at") or c.get("last_outbound_at") or c.get("sent_at")) or now_iso()
+    agent_id = str(agent.get("id") or "sasha").strip().lower()
+    agent_name = str(agent.get("display_name") or agent_id.title()).strip()
+    sender_email = str(c.get("sender_email") or agent.get("email") or "").strip()
     rec: dict[str, Any] = {
         "email": norm_email(email),
+        "name": c.get("name") or " ".join(x for x in [c.get("first_name"), c.get("last_name")] if x) or norm_email(email),
+        "company": c.get("company"),
+        "agentId": agent_id,
+        "agentName": agent_name,
+        "senderEmail": sender_email,
+        "hubspotListName": c.get("source_list") or agent.get("hubspot_list_name"),
+        "hubspotListId": str(c.get("source_list_id") or agent.get("hubspot_list_id") or ""),
         "touchCount": clamp_int(c.get("touch_count")),
         "lastOutboundAt": iso_or_null(c.get("last_outbound_at") or c.get("sent_at")),
         "nextFollowupAllowedAt": iso_or_null(c.get("next_followup_allowed_at")),
@@ -226,7 +370,7 @@ def contact_record(email: str, c: dict[str, Any] | None, unmatched: bool = False
         "stopped": stopped,
         "stopReason": stop_reason if stopped else "",
         "gmailThreadId": str(thread_id) if thread_id else None,
-        "events": [{"type": "classification", "occurredAt": occurred, "summary": reason, "source": "sasha_state" if c else "openclaw"}],
+        "events": [{"type": "classification", "occurredAt": occurred, "summary": reason, "source": f"{agent_id}_state" if c else "openclaw"}],
     }
     if unmatched:
         rec["unmatched"] = True
@@ -236,24 +380,44 @@ def contact_record(email: str, c: dict[str, Any] | None, unmatched: bool = False
 def build_snapshot(message: str = "", state_path: Path | None = None) -> dict[str, Any]:
     state_path = state_path or Path(os.environ.get("SASHA_OUTREACH_STATE_PATH") or DEFAULT_STATE_PATH)
     parsed = parse_message(message)
-    state = load_state(state_path)
-    contacts_state = state.get("contacts") or {}
-    by_email = {norm_email(email): data for email, data in contacts_state.items() if norm_email(email)}
+    agents = load_agents()
+    if state_path != DEFAULT_STATE_PATH:
+        for agent in agents:
+            if agent.get("id") == "sasha":
+                agent["state_abs_path"] = str(state_path)
+                if not os.environ.get("SASHA_OUTREACH_STATE_GCS_URI", "").strip():
+                    agent["state_gcs_uri"] = ""
+    agent_contacts = iter_agent_contacts(agents)
+    by_email: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for agent, email, data in agent_contacts:
+        by_email.setdefault(norm_email(email), []).append((agent, data))
 
     requested = parsed.get("contacts") or []
     rows: list[dict[str, Any]] = []
     if requested:
         for email in requested:
-            c = by_email.get(norm_email(email))
-            rows.append(contact_record(email, c, unmatched=c is None))
+            matches = by_email.get(norm_email(email), [])
+            if matches:
+                for agent, c in matches:
+                    rows.append(contact_record(agent, email, c))
+            else:
+                fallback = agents[0] if agents else DEFAULT_AGENTS[0]
+                rows.append(contact_record(fallback, email, None, unmatched=True))
     else:
         for email in sorted(by_email):
-            rows.append(contact_record(email, by_email[email]))
+            for agent, c in by_email[email]:
+                rows.append(contact_record(agent, email, c))
 
-    source = os.environ.get("SASHA_OUTREACH_STATE_GCS_URI") or str(state_path)
     snapshot = {
         "generatedAt": now_iso(),
-        "sourceSummary": f"Checked Sasha outreach state at {source}; Gmail evidence is limited to fields already reconciled into state.json.",
+        "sourceSummary": (
+            "Checked multi-agent outreach state for "
+            + ", ".join(
+                f"{agent.get('display_name') or agent.get('id')} at {agent.get('state_gcs_uri') or agent.get('state_abs_path')}"
+                for agent in agents
+            )
+            + "; Gmail evidence is limited to fields already reconciled into state.json."
+        ),
         "contacts": rows,
     }
     return {
@@ -261,7 +425,7 @@ def build_snapshot(message: str = "", state_path: Path | None = None) -> dict[st
         "status": "completed",
         "agentId": AGENT_ID,
         "activitySnapshot": snapshot,
-        "rawOutput": f"Read-only deep sync completed for {len(rows)} contact(s). No Gmail/HubSpot writes attempted.",
+        "rawOutput": f"Read-only multi-agent deep sync completed for {len(rows)} contact(s) across {len(agents)} agent state file(s). No Gmail/HubSpot writes attempted.",
     }
 
 
@@ -290,6 +454,9 @@ def validate_response(obj: dict[str, Any]) -> None:
             raise ValueError(f"Invalid replyStatus at contacts[{i}]: {status!r}")
         if not isinstance(c.get("touchCount"), int) or not (0 <= c["touchCount"] <= 20):
             raise ValueError(f"Invalid touchCount at contacts[{i}]")
+        for key in ["agentId", "agentName", "senderEmail"]:
+            if not str(c.get(key) or "").strip():
+                raise ValueError(f"Missing {key} at contacts[{i}]")
         for key in ["lastOutboundAt", "nextFollowupAllowedAt", "lastReplyAt", "gmailThreadId"]:
             if key not in c:
                 raise ValueError(f"Missing {key} at contacts[{i}]")
@@ -326,14 +493,14 @@ def verify_signature(raw_body: bytes, headers: Any, secret: str) -> bool:
 
 
 class DeepSyncHandler(BaseHTTPRequestHandler):
-    server_version = "SashaOutreachDeepSync/1.0"
+    server_version = "ArrowOutreachDeepSync/2.0"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path in {"/healthz", "/"}:
             self.send_response(200)
             self.send_header("content-type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"ok":true,"service":"sasha-outreach-deep-sync"}')
+            self.wfile.write(b'{"ok":true,"service":"arrow-outreach-deep-sync"}')
             return
         self.send_json(404, {"ok": False, "error": "not_found"})
 
@@ -376,7 +543,7 @@ class DeepSyncHandler(BaseHTTPRequestHandler):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Sasha Outreach Mission Control read-only deep sync")
+    parser = argparse.ArgumentParser(description="Arrow Outreach Mission Control read-only multi-agent deep sync")
     parser.add_argument("--message", default="", help="Mission Control prompt or JSON request body")
     parser.add_argument("--state-path", default=os.environ.get("SASHA_OUTREACH_STATE_PATH") or str(DEFAULT_STATE_PATH))
     parser.add_argument("--serve", action="store_true", help="Run a signed HTTP gateway")
@@ -386,7 +553,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.serve:
         httpd = ThreadingHTTPServer((args.host, args.port), DeepSyncHandler)
-        print(f"sasha-outreach deep sync gateway listening on http://{args.host}:{args.port}", file=sys.stderr)
+        print(f"arrow outreach deep sync gateway listening on http://{args.host}:{args.port}", file=sys.stderr)
         httpd.serve_forever()
         return 0
 
