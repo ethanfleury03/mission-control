@@ -116,6 +116,21 @@ function formatLastSynced(value: string | null | undefined): string {
   return `Last synced ${formatDateTime(value)}`;
 }
 
+function dashboardSourceLabel(source: OutreachDashboardResponse['source']): string {
+  switch (source) {
+    case 'state':
+      return 'Multi-agent local state';
+    case 'hubspot+state':
+      return 'HubSpot + local state';
+    case 'hubspot+activity':
+      return 'Cache + deep sync activity';
+    case 'hubspot':
+      return 'HubSpot cache';
+    default:
+      return 'Fallback data';
+  }
+}
+
 function formatReplyDate(value: string | null | undefined): string {
   if (!value) return 'Not recorded';
   const date = new Date(value);
@@ -498,7 +513,7 @@ function PipelineSummary({ dashboard }: { dashboard: OutreachDashboardResponse }
 function FollowUpHealth({ dashboard }: { dashboard: OutreachDashboardResponse }) {
   const items = [
     { label: 'Due today', value: dashboard.followUpHealth.dueToday, icon: Clock3, tone: 'brand' },
-    { label: 'Scheduled', value: dashboard.followUpHealth.scheduled, icon: CalendarDays, tone: 'blue' },
+    { label: 'Overdue', value: dashboard.followUpHealth.overdue ?? 0, icon: CalendarDays, tone: 'amber' },
     { label: 'Needs review', value: dashboard.followUpHealth.needsReview, icon: AlertTriangle, tone: 'amber' },
     { label: 'Blocked', value: dashboard.followUpHealth.blocked, icon: Ban, tone: 'red' },
   ] as const;
@@ -510,9 +525,7 @@ function FollowUpHealth({ dashboard }: { dashboard: OutreachDashboardResponse })
         {items.map((item) => {
           const Icon = item.icon;
           const toneClass =
-            item.tone === 'blue'
-              ? 'border-blue-200 bg-blue-50 text-blue-700'
-              : item.tone === 'amber'
+            item.tone === 'amber'
                 ? 'border-amber-200 bg-amber-50 text-amber-700'
                 : item.tone === 'red'
                   ? 'border-red-200 bg-red-50 text-red-700'
@@ -867,6 +880,153 @@ function DailyReport({ dashboard }: { dashboard: OutreachDashboardResponse }) {
   );
 }
 
+function dueStage(stageId: string | undefined): boolean {
+  return stageId === 'due_3_day_followup' || stageId === 'due_5_day_followup' || stageId === 'due_30_day_followup';
+}
+
+function ActivityEmptyState({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-stone-200 bg-stone-50 px-3 py-6 text-center">
+      <Icon className="mx-auto h-7 w-7 text-stone-300" />
+      <p className="mt-2 text-xs font-semibold text-stone-800">{title}</p>
+      <p className="mt-1 text-[11px] leading-5 text-stone-500">{body}</p>
+    </div>
+  );
+}
+
+function ReplyMiniRow({ reply }: { reply: OutreachReply }) {
+  return (
+    <article className="rounded-md border border-stone-200 bg-white px-3 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-stone-950">{reply.company}</p>
+          <p className="truncate text-[11px] text-stone-500">
+            {reply.agentName || 'Agent'} · {reply.contactName} · {reply.email}
+          </p>
+        </div>
+        <ReplyStatusBadge status={reply.status} />
+      </div>
+      <p
+        className="mt-1 text-[11px] leading-5 text-stone-600"
+        style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' }}
+      >
+        {reply.snippet || reply.suggestedAction || 'No snippet recorded.'}
+      </p>
+    </article>
+  );
+}
+
+function ContactMiniRow({ contact, mode }: { contact: OutreachDashboardContact; mode: 'due' | 'send' | 'failure' }) {
+  const timestamp =
+    mode === 'due' ? contact.nextFollowupAllowedAt : mode === 'send' ? contact.lastOutboundAt : contact.lastReplyAt || contact.lastOutboundAt;
+  const label = mode === 'due' ? 'Due' : mode === 'send' ? 'Sent' : 'Flagged';
+  const tone = mode === 'failure' ? 'text-red-600' : contact.overdue ? 'text-amber-700' : 'text-stone-600';
+  return (
+    <article className="rounded-md border border-stone-200 bg-white px-3 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-stone-950">{contact.company || 'Unknown company'}</p>
+          <p className="truncate text-[11px] text-stone-500">
+            {contact.agentName || 'Agent'} · {contact.name || contact.email}
+          </p>
+        </div>
+        <span className={cn('shrink-0 text-[11px] font-semibold', tone)}>{label}</span>
+      </div>
+      <p className="mt-1 truncate text-[11px] text-stone-500">{contact.email}</p>
+      <p className={cn('mt-1 text-[11px] font-medium', tone)}>{formatCompactDateTime(timestamp)}</p>
+      {contact.stopReason ? <p className="mt-1 text-[11px] leading-4 text-red-600">{contact.stopReason}</p> : null}
+    </article>
+  );
+}
+
+function ActivityDigest({ dashboard }: { dashboard: OutreachDashboardResponse }) {
+  const reviewReplies = dashboard.replies.filter((reply) => reply.status === 'Needs Review').slice(0, 5);
+  const positiveReplies = dashboard.replies.filter((reply) => reply.status === 'Positive').slice(0, 5);
+  const dueContacts = [...dashboard.contacts]
+    .filter((contact) => dueStage(contact.stageId))
+    .sort((a, b) => {
+      const aTime = new Date(a.nextFollowupAllowedAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      const bTime = new Date(b.nextFollowupAllowedAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    })
+    .slice(0, 6);
+  const latestSends = [...dashboard.contacts]
+    .filter((contact) => contact.lastOutboundAt)
+    .sort((a, b) => new Date(b.lastOutboundAt || 0).getTime() - new Date(a.lastOutboundAt || 0).getTime())
+    .slice(0, 6);
+  const latestFailures = [...dashboard.contacts]
+    .filter((contact) => contact.stopped || contact.stageId === 'stopped_bounced_unsubscribed')
+    .sort((a, b) => new Date(b.lastReplyAt || b.lastOutboundAt || 0).getTime() - new Date(a.lastReplyAt || a.lastOutboundAt || 0).getTime())
+    .slice(0, 4);
+
+  return (
+    <section className="grid gap-3 xl:grid-cols-2">
+      <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Reply Triage</p>
+            <h2 className="mt-1 text-sm font-semibold text-stone-950">Latest multi-agent replies</h2>
+          </div>
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+            {formatNumber(dashboard.kpis.humanReview ?? 0)} review
+          </span>
+        </div>
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          <div className="space-y-2">
+            {reviewReplies.length ? (
+              reviewReplies.map((reply) => <ReplyMiniRow key={`review-${reply.id}`} reply={reply} />)
+            ) : (
+              <ActivityEmptyState icon={Inbox} title="No review replies" body="The current multi-agent state has no replies waiting for human review." />
+            )}
+          </div>
+          <div className="space-y-2">
+            {positiveReplies.length ? (
+              positiveReplies.map((reply) => <ReplyMiniRow key={`positive-${reply.id}`} reply={reply} />)
+            ) : (
+              <ActivityEmptyState icon={ThumbsUp} title="No positive replies" body="Positive or meeting-path replies will be pinned here as soon as state reports them." />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Live Work Queue</p>
+            <h2 className="mt-1 text-sm font-semibold text-stone-950">Follow-ups, sends, and failures</h2>
+          </div>
+          <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">
+            {formatNumber(dashboard.kpis.dueFollowUp)} due
+          </span>
+        </div>
+        <div className="mt-3 grid gap-2 lg:grid-cols-3">
+          <div className="space-y-2">
+            {dueContacts.length ? (
+              dueContacts.map((contact) => <ContactMiniRow key={`due-${contact.id}`} contact={contact} mode="due" />)
+            ) : (
+              <ActivityEmptyState icon={Clock3} title="No due follow-ups" body="Due and overdue follow-ups across all four inboxes will appear here." />
+            )}
+          </div>
+          <div className="space-y-2">
+            {latestSends.length ? (
+              latestSends.map((contact) => <ContactMiniRow key={`send-${contact.id}`} contact={contact} mode="send" />)
+            ) : (
+              <ActivityEmptyState icon={Send} title="No sends recorded" body="Latest outbound activity from local outreach state will appear here." />
+            )}
+          </div>
+          <div className="space-y-2">
+            {latestFailures.length ? (
+              latestFailures.map((contact) => <ContactMiniRow key={`failure-${contact.id}`} contact={contact} mode="failure" />)
+            ) : (
+              <ActivityEmptyState icon={CheckCircle2} title="No failures visible" body="Bounces, stops, and suppression cleanup items will be pinned here when present." />
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function TemplateEditor({
   form,
   saving,
@@ -1141,7 +1301,7 @@ export function OutreachCrmTab() {
 
   const runDeepSync = useCallback(async () => {
     setSyncing(true);
-    setSyncStatus('Starting deep sync...');
+    setSyncStatus('Syncing multi-agent outreach state...');
     setError('');
     try {
       const response = await fetch('/api/outreach-crm/sync', {
@@ -1151,9 +1311,15 @@ export function OutreachCrmTab() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.ok === false) throw new Error(data.error || 'Deep sync failed.');
-      const status = typeof data.status === 'string' ? data.status : 'started';
+      const returnedDashboard = data.dashboard && typeof data.dashboard === 'object' ? (data.dashboard as OutreachDashboardResponse) : null;
+      if (returnedDashboard) setDashboard(returnedDashboard);
+      const status = typeof data.status === 'string' ? data.status : 'completed';
       const jobId = typeof data.jobId === 'string' ? data.jobId : '';
-      setSyncStatus(jobId ? `Deep sync ${status} (${jobId.slice(0, 8)})` : `Deep sync ${status}`);
+      const contacts = returnedDashboard?.kpis?.totalContacts;
+      const warnings = returnedDashboard?.sourceWarnings?.length ? ` · ${returnedDashboard.sourceWarnings[0]}` : '';
+      setSyncStatus(
+        `Synced multi-agent state${contacts ? ` · ${formatNumber(contacts)} contacts` : ''}${jobId ? ` · job ${jobId.slice(0, 8)}` : ''} · ${status}${warnings}`,
+      );
       await loadDashboard('refresh');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Deep sync failed.';
@@ -1295,7 +1461,7 @@ export function OutreachCrmTab() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand">Email Outreach CRM</p>
               <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.05em] text-stone-950">Arrow Outreach Command Center</h1>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-                Read-only operating cockpit for Sasha, Mark, Aaron, and Jordan.
+                Read-only four-inbox operating cockpit for Sasha, Mark, Aaron, and Jordan across local outreach state and cache.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1339,7 +1505,7 @@ export function OutreachCrmTab() {
             <MetricCard label="Replies" value={dashboard.kpis.replies} icon={MessageCircle} />
             <MetricCard label="Positive" value={dashboard.kpis.positive} icon={ThumbsUp} tone="green" />
             <MetricCard label="Human Review" value={dashboard.kpis.humanReview ?? 0} icon={AlertTriangle} tone="amber" />
-            <MetricCard label="Due/Overdue" value={dashboard.kpis.dueFollowUp + (dashboard.kpis.overdueFollowUp ?? 0)} icon={Clock3} tone="amber" />
+            <MetricCard label="Due Now" value={dashboard.kpis.dueFollowUp} icon={Clock3} tone="amber" />
           </section>
         ) : null}
 
@@ -1409,10 +1575,11 @@ export function OutreachCrmTab() {
               className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-700 transition-colors hover:border-brand/30 hover:text-brand disabled:cursor-not-allowed disabled:opacity-60"
             >
               {syncing || refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Sync
+              Sync multi-agent state
             </button>
             <div className="text-xs text-stone-500 lg:min-w-[16rem]">
-              {formatLastSynced(dashboard.lastSyncedAt ?? dashboard.generatedAt)}
+              <p>{formatLastSynced(dashboard.lastSyncedAt ?? dashboard.generatedAt)}</p>
+              <p>{dashboardSourceLabel(dashboard.source)}</p>
             </div>
           </div>
           {syncStatus ? (
@@ -1464,6 +1631,7 @@ export function OutreachCrmTab() {
         ) : view === 'overview' ? (
           <div className="space-y-3">
             <AgentOverview dashboard={dashboard} />
+            <ActivityDigest dashboard={dashboard} />
             <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="space-y-3">
                 <SendQueueMonitor dashboard={dashboard} />

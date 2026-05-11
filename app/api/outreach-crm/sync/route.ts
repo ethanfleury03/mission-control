@@ -22,7 +22,14 @@ export async function POST(request: Request) {
   try {
     if (mode === 'hubspot') {
       const sync = await syncOutreachCrmCache();
-      return NextResponse.json({ ok: true, mode, status: 'completed', dashboard: sync.dashboard });
+      return NextResponse.json({
+        ok: true,
+        mode,
+        status: 'completed',
+        contactsSynced: sync.contactsSynced,
+        warnings: sync.warnings,
+        dashboard: sync.dashboard,
+      });
     }
 
     if (!deepSyncEnabled()) {
@@ -51,6 +58,8 @@ export async function POST(request: Request) {
       jobId: job?.jobId ?? job?.id ?? null,
       status: job?.status ?? ((result as any).status ? 'failed' : 'unknown'),
       dashboard: (result as any).activityMerge?.dashboard ?? (result as any).result?.dashboard ?? null,
+      contactsSynced:
+        (result as any).activityMerge?.dashboard?.kpis?.totalContacts ?? (result as any).result?.dashboard?.kpis?.totalContacts ?? null,
       error: (result as any).error,
     }, { status: result.ok === false ? (result.status ?? 500) : 200 });
   } catch (error) {

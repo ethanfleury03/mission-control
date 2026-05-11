@@ -345,7 +345,7 @@ function hasInitialOutbound(contact: NormalizedContact): boolean {
 }
 
 function hasReply(contact: NormalizedContact): boolean {
-  const replyStatus = contact.replyStatus.toLowerCase();
+  const replyStatus = (contact.replyStatus ?? '').toLowerCase();
   const hasInboundEvidence = Boolean(contact.lastReplyAt || contact.lastReplySnippet || contact.lastReplySubject);
   return (
     hasInboundEvidence ||
@@ -368,7 +368,8 @@ function dueDateFromCadence(contact: NormalizedContact): string | undefined {
 
 export function isDueForFollowUp(contact: NormalizedContact, now = new Date()): boolean {
   if (isStoppedOrBounced(contact) || isPositiveLike(contact)) return false;
-  if (contact.replyStatus && contact.replyStatus !== 'out_of_office') return false;
+  const replyStatus = (contact.replyStatus ?? '').toLowerCase();
+  if (replyStatus && replyStatus !== 'out_of_office' && replyStatus !== 'no_reply' && replyStatus !== 'none') return false;
   const dueDate = parseDate(dueDateFromCadence(contact));
   return Boolean(dueDate && dueDate.getTime() <= now.getTime() && contact.touchCount < MAX_PROACTIVE_TOUCHES);
 }
@@ -384,19 +385,23 @@ function contactIneligibilityReasons(contact: NormalizedContact): string[] {
 
 export function deriveOutreachStage(contact: NormalizedContact, now = new Date()): string {
   const replyStatus = contact.replyStatus;
-  const isEligible = contact.isEligible ?? contactIneligibilityReasons(contact).length === 0;
+  const ineligibilityReasons = contact.ineligibilityReasons ?? contactIneligibilityReasons(contact);
+  const isEligible = contact.isEligible ?? ineligibilityReasons.length === 0;
+  const hardBlocked = ineligibilityReasons.some((reason) => reason === 'missing_email' || reason === 'removed_from_source_list');
 
   if (isStoppedOrBounced(contact)) return 'Stopped / Bounced / Unsubscribed';
   if (isPositiveLike(contact)) return 'Positive / Meeting Path';
   if (contact.humanReviewRequired || replyStatus === 'sensitive/needs-human') return 'Replied - Needs Review';
-  if (replyStatus === 'out_of_office' || replyStatus === 'delivery_delay') return 'Out of Office / Paused';
+  if (replyStatus === 'out_of_office') return 'Out of Office / Paused';
+  if (replyStatus === 'delivery_delay') return 'Replied - Needs Review';
   if (replyStatus && replyStatus !== 'bounce' && replyStatus !== 'no_reply') return 'Replied - Needs Review';
-  if (!isEligible) return 'Blocked / Ineligible';
+  if (hardBlocked) return 'Blocked / Ineligible';
   if (isDueForFollowUp(contact, now)) {
     if (contact.touchCount === 1) return 'Due: 3-Day Follow-Up';
     if (contact.touchCount === 2) return 'Due: 5-Day Follow-Up';
     if (contact.touchCount === 3) return 'Due: 30-Day Final Follow-Up';
   }
+  if (!isEligible) return 'Blocked / Ineligible';
   if (contact.touchCount <= 0) return contact.draftStatus ? 'Drafted / Ready' : 'Drafted / Ready';
   if (contact.touchCount === 1) return 'Initial Sent';
   if (contact.touchCount === 2) return '3-Day Follow-Up Sent';
@@ -405,12 +410,13 @@ export function deriveOutreachStage(contact: NormalizedContact, now = new Date()
 }
 
 function deriveReplyStatus(contact: NormalizedContact): OutreachReplyStatus {
-  const replyStatus = contact.replyStatus.toLowerCase();
+  const replyStatus = (contact.replyStatus ?? '').toLowerCase();
   if (isStoppedOrBounced(contact) && replyStatus.includes('bounce')) return 'Bounced';
   if (isStoppedOrBounced(contact)) return replyStatus.includes('bounce') ? 'Bounced' : 'Stopped';
   if (isPositiveLike(contact)) return 'Positive';
   if (contact.humanReviewRequired || replyStatus === 'sensitive/needs-human') return 'Needs Review';
-  if (replyStatus === 'out_of_office' || replyStatus === 'delivery_delay') return 'Out of Office';
+  if (replyStatus === 'out_of_office') return 'Out of Office';
+  if (replyStatus === 'delivery_delay') return 'Needs Review';
   if (replyStatus && replyStatus !== 'bounce' && replyStatus !== 'no_reply') return 'Needs Review';
   return 'No Reply';
 }
@@ -846,7 +852,7 @@ function buildDeliverabilityHealth(agents: OutreachAgentConfig[], contacts: Norm
     const replies = agentContacts.filter(hasReply);
     const positives = agentContacts.filter(isPositiveLike);
     const stopped = agentContacts.filter(isStoppedOrBounced);
-    const outOfOffice = agentContacts.filter((contact) => contact.replyStatus === 'out_of_office' || contact.replyStatus === 'delivery_delay');
+    const outOfOffice = agentContacts.filter((contact) => contact.replyStatus === 'out_of_office');
     const failures = stopped.filter((contact) => /bounce|failure|undeliverable|invalid/i.test(contact.stopReason || contact.bounceReason || contact.replyStatus));
     const sentToday = sentTodayFromSnapshot(undefined, agentContacts, now);
     const warnings: string[] = [];
@@ -978,14 +984,14 @@ function buildDashboardFromNormalizedContacts(input: {
   const dashboardContacts = contacts.map((contact) => toDashboardContact(contact, now));
   const activeContacts = contacts.filter((contact) => !isStoppedOrBounced(contact));
   const initialSent = contacts.filter(hasInitialOutbound).length;
-  const emailsSentTotal = contacts.reduce((sum, contact) => sum + contact.touchCount, 0);
+  const emailsSentTotal = initialSent;
   const replies = contacts.filter(hasReply).length;
   const positive = contacts.filter(isPositiveLike).length;
   const bouncedStopped = contacts.filter(isStoppedOrBounced).length;
   const humanReview = contacts.filter(
     (contact) => hasReply(contact) && (contact.humanReviewRequired || stageIdForLabel(deriveOutreachStage(contact, now)) === 'replied_needs_review'),
   ).length;
-  const outOfOffice = contacts.filter((contact) => contact.replyStatus === 'out_of_office' || contact.replyStatus === 'delivery_delay').length;
+  const outOfOffice = contacts.filter((contact) => contact.replyStatus === 'out_of_office').length;
   const blockedIneligible = dashboardContacts.filter((contact) => contact.stageId === 'blocked_ineligible').length;
   const dueContacts = dashboardContacts.filter((contact) => isDueStage(contact.stageId ?? 'drafted_ready'));
   const dueFollowUp = dueContacts.length;
