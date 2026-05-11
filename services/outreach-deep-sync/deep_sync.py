@@ -215,8 +215,6 @@ def load_agents() -> list[dict[str, Any]]:
         agent_id = str(raw.get("id")).strip().lower()
         fallback = defaults.get(agent_id, {})
         agent = {**fallback, **raw}
-        if agent.get("enabled") is False:
-            continue
         agent["id"] = agent_id
         agent["display_name"] = agent.get("display_name") or agent.get("displayName") or agent_id.title()
         agent["email"] = agent.get("email") or fallback.get("email") or ""
