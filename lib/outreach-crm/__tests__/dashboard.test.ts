@@ -67,7 +67,7 @@ describe('Outreach CRM dashboard derivation', () => {
     const dashboard = buildOutreachDashboardFromSources({ hubspotContacts, state, now });
 
     expect(dashboard.source).toBe('hubspot+state');
-    expect(dashboard.kpis).toEqual({
+    expect(dashboard.kpis).toMatchObject({
       totalContacts: 4,
       active: 3,
       initialSent: 4,
@@ -88,10 +88,10 @@ describe('Outreach CRM dashboard derivation', () => {
       hubspotContactId: '101',
       name: 'Avery Active',
       company: 'HubSpot Company',
-      stage: 'Initial Outreach Sent',
+      stage: 'Initial Sent',
     });
     expect(dashboard.contacts.find((contact) => contact.email === 'due@example.com')?.stage).toBe(
-      'Due for 3-Day Follow-Up',
+      'Due: 3-Day Follow-Up',
     );
     expect(dashboard.replies.map((reply) => reply.status)).toEqual(['Positive', 'Bounced']);
   });

@@ -97,9 +97,9 @@ const ALL_HUB_APPS: HubApp[] = [
   {
     id: 'OUTREACH_CRM',
     label: 'Outreach CRM',
-    description: 'Email outreach pipeline',
-    currentDescription: 'Sasha campaign pipeline',
-    searchPlaceholder: 'Search hub, contacts, campaigns...',
+    description: 'Multi-agent email outreach',
+    currentDescription: 'four-inbox command center',
+    searchPlaceholder: 'Search contacts, replies, agents...',
     icon: Mail,
   },
 ];

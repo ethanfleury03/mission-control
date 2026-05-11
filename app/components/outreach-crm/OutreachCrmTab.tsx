@@ -31,9 +31,15 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/app/lib/utils';
-import type { OutreachDashboardResponse, OutreachReply } from '@/lib/outreach-crm/types';
+import type {
+  OutreachAgentSummary,
+  OutreachDashboardContact,
+  OutreachDashboardResponse,
+  OutreachPipelineColumn,
+  OutreachReply,
+} from '@/lib/outreach-crm/types';
 
-type OutreachView = 'overview' | 'replies' | 'templates';
+type OutreachView = 'overview' | 'pipeline' | 'replies' | 'templates';
 
 interface OutreachEmailTemplate {
   id: string;
@@ -88,6 +94,18 @@ function formatDateTime(value: string | null | undefined): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatCompactDateTime(value: string | null | undefined): string {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not recorded';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);
@@ -153,6 +171,20 @@ function pipelineColorClass(color: string): string {
       return 'bg-brand';
     default:
       return 'bg-stone-400';
+  }
+}
+
+function stateToneClass(state: string): string {
+  switch (state) {
+    case 'active':
+    case 'sending':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'blocked':
+      return 'border-red-200 bg-red-50 text-red-700';
+    case 'paused':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    default:
+      return 'border-stone-200 bg-stone-50 text-stone-600';
   }
 }
 
@@ -239,6 +271,12 @@ function ReplyRow({ reply }: { reply: OutreachReply }) {
   return (
     <tr className="border-t border-stone-200 align-middle transition-colors hover:bg-stone-50/70">
       <td className="px-3 py-2.5">
+        <div className="min-w-[8rem]">
+          <p className="text-xs font-semibold text-stone-950">{reply.agentName || 'Sasha'}</p>
+          <p className="truncate text-[11px] text-stone-500">{reply.agentInbox || 'sasha@arrsys.com'}</p>
+        </div>
+      </td>
+      <td className="px-3 py-2.5">
         <div className="flex min-w-[12rem] items-center gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-[10px] font-semibold text-stone-700 shadow-sm">
             {initialsFor(reply.company, reply.contactName)}
@@ -280,8 +318,17 @@ function ReplyRow({ reply }: { reply: OutreachReply }) {
       </td>
       <td className="px-3 py-2.5">
         <ReplyStatusBadge status={reply.status} />
+        {reply.confidence !== undefined ? (
+          <p className="mt-1 text-[10px] text-stone-400">{formatPercent(reply.confidence * 100)} confidence</p>
+        ) : null}
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-stone-600">{formatReplyDate(reply.lastReplyAt)}</td>
+      <td className="px-3 py-2.5">
+        <div className="min-w-[11rem]">
+          <p className="truncate text-xs font-medium text-stone-800">{reply.subject || 'No subject'}</p>
+          <p className="mt-0.5 text-[11px] text-stone-500">{reply.suggestedAction || 'Review'}</p>
+        </div>
+      </td>
       <td className="px-3 py-2.5">
         <p
           className="text-xs leading-5 text-stone-600"
@@ -294,6 +341,21 @@ function ReplyRow({ reply }: { reply: OutreachReply }) {
         >
           {reply.snippet || 'No snippet recorded.'}
         </p>
+      </td>
+      <td className="px-3 py-2.5">
+        <div className="flex min-w-[13rem] flex-wrap gap-1.5">
+          {['Positive', 'Needs human', 'Stop', 'Draft', 'Task'].map((action) => (
+            <button
+              key={action}
+              type="button"
+              disabled
+              title="Action hook is planned; rendering stays read-only."
+              className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-[10px] font-semibold text-stone-400"
+            >
+              {action}
+            </button>
+          ))}
+        </div>
       </td>
     </tr>
   );
@@ -322,7 +384,7 @@ function ReplyTable({
         <table className="min-w-full divide-y divide-stone-200 bg-white">
           <thead className="bg-stone-50">
             <tr>
-              {['Company', 'Contact', 'Status', 'Last Reply', 'Snippet'].map((heading) => (
+              {['Inbox', 'Company', 'Contact', 'Classification', 'Last Reply', 'Subject / Action', 'Snippet', 'Safe Actions'].map((heading) => (
                 <th
                   key={heading}
                   scope="col"
@@ -338,12 +400,12 @@ function ReplyTable({
               replies.map((reply) => <ReplyRow key={reply.id} reply={reply} />)
             ) : (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center">
+                <td colSpan={8} className="px-4 py-12 text-center">
                   <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                     <Inbox className="h-9 w-9 text-stone-300" />
                     <p className="text-sm font-semibold text-stone-800">No replies yet.</p>
                     <p className="text-xs leading-5 text-stone-500">
-                      Replies will appear here when HubSpot and Sasha outreach state report them.
+                      Replies will appear here when HubSpot and outreach state report them.
                     </p>
                   </div>
                 </td>
@@ -478,6 +540,329 @@ function FollowUpHealth({ dashboard }: { dashboard: OutreachDashboardResponse })
         )}
         <span>{dashboard.followUpHealth.message}</span>
       </div>
+    </section>
+  );
+}
+
+function AgentCard({ agent }: { agent: OutreachAgentSummary }) {
+  const healthOk = agent.healthChecks.filter((check) => check.ok).length;
+  return (
+    <article className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-stone-950">{agent.displayName}</h3>
+            <span className={cn('rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]', stateToneClass(agent.state))}>
+              {agent.state.replaceAll('_', ' ')}
+            </span>
+          </div>
+          <p className="mt-1 truncate text-[11px] text-stone-500">{agent.senderEmail}</p>
+          <p className="truncate text-[11px] text-stone-500">{agent.hubspotListName}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-semibold tracking-[-0.04em] text-stone-950">{formatNumber(agent.sentToday)}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">sent today</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {[
+          ['Contacts', agent.contactsInList],
+          ['Active', agent.activeContacts],
+          ['Ready', agent.draftedReady],
+          ['Remaining', agent.dailyCapRemaining],
+          ['Replies', agent.replies],
+          ['Positive', agent.positiveReplies],
+          ['Review', agent.humanReviewNeeded],
+          ['Due', agent.dueFollowUps],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-md border border-stone-200 bg-stone-50 px-2.5 py-2">
+            <p className="text-[10px] font-medium text-stone-500">{label}</p>
+            <p className="mt-0.5 text-sm font-semibold text-stone-950">{formatNumber(Number(value))}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center gap-1.5">
+        {agent.healthChecks.map((check) => (
+          <span
+            key={check.key}
+            title={`${check.label}: ${check.message}`}
+            className={cn(
+              'h-2 flex-1 rounded-full',
+              check.severity === 'danger' ? 'bg-red-500' : check.severity === 'warning' ? 'bg-amber-400' : 'bg-emerald-500',
+            )}
+          />
+        ))}
+      </div>
+      <div className="mt-3 grid gap-1.5 text-[11px] text-stone-500">
+        <p>Health {healthOk}/{agent.healthChecks.length} checks passing</p>
+        <p>Last HubSpot sync {formatCompactDateTime(agent.lastHubSpotSyncAt)}</p>
+        <p>Last send {formatCompactDateTime(agent.lastSendAt)}</p>
+      </div>
+    </article>
+  );
+}
+
+function AgentOverview({ dashboard }: { dashboard: OutreachDashboardResponse }) {
+  const agents = dashboard.agents ?? [];
+  if (!agents.length) return null;
+  return (
+    <section className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+      {agents.map((agent) => (
+        <AgentCard key={agent.id} agent={agent} />
+      ))}
+    </section>
+  );
+}
+
+function SendQueueMonitor({ dashboard }: { dashboard: OutreachDashboardResponse }) {
+  const queue = dashboard.sendQueue;
+  if (!queue) return null;
+  const statusTone =
+    queue.status === 'failing'
+      ? 'border-red-200 bg-red-50 text-red-700'
+      : queue.status === 'sending'
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : queue.status === 'healthy'
+          ? 'border-blue-200 bg-blue-50 text-blue-700'
+          : 'border-stone-200 bg-stone-50 text-stone-600';
+
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Send Queue</p>
+          <h2 className="mt-1 text-sm font-semibold text-stone-950">Global pacing monitor</h2>
+        </div>
+        <span className={cn('rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]', statusTone)}>
+          {queue.status}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+        {[
+          ['Queue', queue.queueSize],
+          ['Sent today', queue.sentCount],
+          ['Skipped', queue.skippedCount],
+          ['Failures', queue.failureCount],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-md border border-stone-200 bg-stone-50 px-2.5 py-2">
+            <p className="text-[10px] font-medium text-stone-500">{label}</p>
+            <p className="mt-0.5 text-lg font-semibold text-stone-950">{formatNumber(Number(value))}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-stone-600">
+        <p>{queue.message}</p>
+        <p>Delay: {queue.currentDelaySeconds}s between global sends</p>
+        <p>
+          Last send: {queue.lastSentAgent || 'None'} {queue.lastSentEmail ? `to ${queue.lastSentEmail}` : ''}{' '}
+          {queue.lastSentAt ? `at ${formatCompactDateTime(queue.lastSentAt)}` : ''}
+        </p>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {queue.perAgentSentToday.map((agent) => (
+          <div key={agent.agentId} className="rounded-md border border-stone-200 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium text-stone-700">{agent.agentName}</span>
+              <span className="text-stone-500">{agent.remaining} left</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100">
+              <div
+                className="h-full rounded-full bg-brand"
+                style={{ width: `${Math.min(100, (agent.sentToday / Math.max(1, agent.sentToday + agent.remaining)) * 100)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PipelineCard({ contact }: { contact: OutreachDashboardContact }) {
+  return (
+    <article className="rounded-md border border-stone-200 bg-white p-2.5 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-stone-950">{contact.name || contact.email}</p>
+          <p className="truncate text-[11px] text-stone-500">{contact.company || 'Unknown company'}</p>
+        </div>
+        <span className="shrink-0 rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600">
+          {contact.agentName || 'Agent'}
+        </span>
+      </div>
+      <div className="mt-2 space-y-1 text-[11px] text-stone-500">
+        <p className="truncate">{contact.email}</p>
+        <p>Touch {contact.touchCount}/4</p>
+        <p>Last: {formatCompactDateTime(contact.lastOutboundAt)}</p>
+        <p className={contact.overdue ? 'font-semibold text-red-600' : ''}>Due: {formatCompactDateTime(contact.nextFollowupAllowedAt)}</p>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {contact.hubspotUrl ? (
+          <a href={contact.hubspotUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-brand hover:underline">
+            HubSpot
+          </a>
+        ) : null}
+        {contact.gmailThreadUrl ? (
+          <a href={contact.gmailThreadUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-brand hover:underline">
+            Gmail
+          </a>
+        ) : null}
+      </div>
+      {contact.stopReason || contact.ineligibilityReasons?.length ? (
+        <p className="mt-2 text-[11px] leading-4 text-red-600">
+          {contact.stopReason || contact.ineligibilityReasons?.join(', ')}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+function PipelineBoard({
+  columns,
+  agentFilter,
+  stageFilter,
+}: {
+  columns: OutreachPipelineColumn[];
+  agentFilter: string;
+  stageFilter: string;
+}) {
+  const visibleColumns = columns
+    .filter((column) => stageFilter === 'all' || column.id === stageFilter)
+    .map((column) => ({
+      ...column,
+      contacts: column.contacts.filter((contact) => agentFilter === 'all' || contact.agentId === agentFilter),
+    }));
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+      <div className="border-b border-stone-200 px-4 py-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Drip Pipeline</p>
+        <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">Four-touch campaign stages</h2>
+      </div>
+      <div className="overflow-x-auto p-3">
+        <div className="grid min-w-[86rem] grid-cols-4 gap-3 xl:grid-cols-6 2xl:grid-cols-7">
+          {visibleColumns.map((column) => (
+            <div key={column.id} className="rounded-lg border border-stone-200 bg-stone-50 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={cn('h-2 w-2 shrink-0 rounded-full', pipelineColorClass(column.color))} />
+                  <h3 className="truncate text-xs font-semibold text-stone-800">{column.label}</h3>
+                </div>
+                <span className="text-xs font-semibold text-stone-500">{formatNumber(column.count)}</span>
+              </div>
+              <div className="mt-2 space-y-2">
+                {column.contacts.length ? (
+                  column.contacts.map((contact) => <PipelineCard key={`${column.id}-${contact.id}`} contact={contact} />)
+                ) : (
+                  <div className="rounded-md border border-dashed border-stone-200 bg-white px-3 py-6 text-center text-xs text-stone-400">
+                    Empty
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HealthPanels({ dashboard }: { dashboard: OutreachDashboardResponse }) {
+  return (
+    <section className="grid gap-3 xl:grid-cols-2">
+      <div className="rounded-lg border border-stone-200 bg-white shadow-sm">
+        <div className="border-b border-stone-200 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">HubSpot Hygiene</p>
+          <h2 className="mt-1 text-sm font-semibold text-stone-950">List health</h2>
+        </div>
+        <div className="divide-y divide-stone-200">
+          {(dashboard.hubspotListHealth ?? []).map((list) => (
+            <article key={list.agentId} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-950">{list.listName}</h3>
+                  <p className="text-[11px] text-stone-500">{list.agentName}</p>
+                </div>
+                <span className={cn('rounded-md border px-2 py-1 text-[10px] font-semibold', list.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')}>
+                  {list.warnings.length ? list.warnings[0] : 'Healthy'}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                {[
+                  ['Size', list.currentListSize],
+                  ['Eligible', list.eligibleContacts],
+                  ['Ineligible', list.ineligibleContacts],
+                  ['Owner', list.withOwner],
+                  ['Assigned', list.withAssignedTo],
+                  ['Cleanup', list.needingCleanup],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-md bg-stone-50 px-2 py-1.5">
+                    <p className="text-[10px] text-stone-500">{label}</p>
+                    <p className="font-semibold text-stone-950">{formatNumber(Number(value))}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-stone-200 bg-white shadow-sm">
+        <div className="border-b border-stone-200 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Deliverability</p>
+          <h2 className="mt-1 text-sm font-semibold text-stone-950">Quality guardrails</h2>
+        </div>
+        <div className="divide-y divide-stone-200">
+          {(dashboard.deliverabilityHealth ?? []).map((agent) => (
+            <article key={agent.agentId} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-950">{agent.agentName}</h3>
+                  <p className="text-[11px] text-stone-500">{agent.sendsToday} sends today</p>
+                </div>
+                <span className={cn('rounded-md border px-2 py-1 text-[10px] font-semibold', agent.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')}>
+                  {agent.warnings.length ? agent.warnings[0] : 'Compliant'}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
+                {[
+                  ['Bounce', `${formatPercent(agent.bounceRate)}`],
+                  ['Reply', `${formatPercent(agent.replyRate)}`],
+                  ['Positive', `${formatPercent(agent.positiveRate)}`],
+                  ['OOO', `${formatPercent(agent.outOfOfficeRate)}`],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-md bg-stone-50 px-2 py-1.5">
+                    <p className="text-[10px] text-stone-500">{label}</p>
+                    <p className="font-semibold text-stone-950">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DailyReport({ dashboard }: { dashboard: OutreachDashboardResponse }) {
+  if (!dashboard.dailyReportText) return null;
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Daily Report</p>
+          <h2 className="mt-1 text-sm font-semibold text-stone-950">Discord-ready report</h2>
+        </div>
+        <span className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-[11px] font-semibold text-stone-600">
+          Channel 1469037035103981703
+        </span>
+      </div>
+      <pre className="mt-3 max-h-72 overflow-auto rounded-md border border-stone-200 bg-stone-950 p-3 text-xs leading-5 text-stone-50">
+        {dashboard.dailyReportText}
+      </pre>
     </section>
   );
 }
@@ -700,6 +1085,8 @@ export function OutreachCrmTab() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [view, setView] = useState<OutreachView>('overview');
   const [templates, setTemplates] = useState<OutreachEmailTemplate[]>([]);
@@ -837,11 +1224,19 @@ export function OutreachCrmTab() {
 
   useEffect(() => {
     setPage(0);
-  }, [query, statusFilter, view]);
+  }, [agentFilter, query, stageFilter, statusFilter, view]);
 
   const statusOptions = useMemo(() => {
     const statuses = new Set(dashboard?.replies.map((reply) => reply.status).filter(Boolean) ?? []);
     return ['all', ...Array.from(statuses).sort()];
+  }, [dashboard]);
+
+  const agentOptions = useMemo(() => {
+    return ['all', ...(dashboard?.agents?.map((agent) => agent.id) ?? [])];
+  }, [dashboard]);
+
+  const stageOptions = useMemo(() => {
+    return ['all', ...(dashboard?.pipelineColumns?.map((column) => column.id) ?? [])];
   }, [dashboard]);
 
   const filteredReplies = useMemo(() => {
@@ -849,14 +1244,16 @@ export function OutreachCrmTab() {
     return (dashboard?.replies ?? []).filter((reply) => {
       const matchesStatus = statusFilter === 'all' || reply.status === statusFilter;
       if (!matchesStatus) return false;
+      const matchesAgent = agentFilter === 'all' || reply.agentId === agentFilter;
+      if (!matchesAgent) return false;
       if (!q) return true;
-      return [reply.company, reply.contactName, reply.email, reply.status, reply.snippet]
+      return [reply.agentName, reply.company, reply.contactName, reply.email, reply.status, reply.subject, reply.snippet]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(q);
     });
-  }, [dashboard, query, statusFilter]);
+  }, [agentFilter, dashboard, query, statusFilter]);
 
   const pageSize = view === 'replies' ? REPLY_PAGE_SIZE : PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(filteredReplies.length / pageSize));
@@ -896,15 +1293,16 @@ export function OutreachCrmTab() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand">Email Outreach CRM</p>
-              <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.05em] text-stone-950">Email Outreach CRM</h1>
+              <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.05em] text-stone-950">Arrow Outreach Command Center</h1>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-                Read-only campaign pipeline for Sasha outreach and follow-ups.
+                Read-only operating cockpit for Sasha, Mark, Aaron, and Jordan.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="flex rounded-lg border border-stone-200 bg-white p-1 shadow-sm">
                 {[
                   { id: 'overview' as const, label: 'Executive Overview', icon: LayoutDashboard },
+                  { id: 'pipeline' as const, label: 'Pipeline', icon: Send },
                   { id: 'replies' as const, label: 'Reply Inbox', icon: Inbox },
                   { id: 'templates' as const, label: 'Email Templates', icon: FileText },
                 ].map((tab) => {
@@ -926,21 +1324,22 @@ export function OutreachCrmTab() {
                 })}
               </div>
               <span className="inline-flex items-center justify-center rounded-full border border-stone-200 bg-stone-50 px-3 py-2 text-[11px] font-medium text-stone-600">
-                Read-only view &bull; updated by Sasha commands
+                Read-only view &bull; no email or HubSpot mutation from rendering
               </span>
             </div>
           </div>
         </section>
 
         {view !== 'templates' ? (
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
             <MetricCard label="Total Contacts" value={dashboard.kpis.totalContacts} icon={UsersRound} />
-            <MetricCard label="Active" value={dashboard.kpis.active} icon={UserCheck} tone="green" />
-            <MetricCard label="Initial Sent" value={dashboard.kpis.initialSent} icon={Send} />
+            <MetricCard label="Active Campaigns" value={dashboard.kpis.activeCampaigns ?? 0} icon={UserCheck} tone="green" />
+            <MetricCard label="Sent Today" value={dashboard.kpis.emailsSentToday ?? 0} icon={Send} />
+            <MetricCard label="Sent Total" value={dashboard.kpis.emailsSentTotal ?? dashboard.kpis.initialSent} icon={Send} />
             <MetricCard label="Replies" value={dashboard.kpis.replies} icon={MessageCircle} />
             <MetricCard label="Positive" value={dashboard.kpis.positive} icon={ThumbsUp} tone="green" />
-            <MetricCard label="Bounced/Stopped" value={dashboard.kpis.bouncedStopped} icon={Ban} tone="red" />
-            <MetricCard label="Due Follow-Up" value={dashboard.kpis.dueFollowUp} icon={Clock3} />
+            <MetricCard label="Human Review" value={dashboard.kpis.humanReview ?? 0} icon={AlertTriangle} tone="amber" />
+            <MetricCard label="Due/Overdue" value={dashboard.kpis.dueFollowUp + (dashboard.kpis.overdueFollowUp ?? 0)} icon={Clock3} tone="amber" />
           </section>
         ) : null}
 
@@ -961,6 +1360,36 @@ export function OutreachCrmTab() {
             <label className="sr-only" htmlFor="outreach-status-filter">
               Filter status
             </label>
+            <select
+              value={agentFilter}
+              onChange={(event) => setAgentFilter(event.target.value)}
+              className="h-9 rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+            >
+              {agentOptions.map((agentId) => {
+                const agent = dashboard.agents?.find((item) => item.id === agentId);
+                return (
+                  <option key={agentId} value={agentId}>
+                    {agentId === 'all' ? 'All agents' : agent?.displayName ?? agentId}
+                  </option>
+                );
+              })}
+            </select>
+            {view === 'pipeline' ? (
+              <select
+                value={stageFilter}
+                onChange={(event) => setStageFilter(event.target.value)}
+                className="h-9 rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+              >
+                {stageOptions.map((stageId) => {
+                  const stage = dashboard.pipelineColumns?.find((item) => item.id === stageId);
+                  return (
+                    <option key={stageId} value={stageId}>
+                      {stageId === 'all' ? 'All stages' : stage?.label ?? stageId}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : null}
             <select
               id="outreach-status-filter"
               value={statusFilter}
@@ -1032,14 +1461,40 @@ export function OutreachCrmTab() {
               />
             </div>
           </section>
+        ) : view === 'overview' ? (
+          <div className="space-y-3">
+            <AgentOverview dashboard={dashboard} />
+            <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+              <div className="space-y-3">
+                <SendQueueMonitor dashboard={dashboard} />
+                <PipelineBoard
+                  columns={dashboard.pipelineColumns ?? []}
+                  agentFilter={agentFilter}
+                  stageFilter="all"
+                />
+                <HealthPanels dashboard={dashboard} />
+                <DailyReport dashboard={dashboard} />
+              </div>
+              <aside className="space-y-3">
+                <PipelineSummary dashboard={dashboard} />
+                <FollowUpHealth dashboard={dashboard} />
+                {dashboard.dataFreshness?.staleWarnings.length ? (
+                  <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 shadow-sm">
+                    <p className="font-semibold">Data freshness</p>
+                    <div className="mt-2 space-y-1">
+                      {dashboard.dataFreshness.staleWarnings.slice(0, 4).map((warning) => (
+                        <p key={warning}>{warning}</p>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </aside>
+            </section>
+          </div>
+        ) : view === 'pipeline' ? (
+          <PipelineBoard columns={dashboard.pipelineColumns ?? []} agentFilter={agentFilter} stageFilter={stageFilter} />
         ) : (
-          <section
-            className={cn(
-              'grid items-start gap-3',
-              view === 'overview' ? 'xl:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]' : 'xl:grid-cols-1',
-            )}
-          >
-          <div className="self-start rounded-lg border border-stone-200 bg-white shadow-sm">
+          <section className="self-start rounded-lg border border-stone-200 bg-white shadow-sm">
             <div className="border-b border-stone-200 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Reply Center</p>
               <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">Reply Inbox</h2>
@@ -1053,14 +1508,6 @@ export function OutreachCrmTab() {
                 onPageChange={setPage}
               />
             </div>
-          </div>
-
-          {view === 'overview' ? (
-            <aside className="space-y-3">
-              <PipelineSummary dashboard={dashboard} />
-              <FollowUpHealth dashboard={dashboard} />
-            </aside>
-          ) : null}
           </section>
         )}
       </div>

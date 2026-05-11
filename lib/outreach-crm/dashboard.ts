@@ -1,28 +1,107 @@
 import { readFile } from 'fs/promises';
+import { isAbsolute, join } from 'path';
 
 import { HubSpotApiError, hubspotFetch } from '@/lib/hubspot/client';
 import { hubspotAccessToken, hubspotContactUrl } from '@/lib/hubspot/config';
 import type {
+  OutreachAgentConfig,
+  OutreachAgentSummary,
+  OutreachDashboardContact,
   FollowUpSeverity,
   HubSpotOutreachContact,
   NormalizedOutreachContact,
-  OutreachDashboardContact,
   OutreachDashboardResponse,
   OutreachDashboardSource,
+  OutreachDeliverabilityHealth,
+  OutreachHubSpotListHealth,
+  OutreachPipelineColumn,
   OutreachReply,
   OutreachReplyStatus,
+  OutreachSendQueueStatus,
   OutreachStateEvent,
   OutreachStateContact,
   OutreachStateSnapshot,
+  OutreachStageId,
   PipelineColor,
 } from './types';
 
+const DEFAULT_OUTREACH_WORKSPACE_ROOT = '/Users/sasha/.openclaw/workspace';
+const DEFAULT_AGENTS_REGISTRY_PATH = '/Users/sasha/.openclaw/workspace/scripts/sasha_outreach/agents.json';
 const DEFAULT_STATE_PATH = '/Users/sasha/.openclaw/workspace/scripts/sasha_outreach/state.json';
 const DEFAULT_DASHBOARD_PATH =
   '/Users/sasha/.openclaw/workspace/scripts/sasha_outreach/run_artifacts/outreach_dashboard.json';
 const DEFAULT_HUBSPOT_LIST_ID = '102';
 const DEFAULT_HUBSPOT_LIST_NAME = 'Sasha-Outreach';
 const MAX_PROACTIVE_TOUCHES = 4;
+const STALE_SYNC_MS = 24 * 60 * 60 * 1000;
+const LIST_REFILL_TARGET = 50;
+
+export const OUTREACH_STAGE_DEFINITIONS: Array<{ id: OutreachStageId; label: string; color: PipelineColor }> = [
+  { id: 'drafted_ready', label: 'Drafted / Ready', color: 'blue' },
+  { id: 'initial_sent', label: 'Initial Sent', color: 'blue' },
+  { id: 'due_3_day_followup', label: 'Due: 3-Day Follow-Up', color: 'amber' },
+  { id: 'three_day_followup_sent', label: '3-Day Follow-Up Sent', color: 'blue' },
+  { id: 'due_5_day_followup', label: 'Due: 5-Day Follow-Up', color: 'amber' },
+  { id: 'five_day_followup_sent', label: '5-Day Follow-Up Sent', color: 'blue' },
+  { id: 'due_30_day_followup', label: 'Due: 30-Day Final Follow-Up', color: 'amber' },
+  { id: 'thirty_day_followup_sent', label: '30-Day Final Sent / Nurture Complete', color: 'muted' },
+  { id: 'replied_needs_review', label: 'Replied - Needs Review', color: 'red' },
+  { id: 'positive_meeting_path', label: 'Positive / Meeting Path', color: 'green' },
+  { id: 'out_of_office_paused', label: 'Out of Office / Paused', color: 'amber' },
+  { id: 'stopped_bounced_unsubscribed', label: 'Stopped / Bounced / Unsubscribed', color: 'red' },
+  { id: 'blocked_ineligible', label: 'Blocked / Ineligible', color: 'muted' },
+];
+
+const DEFAULT_AGENT_CONFIGS: OutreachAgentConfig[] = [
+  {
+    id: 'sasha',
+    displayName: 'Sasha',
+    email: 'sasha@arrsys.com',
+    hubspotListName: 'Sasha-Outreach',
+    hubspotListId: '102',
+    statePath: 'scripts/sasha_outreach/state.json',
+    enabled: true,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'existing_agent',
+  },
+  {
+    id: 'mark',
+    displayName: 'Mark',
+    email: 'markodell@arrsys.com',
+    hubspotListName: 'Mark-Outreach',
+    hubspotListId: '103',
+    statePath: 'scripts/sasha_outreach/agents/mark/state.json',
+    enabled: false,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_ready_for_draft_testing',
+  },
+  {
+    id: 'aaron',
+    displayName: 'Aaron',
+    email: 'aaron@arrsys.com',
+    hubspotListName: 'Aaron-Outreach',
+    hubspotListId: '104',
+    statePath: 'scripts/sasha_outreach/agents/aaron/state.json',
+    enabled: false,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_ready_for_draft_testing',
+  },
+  {
+    id: 'jordan',
+    displayName: 'Jordan',
+    email: 'jordan@arrsys.com',
+    hubspotListName: 'Jordan-Outreach',
+    hubspotListId: '105',
+    statePath: 'scripts/sasha_outreach/agents/jordan/state.json',
+    enabled: false,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_ready_for_draft_testing',
+  },
+];
 
 const CONTACT_PROPERTIES = [
   'firstname',
@@ -70,6 +149,7 @@ interface HubSpotBatchReadResponse {
 export interface BuildDashboardInput {
   hubspotContacts: HubSpotOutreachContact[];
   state: OutreachStateSnapshot | null;
+  agent?: OutreachAgentConfig;
   now?: Date;
   sourceWarnings?: string[];
 }
@@ -94,6 +174,10 @@ function optionalString(value: unknown): string | undefined {
   return str || undefined;
 }
 
+function nullableString(value: unknown): string | null {
+  return optionalString(value) ?? null;
+}
+
 function asBoolean(value: unknown): boolean {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
@@ -115,6 +199,55 @@ function asEvents(value: unknown): OutreachEvent[] {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(asString).filter(Boolean);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function todayKey(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+function numberFromRecord(record: Record<string, unknown> | undefined, key: string): number {
+  return asNumber(record?.[key]);
+}
+
+function resolveOutreachPath(path: string | undefined): string {
+  const candidate = asString(path);
+  if (!candidate) return DEFAULT_STATE_PATH;
+  if (isAbsolute(candidate)) return candidate;
+  const root = envValue('OUTREACH_CRM_WORKSPACE_ROOT') ?? DEFAULT_OUTREACH_WORKSPACE_ROOT;
+  return join(root, candidate);
+}
+
+function stageIdForLabel(label: string): OutreachStageId {
+  return OUTREACH_STAGE_DEFINITIONS.find((stage) => stage.label === label)?.id ?? 'drafted_ready';
+}
+
+function stageLabel(stageId: OutreachStageId): string {
+  return OUTREACH_STAGE_DEFINITIONS.find((stage) => stage.id === stageId)?.label ?? 'Drafted / Ready';
+}
+
+function isDueStage(stageId: OutreachStageId): boolean {
+  return stageId === 'due_3_day_followup' || stageId === 'due_5_day_followup' || stageId === 'due_30_day_followup';
+}
+
+function domainFromContact(contact: Pick<NormalizedContact, 'email' | 'website'>): string {
+  const website = asString(contact.website).replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  if (website) return website.toLowerCase();
+  const emailDomain = contact.email.split('@')[1] ?? '';
+  return emailDomain.toLowerCase();
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function isStale(value: string | null | undefined, now: Date, maxAgeMs = STALE_SYNC_MS): boolean {
+  const parsed = parseDate(value ?? undefined);
+  if (!parsed) return true;
+  return now.getTime() - parsed.getTime() > maxAgeMs;
 }
 
 export function normalizeOutreachEmail(value: unknown): string {
@@ -240,24 +373,35 @@ export function isDueForFollowUp(contact: NormalizedContact, now = new Date()): 
   return Boolean(dueDate && dueDate.getTime() <= now.getTime() && contact.touchCount < MAX_PROACTIVE_TOUCHES);
 }
 
+function contactIneligibilityReasons(contact: NormalizedContact): string[] {
+  const reasons: string[] = [];
+  if (!contact.email) reasons.push('missing_email');
+  if (contact.ownerId) reasons.push('hubspot_owner_present');
+  if (contact.assignedTo) reasons.push('assigned_to_present');
+  if (contact.status === 'archived' || contact.status === 'removed_from_list') reasons.push('removed_from_source_list');
+  return reasons;
+}
+
 export function deriveOutreachStage(contact: NormalizedContact, now = new Date()): string {
   const replyStatus = contact.replyStatus;
+  const isEligible = contact.isEligible ?? contactIneligibilityReasons(contact).length === 0;
 
   if (isStoppedOrBounced(contact)) return 'Stopped / Bounced / Unsubscribed';
   if (isPositiveLike(contact)) return 'Positive / Meeting Path';
   if (contact.humanReviewRequired || replyStatus === 'sensitive/needs-human') return 'Replied - Needs Review';
-  if (replyStatus === 'out_of_office') return 'Out of Office';
+  if (replyStatus === 'out_of_office' || replyStatus === 'delivery_delay') return 'Out of Office / Paused';
   if (replyStatus && replyStatus !== 'bounce' && replyStatus !== 'no_reply') return 'Replied - Needs Review';
+  if (!isEligible) return 'Blocked / Ineligible';
   if (isDueForFollowUp(contact, now)) {
-    if (contact.touchCount === 1) return 'Due for 3-Day Follow-Up';
-    if (contact.touchCount === 2) return 'Due for 5-Day Follow-Up';
-    if (contact.touchCount === 3) return 'Due for 30-Day Follow-Up';
+    if (contact.touchCount === 1) return 'Due: 3-Day Follow-Up';
+    if (contact.touchCount === 2) return 'Due: 5-Day Follow-Up';
+    if (contact.touchCount === 3) return 'Due: 30-Day Final Follow-Up';
   }
   if (contact.touchCount <= 0) return contact.draftStatus ? 'Drafted / Ready' : 'Drafted / Ready';
-  if (contact.touchCount === 1) return 'Initial Outreach Sent';
+  if (contact.touchCount === 1) return 'Initial Sent';
   if (contact.touchCount === 2) return '3-Day Follow-Up Sent';
   if (contact.touchCount === 3) return '5-Day Follow-Up Sent';
-  return '30-Day Follow-Up Sent';
+  return '30-Day Final Sent / Nurture Complete';
 }
 
 function deriveReplyStatus(contact: NormalizedContact): OutreachReplyStatus {
@@ -266,7 +410,7 @@ function deriveReplyStatus(contact: NormalizedContact): OutreachReplyStatus {
   if (isStoppedOrBounced(contact)) return replyStatus.includes('bounce') ? 'Bounced' : 'Stopped';
   if (isPositiveLike(contact)) return 'Positive';
   if (contact.humanReviewRequired || replyStatus === 'sensitive/needs-human') return 'Needs Review';
-  if (replyStatus === 'out_of_office') return 'Out of Office';
+  if (replyStatus === 'out_of_office' || replyStatus === 'delivery_delay') return 'Out of Office';
   if (replyStatus && replyStatus !== 'bounce' && replyStatus !== 'no_reply') return 'Needs Review';
   return 'No Reply';
 }
@@ -300,6 +444,7 @@ export function normalizeOutreachContact(
   email: string,
   stateContact: OutreachStateContact | undefined,
   hubspot: HubSpotOutreachContact | undefined,
+  agent?: OutreachAgentConfig,
 ): NormalizedContact {
   const props = hubspot?.properties ?? {};
   const state = stateContact ?? {};
@@ -312,8 +457,26 @@ export function normalizeOutreachContact(
   const lastOutboundAt = firstDefinedString(state.last_outbound_at, state.sent_at);
   const nextFollowupAllowedAt = firstDefinedString(state.next_followup_allowed_at);
   const events = asEvents(state.events);
+  const ownerId = firstDefinedString(props.hubspot_owner_id, state.hubspot_owner_id);
+  const assignedTo = firstDefinedString(props.assigned_to, state.assigned_to);
+  const status = firstDefinedString(state.status);
+  const stopped = asBoolean(state.stopped) || status === 'stopped';
+  const sourceListId = firstDefinedString(state.source_list_id, agent?.hubspotListId);
+  const sourceList = firstDefinedString(state.source_list, agent?.hubspotListName);
+  const ineligibilityReasons: string[] = [];
+  if (!normalizedEmail) ineligibilityReasons.push('missing_email');
+  if (ownerId) ineligibilityReasons.push('hubspot_owner_present');
+  if (assignedTo) ineligibilityReasons.push('assigned_to_present');
+  if (firstDefinedString(state.hubspot_archived_at)) ineligibilityReasons.push('removed_from_source_list');
 
   return {
+    agentId: firstDefinedString(state.agent_id, agent?.id, 'sasha'),
+    agentName: firstDefinedString(agent?.displayName, state.agent_name, 'Sasha'),
+    senderEmail: firstDefinedString(state.sender_email, agent?.email, 'sasha@arrsys.com'),
+    hubspotListName: sourceList || DEFAULT_HUBSPOT_LIST_NAME,
+    hubspotListId: sourceListId || DEFAULT_HUBSPOT_LIST_ID,
+    dailySendCap: agent?.dailySendCap ?? 50,
+    sendDelaySeconds: agent?.sendDelaySeconds ?? 65,
     email: normalizedEmail,
     hubspotContactId: hubspotId || undefined,
     firstName,
@@ -325,8 +488,8 @@ export function normalizeOutreachContact(
     website: firstDefinedString(props.website, state.website),
     lifecycleStage: firstDefinedString(props.lifecyclestage, state.lifecyclestage),
     leadStatus: firstDefinedString(props.hs_lead_status, state.hs_lead_status),
-    ownerId: firstDefinedString(props.hubspot_owner_id, state.hubspot_owner_id),
-    assignedTo: firstDefinedString(props.assigned_to, state.assigned_to),
+    ownerId,
+    assignedTo,
     touchCount: asNumber(state.touch_count),
     sentAt: iso(firstDefinedString(state.sent_at)),
     lastOutboundAt: iso(lastOutboundAt),
@@ -339,19 +502,21 @@ export function normalizeOutreachContact(
     positiveReply: asBoolean(state.positive_reply),
     humanReviewRequired: asBoolean(state.human_review_required),
     humanReviewReason: firstDefinedString(state.human_review_reason),
-    stopped: asBoolean(state.stopped) || firstDefinedString(state.status) === 'stopped',
+    stopped,
     stopReason: firstDefinedString(state.stop_reason),
     bounceReason: firstDefinedString(state.bounce_reason),
     sendStatus: firstDefinedString(state.send_status),
     draftStatus: firstDefinedString(state.draft_status),
-    status: firstDefinedString(state.status),
-    sourceListId: firstDefinedString(state.source_list_id),
-    sourceList: firstDefinedString(state.source_list),
+    status,
+    sourceListId,
+    sourceList,
     hubspotUrl: hubspotUrl || undefined,
     sentThreadId: firstDefinedString(state.sent_thread_id),
     lastReplyThreadId: firstDefinedString(state.last_reply_thread_id),
     threadIds: asStringArray(state.thread_ids),
     events,
+    isEligible: ineligibilityReasons.length === 0 && !stopped,
+    ineligibilityReasons,
     hubspotCreatedAt: iso(firstDefinedString(props.createdate, hubspot?.createdAt)),
     hubspotUpdatedAt: iso(firstDefinedString(props.lastmodifieddate, hubspot?.updatedAt)),
     stateSyncedAt: iso(firstDefinedString(state.synced_from_hubspot_at)),
@@ -360,24 +525,54 @@ export function normalizeOutreachContact(
 
 function toDashboardContact(contact: NormalizedContact, now: Date): OutreachDashboardContact {
   const threadId = contactGmailThreadId(contact);
+  const stage = deriveOutreachStage(contact, now);
+  const nextFollowupAllowedAt = dueDateFromCadence(contact);
+  const dueAt = parseDate(nextFollowupAllowedAt);
   return {
     id: contact.hubspotContactId ?? contact.email,
     hubspotContactId: contact.hubspotContactId,
+    agentId: contact.agentId,
+    agentName: contact.agentName,
+    senderEmail: contact.senderEmail,
+    hubspotListName: contact.hubspotListName,
     name: contact.name,
     email: contact.email,
     company: contact.company || undefined,
     jobtitle: contact.jobtitle || undefined,
-    stage: deriveOutreachStage(contact, now),
+    phone: contact.phone || undefined,
+    stage,
+    stageId: stageIdForLabel(stage),
+    status: contact.status || undefined,
     touchCount: contact.touchCount,
     lastOutboundAt: contact.lastOutboundAt,
-    nextFollowupAllowedAt: dueDateFromCadence(contact),
+    nextFollowupAllowedAt,
+    overdue: Boolean(dueAt && dueAt.getTime() < now.getTime() && contact.touchCount < MAX_PROACTIVE_TOUCHES),
     replyStatus: contact.replyStatus || undefined,
+    lastReplyAt: contact.lastReplyAt,
+    lastReplySubject: contact.lastReplySubject || undefined,
+    lastReplySnippet: contact.lastReplySnippet || undefined,
     positiveReply: isPositiveLike(contact),
+    humanReviewRequired: contact.humanReviewRequired,
     stopped: isStoppedOrBounced(contact),
     stopReason: contact.stopReason || contact.bounceReason || undefined,
+    ownerId: contact.ownerId || undefined,
+    assignedTo: contact.assignedTo || undefined,
+    isEligible: contact.isEligible,
+    ineligibilityReasons: contact.ineligibilityReasons,
+    hasPhone: Boolean(contact.phone),
     hubspotUrl: contact.hubspotUrl,
     gmailThreadUrl: gmailThreadUrl(threadId),
   };
+}
+
+function suggestedReplyAction(contact: NormalizedContact): string {
+  const status = deriveReplyStatus(contact);
+  if (status === 'Positive') return 'Route to meeting path';
+  if (status === 'Out of Office') return 'Pause until return window';
+  if (status === 'Bounced') return 'Stop and clean up HubSpot';
+  if (status === 'Stopped') return 'Keep suppressed';
+  if (status === 'Needs Review') return 'Human review before any reply';
+  return 'Archive/no action';
 }
 
 function toReply(contact: NormalizedContact): OutreachReply | null {
@@ -386,12 +581,18 @@ function toReply(contact: NormalizedContact): OutreachReply | null {
   return {
     id: contact.hubspotContactId ?? contact.email,
     hubspotContactId: contact.hubspotContactId,
+    agentId: contact.agentId,
+    agentName: contact.agentName,
+    agentInbox: contact.senderEmail,
     company: contact.company || 'Unknown company',
     contactName: contact.name,
     email: contact.email,
     status: deriveReplyStatus(contact),
+    subject: contact.lastReplySubject || undefined,
     lastReplyAt: contact.lastReplyAt,
     snippet: contact.lastReplySnippet || contact.stopReason || contact.bounceReason || contact.lastReplySubject || undefined,
+    classification: contact.replyStatus || undefined,
+    suggestedAction: suggestedReplyAction(contact),
     hubspotUrl: contact.hubspotUrl,
     gmailThreadUrl: gmailThreadUrl(threadId),
   };
@@ -414,27 +615,399 @@ function followUpSeverity(dueFollowUp: number): FollowUpSeverity {
   return 'danger';
 }
 
-export function buildOutreachDashboardFromSources(input: BuildDashboardInput): OutreachDashboardResponse {
-  const now = input.now ?? new Date();
-  const contacts = buildNormalizedOutreachContacts(input);
+function sentTodayFromSnapshot(snapshot: OutreachStateSnapshot | undefined, agentContacts: NormalizedContact[], now: Date): number {
+  const daily = snapshot?.daily?.[todayKey(now)];
+  const recorded = numberFromRecord(daily, 'outbound_count');
+  if (recorded > 0) return recorded;
+  return agentContacts.filter((contact) => {
+    const outboundAt = parseDate(contact.lastOutboundAt || contact.sentAt);
+    return Boolean(outboundAt && outboundAt.toISOString().slice(0, 10) === todayKey(now));
+  }).length;
+}
+
+function latestReplyMonitorRun(snapshot: OutreachStateSnapshot | undefined): string | null {
+  return maxIso((snapshot?.replyMonitorRuns ?? []).map((run) => asString(run.at)));
+}
+
+function latestHubSpotSync(snapshot: OutreachStateSnapshot | undefined, agentContacts: NormalizedContact[]): string | null {
+  return maxIso([
+    asString(snapshot?.hubspot?.last_sync_at),
+    snapshot?.agent?.lastSyncAt ?? null,
+    ...agentContacts.map((contact) => contact.stateSyncedAt),
+  ]);
+}
+
+function latestSend(agentContacts: NormalizedContact[]): string | null {
+  return maxIso(agentContacts.map((contact) => contact.lastOutboundAt || contact.sentAt));
+}
+
+function healthCheck(
+  key: string,
+  label: string,
+  ok: boolean,
+  message: string,
+  severity: FollowUpSeverity = ok ? 'success' : 'warning',
+  checkedAt?: string | null,
+) {
+  return { key, label, ok, severity, message, checkedAt: checkedAt ?? undefined };
+}
+
+function buildAgentSummaries(
+  agents: OutreachAgentConfig[],
+  snapshots: OutreachStateSnapshot[],
+  contacts: NormalizedContact[],
+  dashboardContacts: OutreachDashboardContact[],
+  now: Date,
+): OutreachAgentSummary[] {
+  return agents.map((agent) => {
+    const snapshot = snapshots.find((item) => item.agent?.id === agent.id);
+    const agentContacts = contacts.filter((contact) => contact.agentId === agent.id);
+    const agentDashboardContacts = dashboardContacts.filter((contact) => contact.agentId === agent.id);
+    const sentToday = sentTodayFromSnapshot(snapshot, agentContacts, now);
+    const lastInboxSyncAt = latestReplyMonitorRun(snapshot);
+    const lastHubSpotSyncAt = latestHubSpotSync(snapshot, agentContacts);
+    const lastSendAt = latestSend(agentContacts);
+    const recentlySent = Boolean(lastSendAt && now.getTime() - (parseDate(lastSendAt)?.getTime() ?? 0) < 30 * 60 * 1000);
+    const hasContacts = agentContacts.length > 0;
+    const hasQueueFailure = agentDashboardContacts.some((contact) => String(contact.stopReason || '').toLowerCase().includes('failure'));
+    const healthChecks = [
+      healthCheck(
+        'gmail_oauth',
+        'Gmail OAuth',
+        agent.verifiedGmailOauth !== false,
+        agent.verifiedGmailOauth === false ? 'Needs verification' : 'Healthy',
+        agent.verifiedGmailOauth === false ? 'danger' : 'success',
+      ),
+      healthCheck(
+        'signature',
+        'Signature',
+        agent.verifiedSignature !== false,
+        agent.verifiedSignature === false ? 'Missing or unverified' : 'Present',
+        agent.verifiedSignature === false ? 'danger' : 'success',
+      ),
+      healthCheck(
+        'hubspot',
+        'HubSpot list',
+        !isStale(lastHubSpotSyncAt, now),
+        isStale(lastHubSpotSyncAt, now) ? 'Sync stale' : 'Synced',
+        isStale(lastHubSpotSyncAt, now) ? 'warning' : 'success',
+        lastHubSpotSyncAt,
+      ),
+      healthCheck(
+        'reply_monitor',
+        'Reply monitor',
+        !hasContacts || !isStale(lastInboxSyncAt, now),
+        !hasContacts ? 'No active state yet' : isStale(lastInboxSyncAt, now) ? 'No recent monitor run' : 'Healthy',
+        hasContacts && isStale(lastInboxSyncAt, now) ? 'warning' : 'success',
+        lastInboxSyncAt,
+      ),
+      healthCheck(
+        'send_queue',
+        'Send queue',
+        !hasQueueFailure,
+        hasQueueFailure ? 'Failures recorded' : 'No queue failure recorded',
+        hasQueueFailure ? 'warning' : 'success',
+      ),
+    ];
+    const bouncesStops = agentDashboardContacts.filter((contact) => contact.stageId === 'stopped_bounced_unsubscribed').length;
+    const dueFollowUps = agentDashboardContacts.filter((contact) => isDueStage(contact.stageId ?? 'drafted_ready')).length;
+
+    return {
+      id: agent.id,
+      displayName: agent.displayName,
+      senderEmail: agent.email,
+      hubspotListName: agent.hubspotListName,
+      hubspotListId: agent.hubspotListId,
+      state: recentlySent ? 'sending' : agent.enabled ? 'active' : hasContacts ? 'paused' : 'needs_setup',
+      enabled: agent.enabled,
+      dailySendCap: agent.dailySendCap,
+      sendDelaySeconds: agent.sendDelaySeconds,
+      contactsInList: numberFromRecord(snapshot?.hubspot, 'list_size') || agentContacts.length,
+      activeContacts: agentDashboardContacts.filter((contact) => !contact.stopped && contact.stageId !== 'blocked_ineligible').length,
+      draftedReady: agentDashboardContacts.filter((contact) => contact.stageId === 'drafted_ready').length,
+      sentToday,
+      dailyCapRemaining: Math.max(0, agent.dailySendCap - sentToday),
+      totalTouchesSent: agentContacts.reduce((sum, contact) => sum + contact.touchCount, 0),
+      replies: agentContacts.filter(hasReply).length,
+      positiveReplies: agentContacts.filter(isPositiveLike).length,
+      humanReviewNeeded: agentContacts.filter(
+        (contact) => hasReply(contact) && (contact.humanReviewRequired || stageIdForLabel(deriveOutreachStage(contact, now)) === 'replied_needs_review'),
+      ).length,
+      bouncesStops,
+      dueFollowUps,
+      overdueFollowUps: agentDashboardContacts.filter((contact) => contact.overdue && isDueStage(contact.stageId ?? 'drafted_ready')).length,
+      lastInboxSyncAt,
+      lastHubSpotSyncAt,
+      lastSendAt,
+      currentQueueProgress: dueFollowUps > 0 ? `${dueFollowUps} follow-ups due` : `${Math.max(0, agent.dailySendCap - sentToday)} sends remaining`,
+      healthChecks,
+    };
+  });
+}
+
+function buildPipelineColumns(dashboardContacts: OutreachDashboardContact[]): OutreachPipelineColumn[] {
+  return OUTREACH_STAGE_DEFINITIONS.map((stage) => {
+    const contacts = dashboardContacts
+      .filter((contact) => (contact.stageId ?? stageIdForLabel(contact.stage)) === stage.id)
+      .sort((a, b) => {
+        const aDue = parseDate(a.nextFollowupAllowedAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const bDue = parseDate(b.nextFollowupAllowedAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return aDue - bDue || (a.company ?? '').localeCompare(b.company ?? '');
+      });
+    return {
+      ...stage,
+      count: contacts.length,
+      contacts: contacts.slice(0, 12),
+    };
+  });
+}
+
+function buildDuplicateMaps(contacts: NormalizedContact[]) {
+  const byEmail = new Map<string, Set<string>>();
+  const byHubSpot = new Map<string, Set<string>>();
+  const byDomain = new Map<string, Set<string>>();
+  for (const contact of contacts) {
+    if (contact.email) {
+      const set = byEmail.get(contact.email) ?? new Set<string>();
+      set.add(contact.agentId);
+      byEmail.set(contact.email, set);
+    }
+    if (contact.hubspotContactId) {
+      const set = byHubSpot.get(contact.hubspotContactId) ?? new Set<string>();
+      set.add(contact.agentId);
+      byHubSpot.set(contact.hubspotContactId, set);
+    }
+    const domain = domainFromContact(contact);
+    if (domain) {
+      const set = byDomain.get(domain) ?? new Set<string>();
+      set.add(contact.agentId);
+      byDomain.set(domain, set);
+    }
+  }
+  return { byEmail, byHubSpot, byDomain };
+}
+
+function hasCrossAgentDuplicate(contact: NormalizedContact, maps: ReturnType<typeof buildDuplicateMaps>): boolean {
+  const domain = domainFromContact(contact);
+  return Boolean(
+    (contact.email && (maps.byEmail.get(contact.email)?.size ?? 0) > 1) ||
+      (contact.hubspotContactId && (maps.byHubSpot.get(contact.hubspotContactId)?.size ?? 0) > 1) ||
+      (domain && (maps.byDomain.get(domain)?.size ?? 0) > 1),
+  );
+}
+
+function buildHubSpotListHealth(
+  agents: OutreachAgentConfig[],
+  snapshots: OutreachStateSnapshot[],
+  contacts: NormalizedContact[],
+): OutreachHubSpotListHealth[] {
+  const duplicateMaps = buildDuplicateMaps(contacts);
+  return agents.map((agent) => {
+    const snapshot = snapshots.find((item) => item.agent?.id === agent.id);
+    const agentContacts = contacts.filter((contact) => contact.agentId === agent.id);
+    const missingEmail = agentContacts.filter((contact) => !contact.email).length;
+    const withOwner = agentContacts.filter((contact) => contact.ownerId).length;
+    const withAssignedTo = agentContacts.filter((contact) => contact.assignedTo).length;
+    const stoppedContacts = agentContacts.filter(isStoppedOrBounced);
+    const eligibleContacts = agentContacts.filter((contact) => contact.isEligible && !isStoppedOrBounced(contact)).length;
+    const bouncedNoPhone = stoppedContacts.filter((contact) => !contact.phone).length;
+    const duplicatesAcrossAgents = agentContacts.filter((contact) => hasCrossAgentDuplicate(contact, duplicateMaps)).length;
+    const warnings: string[] = [];
+    if (eligibleContacts < Math.min(agent.dailySendCap, LIST_REFILL_TARGET)) warnings.push('List needs refill');
+    if (stoppedContacts.length > 0) warnings.push('Cleanup needed');
+    if (withOwner > 0 || withAssignedTo > 0) warnings.push('Owner conflict');
+    if (duplicatesAcrossAgents > 0) warnings.push('Cross-agent duplicate');
+
+    return {
+      agentId: agent.id,
+      agentName: agent.displayName,
+      listName: agent.hubspotListName,
+      listId: agent.hubspotListId,
+      currentListSize: numberFromRecord(snapshot?.hubspot, 'list_size') || agentContacts.length,
+      eligibleContacts,
+      ineligibleContacts: agentContacts.length - eligibleContacts,
+      missingEmail,
+      withOwner,
+      withAssignedTo,
+      duplicatesAcrossAgents,
+      bouncedStillInList: stoppedContacts.length,
+      stoppedStillInList: stoppedContacts.length,
+      needingCleanup: stoppedContacts.length + withOwner + withAssignedTo + duplicatesAcrossAgents,
+      bouncedNoPhone,
+      warnings,
+    };
+  });
+}
+
+function buildDeliverabilityHealth(agents: OutreachAgentConfig[], contacts: NormalizedContact[], now: Date): OutreachDeliverabilityHealth[] {
+  return agents.map((agent) => {
+    const agentContacts = contacts.filter((contact) => contact.agentId === agent.id);
+    const sent = agentContacts.filter(hasInitialOutbound);
+    const replies = agentContacts.filter(hasReply);
+    const positives = agentContacts.filter(isPositiveLike);
+    const stopped = agentContacts.filter(isStoppedOrBounced);
+    const outOfOffice = agentContacts.filter((contact) => contact.replyStatus === 'out_of_office' || contact.replyStatus === 'delivery_delay');
+    const failures = stopped.filter((contact) => /bounce|failure|undeliverable|invalid/i.test(contact.stopReason || contact.bounceReason || contact.replyStatus));
+    const sentToday = sentTodayFromSnapshot(undefined, agentContacts, now);
+    const warnings: string[] = [];
+    const bounceRate = sent.length > 0 ? Number(((failures.length / sent.length) * 100).toFixed(1)) : 0;
+    const stopRate = sent.length > 0 ? Number(((stopped.length / sent.length) * 100).toFixed(1)) : 0;
+    if (bounceRate >= 5) warnings.push('Bounce rate high');
+    if (sentToday > agent.dailySendCap) warnings.push('Daily cap exceeded');
+    if (sent.some((contact) => contact.touchCount >= MAX_PROACTIVE_TOUCHES && !hasReply(contact))) warnings.push('Too many unanswered touches');
+
+    const firstReplyHours = replies
+      .map((contact) => {
+        const first = parseDate(contact.sentAt || contact.lastOutboundAt);
+        const reply = parseDate(contact.lastReplyAt);
+        return first && reply ? (reply.getTime() - first.getTime()) / (60 * 60 * 1000) : null;
+      })
+      .filter((value): value is number => value !== null && Number.isFinite(value) && value >= 0);
+
+    return {
+      agentId: agent.id,
+      agentName: agent.displayName,
+      bounceRate,
+      replyRate: sent.length > 0 ? Number(((replies.length / sent.length) * 100).toFixed(1)) : 0,
+      positiveRate: sent.length > 0 ? Number(((positives.length / sent.length) * 100).toFixed(1)) : 0,
+      stopRate,
+      outOfOfficeRate: sent.length > 0 ? Number(((outOfOffice.length / sent.length) * 100).toFixed(1)) : 0,
+      averageTimeToFirstReplyHours:
+        firstReplyHours.length > 0
+          ? Number((firstReplyHours.reduce((sum, value) => sum + value, 0) / firstReplyHours.length).toFixed(1))
+          : null,
+      sendsToday: sentToday,
+      pacingCompliant: sentToday <= agent.dailySendCap,
+      lastFailureReason: failures[0]?.stopReason || failures[0]?.bounceReason || undefined,
+      warnings,
+    };
+  });
+}
+
+function buildSendQueueStatus(
+  agents: OutreachAgentSummary[],
+  contacts: NormalizedContact[],
+  dashboardContacts: OutreachDashboardContact[],
+  now: Date,
+): OutreachSendQueueStatus {
+  const queued = dashboardContacts.filter((contact) => contact.stageId === 'drafted_ready' || isDueStage(contact.stageId ?? 'drafted_ready'));
+  const lastSent = [...contacts]
+    .filter((contact) => contact.lastOutboundAt || contact.sentAt)
+    .sort((a, b) => (parseDate(b.lastOutboundAt || b.sentAt)?.getTime() ?? 0) - (parseDate(a.lastOutboundAt || a.sentAt)?.getTime() ?? 0))[0];
+  const lastSentAt = lastSent?.lastOutboundAt || lastSent?.sentAt;
+  const isRunning = Boolean(lastSentAt && now.getTime() - (parseDate(lastSentAt)?.getTime() ?? 0) < 15 * 60 * 1000);
+  const failureCount = dashboardContacts.filter((contact) => contact.stageId === 'stopped_bounced_unsubscribed').length;
+  const status = failureCount > 10 ? 'failing' : isRunning ? 'sending' : queued.length > 0 ? 'healthy' : 'inactive';
+  const delay = Math.max(65, ...agents.map((agent) => agent.sendDelaySeconds));
+
+  return {
+    status,
+    isRunning,
+    queueSize: queued.length,
+    sentCount: agents.reduce((sum, agent) => sum + agent.sentToday, 0),
+    skippedCount: dashboardContacts.filter((contact) => contact.stageId === 'blocked_ineligible').length,
+    failureCount,
+    currentDelaySeconds: delay,
+    perAgentCap: Math.max(...agents.map((agent) => agent.dailySendCap), 50),
+    lastSentEmail: lastSent?.email,
+    lastSentContact: lastSent?.name,
+    lastSentCompany: lastSent?.company,
+    lastSentAgent: lastSent?.agentName,
+    lastSentAt,
+    nextExpectedSendAt: isRunning && lastSentAt ? new Date((parseDate(lastSentAt)?.getTime() ?? now.getTime()) + delay * 1000).toISOString() : undefined,
+    perAgentSentToday: agents.map((agent) => ({
+      agentId: agent.id,
+      agentName: agent.displayName,
+      sentToday: agent.sentToday,
+      remaining: agent.dailyCapRemaining,
+    })),
+    updatedAt: lastSentAt ?? null,
+    message: isRunning ? 'Queue appears to be sending now.' : queued.length > 0 ? `${queued.length} contacts are ready or due.` : 'No send queue activity detected.',
+  };
+}
+
+function buildDailyReport(dashboard: OutreachDashboardResponse, now: Date): string {
+  const agents = dashboard.agents ?? [];
+  const lines = [
+    `Arrow Outreach Daily - ${todayKey(now)}`,
+    '',
+    'Sends today:',
+    ...agents.map((agent) => `- ${agent.displayName}: ${agent.sentToday}`),
+    '',
+    'Replies:',
+    `- Positive: ${dashboard.kpis.positive}`,
+    `- Needs review: ${dashboard.kpis.humanReview ?? 0}`,
+    `- OOO: ${dashboard.kpis.outOfOffice ?? 0}`,
+    `- Bounces/stops: ${dashboard.kpis.bouncedStopped}`,
+    '',
+    'Follow-ups:',
+    `- Due now: ${dashboard.kpis.dueFollowUp}`,
+    `- Overdue: ${dashboard.kpis.overdueFollowUp ?? 0}`,
+    `- Next 24h: ${dashboard.followUpHealth.next24h ?? 0}`,
+    '',
+    'Queue:',
+    `- Status: ${dashboard.sendQueue?.status ?? 'unknown'}`,
+    `- Last send: ${dashboard.sendQueue?.lastSentAgent ?? 'none'} -> ${dashboard.sendQueue?.lastSentEmail ?? 'none'}${dashboard.sendQueue?.lastSentAt ? ` at ${dashboard.sendQueue.lastSentAt}` : ''}`,
+    `- Failures: ${dashboard.sendQueue?.failureCount ?? 0}`,
+    '',
+    'Actions:',
+  ];
+  const actions: string[] = [];
+  if ((dashboard.kpis.humanReview ?? 0) > 0) actions.push(`Review ${dashboard.kpis.humanReview} replies needing human input.`);
+  for (const list of dashboard.hubspotListHealth ?? []) {
+    if (list.eligibleContacts < Math.min(LIST_REFILL_TARGET, agents.find((agent) => agent.id === list.agentId)?.dailySendCap ?? LIST_REFILL_TARGET)) {
+      actions.push(`Refill ${list.listName}; ${list.eligibleContacts} eligible contacts remaining.`);
+    }
+    if (list.needingCleanup > 0) actions.push(`Clean up ${list.needingCleanup} HubSpot records in ${list.listName}.`);
+  }
+  if ((dashboard.kpis.dueFollowUp ?? 0) > 0) actions.push(`Send or draft ${dashboard.kpis.dueFollowUp} due follow-ups within caps.`);
+  if (actions.length === 0) actions.push('No urgent outreach actions detected.');
+  return [...lines, ...actions.map((action, index) => `${index + 1}. ${action}`)].join('\n');
+}
+
+function buildDashboardFromNormalizedContacts(input: {
+  contacts: NormalizedContact[];
+  snapshots: OutreachStateSnapshot[];
+  agents: OutreachAgentConfig[];
+  now: Date;
+  lastSyncedAt: string | null;
+  source: OutreachDashboardSource;
+  sourceWarnings?: string[];
+}): OutreachDashboardResponse {
+  const { contacts, snapshots, agents, now } = input;
   const dashboardContacts = contacts.map((contact) => toDashboardContact(contact, now));
   const activeContacts = contacts.filter((contact) => !isStoppedOrBounced(contact));
   const initialSent = contacts.filter(hasInitialOutbound).length;
+  const emailsSentTotal = contacts.reduce((sum, contact) => sum + contact.touchCount, 0);
   const replies = contacts.filter(hasReply).length;
   const positive = contacts.filter(isPositiveLike).length;
   const bouncedStopped = contacts.filter(isStoppedOrBounced).length;
-  const dueFollowUp = activeContacts.filter((contact) => isDueForFollowUp(contact, now)).length;
-  const needsReview = contacts.filter((contact) => {
-    const stage = deriveOutreachStage(contact, now);
-    return hasReply(contact) && (contact.humanReviewRequired || stage === 'Replied - Needs Review');
+  const humanReview = contacts.filter(
+    (contact) => hasReply(contact) && (contact.humanReviewRequired || stageIdForLabel(deriveOutreachStage(contact, now)) === 'replied_needs_review'),
+  ).length;
+  const outOfOffice = contacts.filter((contact) => contact.replyStatus === 'out_of_office' || contact.replyStatus === 'delivery_delay').length;
+  const blockedIneligible = dashboardContacts.filter((contact) => contact.stageId === 'blocked_ineligible').length;
+  const dueContacts = dashboardContacts.filter((contact) => isDueStage(contact.stageId ?? 'drafted_ready'));
+  const dueFollowUp = dueContacts.length;
+  const dayStart = startOfUtcDay(now);
+  const overdueFollowUp = dueContacts.filter((contact) => {
+    const due = parseDate(contact.nextFollowupAllowedAt);
+    return Boolean(due && due.getTime() < dayStart.getTime());
   }).length;
   const scheduled = activeContacts.filter((contact) => {
     if (isPositiveLike(contact)) return false;
     const dueDate = parseDate(dueDateFromCadence(contact));
     return Boolean(dueDate && dueDate.getTime() > now.getTime() && contact.touchCount < MAX_PROACTIVE_TOUCHES);
   }).length;
-  const severity = followUpSeverity(dueFollowUp);
-
+  const next24h = activeContacts.filter((contact) => {
+    const dueDate = parseDate(dueDateFromCadence(contact));
+    return Boolean(dueDate && dueDate.getTime() > now.getTime() && dueDate.getTime() <= now.getTime() + 24 * 60 * 60 * 1000);
+  }).length;
+  const next7Days = activeContacts.filter((contact) => {
+    const dueDate = parseDate(dueDateFromCadence(contact));
+    return Boolean(dueDate && dueDate.getTime() > now.getTime() && dueDate.getTime() <= now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  }).length;
+  const severity = followUpSeverity(dueFollowUp + overdueFollowUp);
   const replyRows = contacts
     .map(toReply)
     .filter((reply): reply is OutreachReply => Boolean(reply))
@@ -445,45 +1018,109 @@ export function buildOutreachDashboardFromSources(input: BuildDashboardInput): O
       const bTime = parseDate(b.lastReplyAt)?.getTime() ?? 0;
       return bTime - aTime || a.company.localeCompare(b.company);
     });
+  const agentSummaries = buildAgentSummaries(agents, snapshots, contacts, dashboardContacts, now);
+  const pipelineColumns = buildPipelineColumns(dashboardContacts);
+  const sendQueue = buildSendQueueStatus(agentSummaries, contacts, dashboardContacts, now);
+  const hubspotListHealth = buildHubSpotListHealth(agents, snapshots, contacts);
+  const deliverabilityHealth = buildDeliverabilityHealth(agents, contacts, now);
+  const emailsSentToday = agentSummaries.reduce((sum, agent) => sum + agent.sentToday, 0);
+  const lastGmailSyncAt = maxIso(agentSummaries.map((agent) => agent.lastInboxSyncAt ?? null));
+  const lastHubSpotSyncAt = maxIso(agentSummaries.map((agent) => agent.lastHubSpotSyncAt ?? null));
+  const staleWarnings = [
+    ...agentSummaries
+      .filter((agent) => isStale(agent.lastHubSpotSyncAt, now))
+      .map((agent) => `${agent.displayName} HubSpot sync is stale.`),
+    ...agentSummaries
+      .filter((agent) => agent.activeContacts > 0 && isStale(agent.lastInboxSyncAt, now))
+      .map((agent) => `${agent.displayName} reply monitor is stale.`),
+  ];
 
+  const dashboard: OutreachDashboardResponse = {
+    generatedAt: now.toISOString(),
+    lastSyncedAt: input.lastSyncedAt,
+    source: input.source,
+    sourceWarnings: input.sourceWarnings?.length ? input.sourceWarnings : undefined,
+    kpis: {
+      totalContacts: contacts.length,
+      active: activeContacts.length,
+      activeCampaigns: agentSummaries.filter((agent) => agent.activeContacts > 0).length,
+      initialSent,
+      emailsSentToday,
+      emailsSentTotal,
+      replies,
+      positive,
+      humanReview,
+      bouncedStopped,
+      dueFollowUp,
+      overdueFollowUp,
+      outOfOffice,
+      blockedIneligible,
+      positiveRate: initialSent > 0 ? Number(((positive / initialSent) * 100).toFixed(1)) : 0,
+      bounceRate: initialSent > 0 ? Number(((bouncedStopped / initialSent) * 100).toFixed(1)) : 0,
+    },
+    replyRate: initialSent > 0 ? Number(((replies / initialSent) * 100).toFixed(1)) : 0,
+    pipelineSummary: pipelineColumns.map((column) => pipelineItem(column.label, column.count, column.color)),
+    agents: agentSummaries,
+    pipelineColumns,
+    followUpHealth: {
+      dueToday: dueFollowUp,
+      overdue: overdueFollowUp,
+      scheduled,
+      next24h,
+      next7Days,
+      needsReview: humanReview,
+      blocked: bouncedStopped + blockedIneligible,
+      blockedByReply: contacts.filter(hasReply).length,
+      blockedByListRemoval: contacts.filter((contact) => contact.ineligibilityReasons.includes('removed_from_source_list')).length,
+      blockedByOwnerAssigned: contacts.filter((contact) => contact.ownerId || contact.assignedTo).length,
+      blockedByMaxTouches: contacts.filter((contact) => contact.touchCount >= MAX_PROACTIVE_TOUCHES && !hasReply(contact)).length,
+      dueByStage: OUTREACH_STAGE_DEFINITIONS.filter((stage) => isDueStage(stage.id)).map((stage) => ({
+        stage: stage.label,
+        count: dashboardContacts.filter((contact) => contact.stageId === stage.id).length,
+      })),
+      dueByAgent: agentSummaries.map((agent) => ({
+        agentId: agent.id,
+        agentName: agent.displayName,
+        count: agent.dueFollowUps,
+      })),
+      message: dueFollowUp > 0 ? `${dueFollowUp} follow-ups due now.` : 'No follow-ups due now.',
+      severity,
+    },
+    sendQueue,
+    hubspotListHealth,
+    deliverabilityHealth,
+    dataFreshness: {
+      generatedAt: now.toISOString(),
+      lastGmailSyncAt,
+      lastHubSpotSyncAt,
+      lastSendQueueUpdateAt: sendQueue.updatedAt,
+      lastReplyMonitorRunAt: lastGmailSyncAt,
+      staleWarnings,
+    },
+    replies: replyRows,
+    contacts: dashboardContacts,
+  };
+  dashboard.dailyReportText = buildDailyReport(dashboard, now);
+  return dashboard;
+}
+
+export function buildOutreachDashboardFromSources(input: BuildDashboardInput): OutreachDashboardResponse {
+  const now = input.now ?? new Date();
+  const contacts = buildNormalizedOutreachContacts(input);
   const lastSyncedAt = maxIso([
     input.state?.generatedAt,
     ...contacts.flatMap((contact) => [contact.stateSyncedAt, contact.hubspotUpdatedAt]),
   ]);
 
-  return {
-    generatedAt: now.toISOString(),
+  return buildDashboardFromNormalizedContacts({
+    contacts,
+    snapshots: input.state ? [input.state] : [],
+    agents: [input.agent ?? input.state?.agent ?? DEFAULT_AGENT_CONFIGS[0]],
+    now,
     lastSyncedAt,
     source: sourceFor(input.hubspotContacts.length, Object.keys(input.state?.contacts ?? {}).length),
-    sourceWarnings: input.sourceWarnings?.length ? input.sourceWarnings : undefined,
-    kpis: {
-      totalContacts: contacts.length,
-      active: activeContacts.length,
-      initialSent,
-      replies,
-      positive,
-      bouncedStopped,
-      dueFollowUp,
-    },
-    replyRate: initialSent > 0 ? Number(((replies / initialSent) * 100).toFixed(1)) : 0,
-    pipelineSummary: [
-      pipelineItem('Initial Sent', initialSent, 'red'),
-      pipelineItem('Replied', replies, 'red'),
-      pipelineItem('Positive', positive, 'green'),
-      pipelineItem('Stopped/Bounced', bouncedStopped, 'amber'),
-      pipelineItem('Active Follow-ups', activeContacts.length, 'blue'),
-    ],
-    followUpHealth: {
-      dueToday: dueFollowUp,
-      scheduled,
-      needsReview,
-      blocked: bouncedStopped,
-      message: dueFollowUp > 0 ? `${dueFollowUp} follow-ups overdue.` : 'No follow-ups overdue.',
-      severity,
-    },
-    replies: replyRows,
-    contacts: dashboardContacts,
-  };
+    sourceWarnings: input.sourceWarnings,
+  });
 }
 
 export function buildNormalizedOutreachContacts(input: BuildDashboardInput): NormalizedContact[] {
@@ -498,7 +1135,37 @@ export function buildNormalizedOutreachContacts(input: BuildDashboardInput): Nor
 
   return Array.from(emails)
     .sort()
-    .map((email) => normalizeOutreachContact(email, stateContacts[email], hubspotByEmail.get(email)));
+    .map((email) => normalizeOutreachContact(email, stateContacts[email], hubspotByEmail.get(email), input.agent ?? input.state?.agent));
+}
+
+export function buildMultiAgentOutreachDashboardFromSnapshots(input: {
+  agents: OutreachAgentConfig[];
+  snapshots: OutreachStateSnapshot[];
+  now?: Date;
+  sourceWarnings?: string[];
+}): OutreachDashboardResponse {
+  const now = input.now ?? new Date();
+  const contacts = input.snapshots.flatMap((snapshot) =>
+    buildNormalizedOutreachContacts({
+      hubspotContacts: [],
+      state: snapshot,
+      agent: snapshot.agent,
+      now,
+    }),
+  );
+  const lastSyncedAt = maxIso([
+    ...input.snapshots.map((snapshot) => snapshot.generatedAt),
+    ...contacts.flatMap((contact) => [contact.stateSyncedAt, contact.hubspotUpdatedAt]),
+  ]);
+  return buildDashboardFromNormalizedContacts({
+    contacts,
+    snapshots: input.snapshots,
+    agents: input.agents,
+    now,
+    lastSyncedAt,
+    source: contacts.length > 0 ? 'state' : 'mock',
+    sourceWarnings: input.sourceWarnings,
+  });
 }
 
 function stateContactsFromJson(json: unknown): Record<string, OutreachStateContact> {
@@ -534,12 +1201,67 @@ async function readJsonFile(path: string): Promise<unknown | null> {
   }
 }
 
+function normalizeAgentConfig(raw: Record<string, unknown>, fallback: OutreachAgentConfig): OutreachAgentConfig {
+  return {
+    id: firstDefinedString(raw.id, fallback.id),
+    displayName: firstDefinedString(raw.display_name, raw.displayName, fallback.displayName),
+    email: firstDefinedString(raw.email, fallback.email),
+    hubspotListName: firstDefinedString(raw.hubspot_list_name, raw.hubspotListName, fallback.hubspotListName),
+    hubspotListId: firstDefinedString(raw.hubspot_list_id, raw.hubspotListId, fallback.hubspotListId),
+    statePath: firstDefinedString(raw.state_path, raw.statePath, fallback.statePath),
+    enabled: raw.enabled === undefined ? fallback.enabled : asBoolean(raw.enabled),
+    dailySendCap: asNumber(raw.daily_send_cap) || asNumber(raw.dailySendCap) || fallback.dailySendCap,
+    sendDelaySeconds: asNumber(raw.send_delay_seconds) || asNumber(raw.sendDelaySeconds) || fallback.sendDelaySeconds,
+    role: firstDefinedString(raw.role, fallback.role),
+    verifiedGmailOauth: raw.verified_gmail_oauth === undefined ? fallback.verifiedGmailOauth : asBoolean(raw.verified_gmail_oauth),
+    verifiedSignature: raw.verified_signature === undefined ? fallback.verifiedSignature : asBoolean(raw.verified_signature),
+    lastSyncAt: nullableString(raw.last_sync_at ?? raw.lastSyncAt ?? fallback.lastSyncAt),
+  };
+}
+
+export async function loadOutreachAgentConfigs(): Promise<{ agents: OutreachAgentConfig[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const registryPath = envValue('OUTREACH_CRM_AGENTS_PATH') ?? DEFAULT_AGENTS_REGISTRY_PATH;
+  const byId = new Map(DEFAULT_AGENT_CONFIGS.map((agent) => [agent.id, agent]));
+
+  try {
+    const registryJson = await readJsonFile(registryPath);
+    const rawAgents = Array.isArray((registryJson as { agents?: unknown })?.agents)
+      ? ((registryJson as { agents?: unknown[] }).agents ?? [])
+      : [];
+    for (const raw of rawAgents) {
+      if (!raw || typeof raw !== 'object') continue;
+      const record = raw as Record<string, unknown>;
+      const id = firstDefinedString(record.id);
+      const fallback = byId.get(id) ?? {
+        id,
+        displayName: id,
+        email: '',
+        hubspotListName: '',
+        enabled: false,
+        dailySendCap: 50,
+        sendDelaySeconds: 65,
+      };
+      if (id) byId.set(id, normalizeAgentConfig(record, fallback));
+    }
+  } catch (error) {
+    warnings.push(`Agent registry load skipped: ${error instanceof Error ? error.message : 'unknown error'}`);
+  }
+
+  return {
+    agents: DEFAULT_AGENT_CONFIGS.map((agent) => byId.get(agent.id) ?? agent),
+    warnings,
+  };
+}
+
 export async function loadOutreachState(): Promise<OutreachStateSnapshot | null> {
   const statePath = envValue('SASHA_OUTREACH_STATE_PATH', 'OUTREACH_CRM_STATE_PATH') ?? DEFAULT_STATE_PATH;
   const stateJson = await readJsonFile(statePath);
   if (!stateJson || typeof stateJson !== 'object') return null;
+  const record = asRecord(stateJson);
+  const agent = normalizeAgentConfig(record.agent && typeof record.agent === 'object' ? (record.agent as Record<string, unknown>) : {}, DEFAULT_AGENT_CONFIGS[0]);
 
-  let generatedAt: string | null = asString((stateJson as { created_at?: unknown }).created_at) || null;
+  let generatedAt: string | null = asString(record.created_at) || null;
   const dashboardPath =
     envValue('SASHA_OUTREACH_DASHBOARD_PATH', 'OUTREACH_CRM_DASHBOARD_PATH') ?? DEFAULT_DASHBOARD_PATH;
   const dashboardJson = await readJsonFile(dashboardPath).catch(() => null);
@@ -553,7 +1275,64 @@ export async function loadOutreachState(): Promise<OutreachStateSnapshot | null>
     contacts: stateContactsFromJson(stateJson),
     generatedAt,
     sourcePath: statePath,
+    agent,
+    daily: asRecord(record.daily) as Record<string, Record<string, unknown>>,
+    hubspot: asRecord(record.hubspot),
+    replyMonitorRuns: Array.isArray(record.reply_monitor_runs) ? (record.reply_monitor_runs as Array<Record<string, unknown>>) : [],
+    raw: record,
   };
+}
+
+async function loadOutreachStateForAgent(agent: OutreachAgentConfig): Promise<OutreachStateSnapshot> {
+  const path = resolveOutreachPath(agent.statePath);
+  const stateJson = await readJsonFile(path);
+  if (!stateJson || typeof stateJson !== 'object') {
+    return { contacts: {}, generatedAt: null, sourcePath: path, agent, daily: {}, hubspot: {}, replyMonitorRuns: [], raw: {} };
+  }
+  const record = asRecord(stateJson);
+  const stateAgent = normalizeAgentConfig(
+    record.agent && typeof record.agent === 'object' ? (record.agent as Record<string, unknown>) : {},
+    agent,
+  );
+  const mergedAgent = { ...agent, ...stateAgent, statePath: agent.statePath };
+  return {
+    contacts: stateContactsFromJson(stateJson),
+    generatedAt: asString(record.created_at) || asString(record.generated_at) || null,
+    sourcePath: path,
+    agent: mergedAgent,
+    daily: asRecord(record.daily) as Record<string, Record<string, unknown>>,
+    hubspot: asRecord(record.hubspot),
+    replyMonitorRuns: Array.isArray(record.reply_monitor_runs) ? (record.reply_monitor_runs as Array<Record<string, unknown>>) : [],
+    raw: record,
+  };
+}
+
+export async function loadMultiAgentOutreachStateSnapshots(): Promise<{
+  agents: OutreachAgentConfig[];
+  snapshots: OutreachStateSnapshot[];
+  warnings: string[];
+}> {
+  const registry = await loadOutreachAgentConfigs();
+  const warnings = [...registry.warnings];
+  const snapshots: OutreachStateSnapshot[] = [];
+  for (const agent of registry.agents) {
+    try {
+      snapshots.push(await loadOutreachStateForAgent(agent));
+    } catch (error) {
+      warnings.push(`${agent.displayName} state load skipped: ${error instanceof Error ? error.message : 'unknown error'}`);
+      snapshots.push({
+        contacts: {},
+        generatedAt: null,
+        sourcePath: resolveOutreachPath(agent.statePath),
+        agent,
+        daily: {},
+        hubspot: {},
+        replyMonitorRuns: [],
+        raw: {},
+      });
+    }
+  }
+  return { agents: registry.agents, snapshots, warnings };
 }
 
 function resolveListId(state: OutreachStateSnapshot | null): string {
@@ -710,6 +1489,20 @@ export async function buildSashaOutreachDashboard(): Promise<OutreachDashboardRe
   return buildOutreachDashboardFromSources({
     hubspotContacts,
     state,
+    agent: state?.agent,
     sourceWarnings,
   });
+}
+
+export async function buildMultiAgentOutreachDashboard(): Promise<OutreachDashboardResponse> {
+  const loaded = await loadMultiAgentOutreachStateSnapshots();
+  return buildMultiAgentOutreachDashboardFromSnapshots({
+    agents: loaded.agents,
+    snapshots: loaded.snapshots,
+    sourceWarnings: loaded.warnings,
+  });
+}
+
+export function buildOutreachDailyReport(dashboard: OutreachDashboardResponse, now = new Date()): string {
+  return buildDailyReport(dashboard, now);
 }

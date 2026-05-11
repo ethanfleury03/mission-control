@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import {
+  buildMultiAgentOutreachDashboard,
   buildNormalizedOutreachContacts,
   buildOutreachDashboardFromSources,
   buildSashaOutreachDashboard,
+  buildOutreachDailyReport,
   deriveOutreachStage,
   fetchHubSpotOutreachContacts,
   isDueForFollowUp,
@@ -789,14 +791,26 @@ async function createOutreachEvent(input: {
 }
 
 export async function getOutreachDashboardWithCacheFallback(): Promise<OutreachDashboardResponse> {
+  let cached: OutreachDashboardResponse | null = null;
   try {
     const syncState = await db.outreachCrmSyncState.findUnique({ where: { id: SYNC_STATE_ID } });
-    const cached = parseJson<OutreachDashboardResponse | null>(syncState?.dashboardJson, null);
-    if (cached?.contacts?.length) return cached;
+    cached = parseJson<OutreachDashboardResponse | null>(syncState?.dashboardJson, null);
+    if (cached?.contacts?.length && cached.agents?.length) return cached;
   } catch {
     // Cache table may not exist before migrations are applied. The UI remains useful via live merge.
   }
+  try {
+    const multiAgent = await buildMultiAgentOutreachDashboard();
+    if (multiAgent.contacts.length > 0 || multiAgent.agents?.some((agent) => agent.contactsInList > 0)) return multiAgent;
+  } catch {
+    // If local multi-agent state is unavailable in a deployed environment, fall back to cache/live Sasha merge.
+  }
+  if (cached?.contacts?.length) return cached;
   return buildSashaOutreachDashboard();
+}
+
+export function generateOutreachDailyReport(dashboard: OutreachDashboardResponse, now = new Date()): string {
+  return buildOutreachDailyReport(dashboard, now);
 }
 
 export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
