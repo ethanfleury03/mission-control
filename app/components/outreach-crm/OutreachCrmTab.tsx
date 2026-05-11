@@ -1315,10 +1315,18 @@ export function OutreachCrmTab() {
       if (returnedDashboard) setDashboard(returnedDashboard);
       const status = typeof data.status === 'string' ? data.status : 'completed';
       const jobId = typeof data.jobId === 'string' ? data.jobId : '';
-      const contacts = returnedDashboard?.kpis?.totalContacts;
-      const warnings = returnedDashboard?.sourceWarnings?.length ? ` · ${returnedDashboard.sourceWarnings[0]}` : '';
+      const contacts =
+        typeof data.contactsSynced === 'number'
+          ? data.contactsSynced
+          : returnedDashboard?.kpis?.totalContacts;
+      const warningList = [
+        ...(Array.isArray(data.warnings) ? data.warnings.map(String) : []),
+        ...(returnedDashboard?.sourceWarnings ?? []),
+      ].filter(Boolean);
+      const warnings = warningList.length ? ` · ${warningList[0]}` : '';
+      const label = status === 'completed' ? 'Synced multi-agent state' : `Deep sync ${status}`;
       setSyncStatus(
-        `Synced multi-agent state${contacts ? ` · ${formatNumber(contacts)} contacts` : ''}${jobId ? ` · job ${jobId.slice(0, 8)}` : ''} · ${status}${warnings}`,
+        `${label}${typeof contacts === 'number' ? ` · ${formatNumber(contacts)} contacts` : ''}${jobId ? ` · job ${jobId.slice(0, 8)}` : ''}${warnings}`,
       );
       await loadDashboard('refresh');
     } catch (err) {

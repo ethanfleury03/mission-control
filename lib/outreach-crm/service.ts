@@ -44,6 +44,7 @@ const KNOWN_OUTREACH_AGENTS = {
   aaron: { displayName: 'Aaron', email: 'aaron@arrsys.com', hubspotListName: 'Aaron-Outreach', hubspotListId: '104' },
   jordan: { displayName: 'Jordan', email: 'jordan@arrsys.com', hubspotListName: 'Jordan-Outreach', hubspotListId: '105' },
 } as const;
+const REQUIRED_DEEP_SYNC_AGENT_IDS = Object.keys(KNOWN_OUTREACH_AGENTS);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -149,6 +150,27 @@ function numberValue(value: unknown, fallback = 0): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
+}
+
+function knownAgentName(agentId: string): string {
+  return KNOWN_OUTREACH_AGENTS[agentId as keyof typeof KNOWN_OUTREACH_AGENTS]?.displayName ?? agentId;
+}
+
+function expectedDeepSyncAgents() {
+  return REQUIRED_DEEP_SYNC_AGENT_IDS.map((id) => {
+    const agent = KNOWN_OUTREACH_AGENTS[id as keyof typeof KNOWN_OUTREACH_AGENTS];
+    return {
+      id,
+      name: agent.displayName,
+      senderEmail: agent.email,
+      hubspotListName: agent.hubspotListName,
+      hubspotListId: agent.hubspotListId,
+      statePath:
+        id === 'sasha'
+          ? '/Users/sasha/.openclaw/workspace/scripts/sasha_outreach/state.json'
+          : `/Users/sasha/.openclaw/workspace/scripts/sasha_outreach/agents/${id}/state.json`,
+    };
+  });
 }
 
 function dateOrNull(value: string | Date | null | undefined): Date | null {
@@ -517,6 +539,14 @@ function dashboardFromCachedRows(rows: any[], syncState: any | null, now = new D
     contactsByAgent.get(agent.id)![row.email] = contact;
   }
 
+  const observedAgentIds = new Set(agents.keys());
+  const missingKnownAgents = REQUIRED_DEEP_SYNC_AGENT_IDS.filter((id) => !observedAgentIds.has(id));
+  if (rows.length > 0 && missingKnownAgents.length > 0) {
+    warnings.push(
+      `Cached outreach state is partial: missing ${missingKnownAgents.map(knownAgentName).join(', ')} from the four-inbox sync.`,
+    );
+  }
+
   if (agents.size === 0) {
     for (const [id, known] of Object.entries(KNOWN_OUTREACH_AGENTS)) {
       agents.set(id, {
@@ -667,14 +697,46 @@ function activitySnapshotForRow(row: any, patch: JsonRecord): JsonRecord {
 
 export async function applyOutreachActivitySnapshot(
   snapshot: OutreachActivitySnapshot,
-  input: { jobId?: string | null; agentId?: string | null } = {},
+  input: { jobId?: string | null; agentId?: string | null; requireAgentIds?: string[] } = {},
 ) {
   const contacts = Array.isArray(snapshot.contacts) ? snapshot.contacts : [];
   if (contacts.length === 0) {
     return { applied: 0, skipped: 0, rejected: 0, errors: ['contacts_required'] };
   }
 
-  const rows = await db.outreachCrmContact.findMany({ where: { campaignName: OUTREACH_CAMPAIGN_ID } });
+  const [syncState, rows] = await Promise.all([
+    db.outreachCrmSyncState.findUnique({ where: { id: SYNC_STATE_ID } }),
+    db.outreachCrmContact.findMany({ where: { campaignName: OUTREACH_CAMPAIGN_ID } }),
+  ]);
+  const requiredAgentIds = (input.requireAgentIds ?? [])
+    .map((id) => id.trim().toLowerCase())
+    .filter(Boolean);
+  if (requiredAgentIds.length > 1) {
+    const observedAgentIds = new Set(
+      contacts
+        .map((contact) => String(contact?.agentId ?? '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const missingAgentIds = requiredAgentIds.filter((id) => !observedAgentIds.has(id));
+    if (missingAgentIds.length > 0) {
+      const error = `partial_multi_agent_deep_sync_missing_agents:${missingAgentIds.join(',')}`;
+      const dashboard = dashboardFromCachedRows(rows, syncState);
+      return {
+        applied: 0,
+        skipped: contacts.length,
+        rejected: contacts.length,
+        errors: [error],
+        dashboard: {
+          ...dashboard,
+          sourceWarnings: [
+            ...(dashboard.sourceWarnings ?? []),
+            `Deep sync returned partial state only. Missing ${missingAgentIds.map(knownAgentName).join(', ')}; cache was left unchanged.`,
+          ],
+        },
+      };
+    }
+  }
+
   const byEmail = new Map<string, any>(rows.map((row: any) => [row.email, row]));
   const now = new Date();
   let applied = 0;
@@ -1337,6 +1399,19 @@ function callbackUrl(): string {
 
 function buildOpenClawPrompt(job: any, contact: any | null, request: OutreachActionRequest, guardrail: JsonRecord): string {
   if (request.actionType === 'deep_sync') {
+    const agents = expectedDeepSyncAgents();
+    const deepSyncEnvelope = {
+      jobId: job.id,
+      actionType: 'deep_sync',
+      callbackUrl: callbackUrl(),
+      payload: {
+        jobId: job.id,
+        actionType: 'deep_sync',
+        contacts: [],
+        expectedAgentIds: REQUIRED_DEEP_SYNC_AGENT_IDS,
+        stateRoot: '/Users/sasha/.openclaw/workspace/scripts/sasha_outreach',
+      },
+    };
     return [
       'Mission Control Outreach CRM read-only deep sync.',
       `jobId: ${job.id}`,
@@ -1344,10 +1419,24 @@ function buildOpenClawPrompt(job: any, contact: any | null, request: OutreachAct
       `callbackUrl: ${callbackUrl()}`,
       '',
       'Task:',
-      '- Reconcile Sasha outreach activity from Sasha outreach state and Gmail history for the HubSpot Sasha-Outreach campaign.',
+      '- Reconcile the full four-inbox Arrow Outreach state, not only Sasha.',
+      '- Expected agents are Sasha, Mark, Aaron, and Jordan. Read agents.json and every enabled/known agent state file.',
+      '- If no requested contacts are provided, return all contacts across all four agents.',
+      '- If requested contacts are provided, search across all four agent states by normalized email.',
+      '- Prefer the local read-only helper when available: python3 /Users/sasha/.openclaw/workspace/scripts/sasha_outreach/deep_sync.py --message <JSON envelope below>.',
       '- Return strict JSON only and call the callback endpoint with HMAC headers.',
       '- Do not send email, draft email, modify Gmail, modify HubSpot, assign owners, or change lifecycle data.',
-      '- Match contacts by normalized email. Unknown contacts must be returned with unmatched=true or omitted.',
+      '- Every returned contact must include agentId, agentName, and senderEmail metadata.',
+      '- If any expected agent cannot be read, return status needs_human or failed and explain the missing agent in rawOutput/sourceSummary instead of returning Sasha-only as completed.',
+      '',
+      'Expected four-inbox sources:',
+      ...agents.map(
+        (agent) =>
+          `- ${agent.name}: agentId=${agent.id}, sender=${agent.senderEmail}, HubSpot list=${agent.hubspotListName} (${agent.hubspotListId}), state=${agent.statePath}`,
+      ),
+      '',
+      'JSON envelope for helper/gateway:',
+      jsonString(deepSyncEnvelope),
       '',
       'Required callback shape:',
       jsonString({
@@ -1360,6 +1449,9 @@ function buildOpenClawPrompt(job: any, contact: any | null, request: OutreachAct
           contacts: [
             {
               email: 'normalized contact email',
+              agentId: 'sasha | mark | aaron | jordan',
+              agentName: 'Sasha | Mark | Aaron | Jordan',
+              senderEmail: 'agent sender inbox',
               touchCount: 1,
               lastOutboundAt: 'ISO timestamp or null',
               nextFollowupAllowedAt: 'ISO timestamp or null',
@@ -1554,6 +1646,9 @@ export async function createOutreachAction(request: OutreachActionRequest, creat
       actionType: request.actionType,
       contact: contact ? serializeContact(contact) : null,
       contacts: deepSyncContacts,
+      expectedAgentIds: request.actionType === 'deep_sync' ? REQUIRED_DEEP_SYNC_AGENT_IDS : undefined,
+      expectedAgentStateRoot:
+        request.actionType === 'deep_sync' ? '/Users/sasha/.openclaw/workspace/scripts/sasha_outreach' : undefined,
       guardrail,
     },
   });
@@ -1601,12 +1696,14 @@ export async function createOutreachAction(request: OutreachActionRequest, creat
       const merge = await applyOutreachActivitySnapshot(parsed.activitySnapshot, {
         jobId: job.id,
         agentId: dispatch.agentId,
+        requireAgentIds: REQUIRED_DEEP_SYNC_AGENT_IDS,
       });
       const completed = await db.outreachAutomationJob.update({
         where: { id: job.id },
         data: {
-          status: merge.rejected > 0 ? 'needs_human' : 'completed',
+          status: merge.rejected > 0 || merge.errors?.length ? 'needs_human' : 'completed',
           resultJson: jsonString({ parsedOutput: dispatch.parsedOutput, activityMerge: merge }),
+          blockedReasonsJson: merge.errors?.length ? jsonString(merge.errors, '[]') : dispatched.blockedReasonsJson,
           finishedAt: new Date(),
         },
       });
@@ -1665,12 +1762,13 @@ export async function applyOutreachOpenClawCallback(payload: OutreachCallbackPay
       ? await applyOutreachActivitySnapshot(payload.activitySnapshot, {
           jobId,
           agentId: payload.agentId ?? existing.agentId,
+          requireAgentIds: REQUIRED_DEEP_SYNC_AGENT_IDS,
         })
       : null;
   const updated = await db.outreachAutomationJob.update({
     where: { id: jobId },
     data: {
-      status: activityMerge && activityMerge.rejected > 0 ? 'needs_human' : status,
+      status: activityMerge && (activityMerge.rejected > 0 || activityMerge.errors?.length) ? 'needs_human' : status,
       agentId: payload.agentId ?? existing.agentId,
       resultJson: jsonString({ result: payload.result, sentMessage: payload.sentMessage, activityMerge }),
       rawOutput: payload.rawOutput ?? existing.rawOutput,

@@ -52,14 +52,20 @@ export async function POST(request: Request) {
       auth.authed.email,
     );
     const job = (result as any).job;
+    const activityMerge = (result as any).activityMerge ?? (result as any).result?.activityMerge ?? null;
+    const dashboard = activityMerge?.dashboard ?? (result as any).result?.dashboard ?? null;
+    const warnings = [
+      ...(Array.isArray(activityMerge?.errors) ? activityMerge.errors.map(String) : []),
+      ...(Array.isArray(dashboard?.sourceWarnings) ? dashboard.sourceWarnings.map(String) : []),
+    ];
     return NextResponse.json({
       ok: result.ok !== false,
       mode: 'deep',
       jobId: job?.jobId ?? job?.id ?? null,
       status: job?.status ?? ((result as any).status ? 'failed' : 'unknown'),
-      dashboard: (result as any).activityMerge?.dashboard ?? (result as any).result?.dashboard ?? null,
-      contactsSynced:
-        (result as any).activityMerge?.dashboard?.kpis?.totalContacts ?? (result as any).result?.dashboard?.kpis?.totalContacts ?? null,
+      dashboard,
+      contactsSynced: dashboard?.kpis?.totalContacts ?? null,
+      warnings,
       error: (result as any).error,
     }, { status: result.ok === false ? (result.status ?? 500) : 200 });
   } catch (error) {
