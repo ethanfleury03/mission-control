@@ -831,9 +831,16 @@ export async function applyOutreachActivitySnapshot(
       !Boolean(patch.humanReviewRequired ?? row.humanReviewRequired);
     patch.snapshotJson = jsonString(activitySnapshotForRow(row, patch));
 
+    const dataPatch = { ...patch };
+    delete dataPatch.agentId;
+    delete dataPatch.agentName;
+    delete dataPatch.senderEmail;
+    delete dataPatch.hubspotListName;
+    delete dataPatch.hubspotListId;
+
     const updated = await db.outreachCrmContact.update({
       where: { id: row.id },
-      data: patch,
+      data: dataPatch,
     });
     applied += 1;
 
