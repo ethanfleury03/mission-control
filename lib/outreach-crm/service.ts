@@ -10,6 +10,7 @@ import {
   deriveOutreachStage,
   fetchHubSpotOutreachContacts,
   isDueForFollowUp,
+  loadOutreachMembershipSnapshot,
   loadMultiAgentOutreachStateSnapshots,
   loadOutreachState,
   normalizeOutreachEmail,
@@ -30,6 +31,7 @@ import type {
   HubSpotOutreachContact,
   NormalizedOutreachContact,
   OutreachDashboardResponse,
+  OutreachMembershipSnapshot,
   OutreachStateContact,
   OutreachStateSnapshot,
 } from './types';
@@ -243,6 +245,16 @@ function contactSnapshot(contact: NormalizedOutreachContact, now: Date, inSource
     touchCount: contact.touchCount,
     lastOutboundAt: contact.lastOutboundAt ?? null,
     nextFollowupAllowedAt: contact.nextFollowupAllowedAt ?? null,
+    isActiveListMember: contact.isActiveListMember,
+    isNurturedListMember: contact.isNurturedListMember,
+    campaignBucket: contact.campaignBucket,
+    isTerminal: contact.isTerminal,
+    terminalReason: contact.terminalReason,
+    dueNow: contact.dueNow,
+    nextActionLabel: contact.nextActionLabel,
+    diagnostics: contact.diagnostics,
+    sourceStatePath: contact.sourceStatePath,
+    membershipSource: contact.membershipSource,
     lastReplyAt: contact.lastReplyAt ?? null,
     replyStatus: contact.replyStatus,
     positiveReply: contact.positiveReply,
@@ -340,6 +352,7 @@ function eventRowsFromDiff(prev: any | null, row: any, snapshot: JsonRecord, now
 
 function serializeContact(row: any): JsonRecord {
   if (!row) return {};
+  const snapshot = parseJson<JsonRecord>(row.snapshotJson, {});
   return {
     id: row.id,
     campaignId: row.campaignName,
@@ -364,6 +377,16 @@ function serializeContact(row: any): JsonRecord {
     inSourceList: row.inSourceList,
     eligibleForAutomation: row.eligibleForAutomation,
     touchCount: row.touchCount,
+    isActiveListMember: snapshot.isActiveListMember ?? row.inSourceList,
+    isNurturedListMember: snapshot.isNurturedListMember ?? false,
+    campaignBucket: snapshot.campaignBucket,
+    isTerminal: snapshot.isTerminal,
+    terminalReason: snapshot.terminalReason,
+    dueNow: snapshot.dueNow,
+    nextActionLabel: snapshot.nextActionLabel,
+    diagnostics: Array.isArray(snapshot.diagnostics) ? snapshot.diagnostics : [],
+    sourceStatePath: snapshot.sourceStatePath,
+    membershipSource: snapshot.membershipSource,
     lastOutboundAt: iso(row.lastOutboundAt),
     nextFollowupAllowedAt: iso(row.nextFollowupAllowedAt),
     lastReplyAt: iso(row.lastReplyAt),
@@ -375,7 +398,7 @@ function serializeContact(row: any): JsonRecord {
     lastReplySnippet: row.lastReplySnippet || undefined,
     ownerId: row.ownerId || undefined,
     assignedTo: row.assignedTo || undefined,
-    snapshot: parseJson<JsonRecord>(row.snapshotJson, {}),
+    snapshot,
   };
 }
 
@@ -476,6 +499,16 @@ function dashboardFromCachedRows(rows: any[], syncState: any | null, now = new D
     sendDelaySeconds: number;
   }>();
   const contactsByAgent = new Map<string, Record<string, OutreachStateContact>>();
+  const cachedMembership: OutreachMembershipSnapshot = {
+    source: 'cache',
+    fetchedAt: cacheSyncedAt,
+    activeListMemberIdsByAgent: {},
+    activeListNamesByAgent: {},
+    nurturedListMemberIds: [],
+    nurtureListName: 'Nurtured-Outreach',
+    nurtureListId: '106',
+    warnings: [],
+  };
 
   const ensureAgent = (snapshot: JsonRecord) => {
     const rawId = stringValue(snapshot.agentId ?? snapshot.agent_id).toLowerCase();
@@ -502,10 +535,19 @@ function dashboardFromCachedRows(rows: any[], syncState: any | null, now = new D
     const snapshot = parseJson<JsonRecord>(row.snapshotJson, {});
     const rawState = parseJson<JsonRecord>(row.rawStateJson, {});
     const agent = ensureAgent(snapshot);
+    const hubspotContactId = row.hubspotContactId || stringValue(snapshot.hubspotContactId);
+    cachedMembership.activeListNamesByAgent![agent.id] = agent.hubspotListName;
+    cachedMembership.activeListMemberIdsByAgent[agent.id] ??= [];
+    if (hubspotContactId && Boolean(snapshot.isActiveListMember ?? row.inSourceList)) {
+      cachedMembership.activeListMemberIdsByAgent[agent.id].push(hubspotContactId);
+    }
+    if (hubspotContactId && Boolean(snapshot.isNurturedListMember)) {
+      cachedMembership.nurturedListMemberIds.push(hubspotContactId);
+    }
     const contact: OutreachStateContact = {
       ...rawState,
       email: row.email,
-      hubspot_contact_id: row.hubspotContactId || stringValue(snapshot.hubspotContactId),
+      hubspot_contact_id: hubspotContactId,
       first_name: row.firstName,
       last_name: row.lastName,
       name: row.name || row.email,
@@ -535,6 +577,9 @@ function dashboardFromCachedRows(rows: any[], syncState: any | null, now = new D
       draft_status: row.draftStatus,
       hubspot_owner_id: row.ownerId,
       assigned_to: row.assignedTo,
+      nurtured_at: snapshot.nurturedAt,
+      nurture_status: snapshot.isNurturedListMember ? 'nurtured' : snapshot.nurtureStatus,
+      active_outreach_list_removed_at: snapshot.activeOutreachListRemovedAt,
     };
     contactsByAgent.get(agent.id)![row.email] = contact;
   }
@@ -577,6 +622,7 @@ function dashboardFromCachedRows(rows: any[], syncState: any | null, now = new D
   const dashboard = buildMultiAgentOutreachDashboardFromSnapshots({
     agents: Array.from(agents.values()),
     snapshots,
+    membership: cachedMembership,
     now,
     sourceWarnings: warnings,
   });
@@ -1033,12 +1079,15 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
 
     try {
       const multiAgent = await loadMultiAgentOutreachStateSnapshots();
+      const membership = await loadOutreachMembershipSnapshot(multiAgent.agents);
       warnings.push(...multiAgent.warnings);
+      warnings.push(...(membership.warnings ?? []));
       normalizedContacts = multiAgent.snapshots.flatMap((snapshot) =>
         buildNormalizedOutreachContacts({
           hubspotContacts: [],
           state: snapshot,
           agent: snapshot.agent,
+          membership,
           now,
         }),
       );
@@ -1051,6 +1100,7 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
       dashboard = buildMultiAgentOutreachDashboardFromSnapshots({
         agents: multiAgent.agents,
         snapshots: multiAgent.snapshots,
+        membership,
         now,
         sourceWarnings: warnings,
       });
@@ -1094,7 +1144,7 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
     for (const contact of normalizedContacts) {
       const rawState = stateByEmail.get(contact.email) ?? {};
       const rawHubspot = hubspotByEmail.get(contact.email) ?? null;
-      const inSourceList = Boolean(rawHubspot || contact.sourceListId || contact.sourceList || contact.hubspotListName);
+      const inSourceList = Boolean(contact.isActiveListMember);
       const prev = existingByEmail.get(contact.email) ?? null;
       const rawStateHasActivity = Object.keys(rawState).some((key) =>
         [
@@ -1116,10 +1166,11 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
       const stage = preservePrevActivity ? prev.stage : deriveOutreachStage(contact, now);
       const stopped = dashboard.contacts.find((item) => item.email === contact.email)?.stopped ?? contact.stopped;
       const mergedStopped = preservePrevActivity ? Boolean(prev.stopped) : stopped;
-      const active = !mergedStopped;
+      const active = contact.campaignBucket === 'active_pool' && !mergedStopped;
       const eligibleForAutomation =
         active &&
         inSourceList &&
+        !contact.isTerminal &&
         !contact.ownerId &&
         !contact.assignedTo &&
         !(preservePrevActivity ? prev.humanReviewRequired : contact.humanReviewRequired);

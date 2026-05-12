@@ -39,7 +39,7 @@ import type {
   OutreachReply,
 } from '@/lib/outreach-crm/types';
 
-type OutreachView = 'overview' | 'pipeline' | 'replies' | 'templates';
+type OutreachView = 'overview' | 'pipeline' | 'audit' | 'replies' | 'templates';
 
 interface OutreachEmailTemplate {
   id: string;
@@ -119,9 +119,9 @@ function formatLastSynced(value: string | null | undefined): string {
 function dashboardSourceLabel(source: OutreachDashboardResponse['source']): string {
   switch (source) {
     case 'state':
-      return 'Multi-agent local state';
+      return 'Multi-agent local state + membership fallback';
     case 'hubspot+state':
-      return 'HubSpot + local state';
+      return 'HubSpot list membership + multi-agent local state';
     case 'hubspot+activity':
       return 'Cache + deep sync activity';
     case 'hubspot':
@@ -129,6 +129,46 @@ function dashboardSourceLabel(source: OutreachDashboardResponse['source']): stri
     default:
       return 'Fallback data';
   }
+}
+
+function bucketLabel(value: string | null | undefined): string {
+  switch (value) {
+    case 'active_pool':
+      return 'Active pool';
+    case 'nurture':
+      return 'Nurture';
+    case 'terminal':
+      return 'Terminal';
+    case 'historical':
+      return 'Historical';
+    case 'local_only':
+      return 'Local only';
+    case 'inconsistent':
+      return 'Inconsistent';
+    default:
+      return 'Unknown';
+  }
+}
+
+function bucketClass(value: string | null | undefined): string {
+  switch (value) {
+    case 'active_pool':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'nurture':
+      return 'border-blue-200 bg-blue-50 text-blue-700';
+    case 'terminal':
+      return 'border-stone-200 bg-stone-100 text-stone-600';
+    case 'historical':
+      return 'border-stone-200 bg-white text-stone-600';
+    case 'inconsistent':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    default:
+      return 'border-stone-200 bg-stone-50 text-stone-500';
+  }
+}
+
+function diagnosticLabel(value: string): string {
+  return value.replaceAll('_', ' ');
 }
 
 function formatReplyDate(value: string | null | undefined): string {
@@ -629,6 +669,83 @@ function AgentOverview({ dashboard }: { dashboard: OutreachDashboardResponse }) 
   );
 }
 
+function CanonicalStateOverview({ dashboard }: { dashboard: OutreachDashboardResponse }) {
+  const audit = dashboard.audit;
+  const membership = dashboard.membership;
+  const cards = [
+    {
+      label: 'Active list members',
+      value: membership?.activeListMembers ?? audit?.buckets.active_pool ?? 0,
+      detail: membership?.source ? membership.source.replaceAll('_', ' ') : 'membership unknown',
+      icon: UserCheck,
+      tone: 'green',
+    },
+    {
+      label: 'Nurture / 30-day',
+      value: audit?.buckets.nurture ?? 0,
+      detail: `${membership?.nurturedListMembers ?? 0} in Nurtured-Outreach`,
+      icon: CalendarDays,
+      tone: 'blue',
+    },
+    {
+      label: 'Terminal cleanup',
+      value: audit?.terminal ?? dashboard.kpis.bouncedStopped,
+      detail: 'stopped, replied, OOO, archived',
+      icon: Ban,
+      tone: 'red',
+    },
+    {
+      label: 'Due now',
+      value: audit?.dueNow ?? dashboard.kpis.dueFollowUp,
+      detail: `${dashboard.followUpHealth.overdue ?? 0} overdue`,
+      icon: Clock3,
+      tone: 'amber',
+    },
+    {
+      label: 'Scheduled 7 days',
+      value: audit?.scheduledNext7Days ?? dashboard.followUpHealth.next7Days ?? 0,
+      detail: `${dashboard.followUpHealth.next24h ?? 0} in next 24h`,
+      icon: Send,
+      tone: 'blue',
+    },
+    {
+      label: 'Diagnostics',
+      value: dashboard.diagnostics?.total ?? 0,
+      detail: `${audit?.inconsistent ?? 0} inconsistent`,
+      icon: AlertTriangle,
+      tone: (dashboard.diagnostics?.total ?? 0) > 0 ? 'amber' : 'green',
+    },
+  ];
+
+  return (
+    <section className="grid gap-3 md:grid-cols-3 2xl:grid-cols-6">
+      {cards.map((card) => {
+        const Icon = card.icon;
+        const toneClass =
+          card.tone === 'red'
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : card.tone === 'amber'
+              ? 'border-amber-200 bg-amber-50 text-amber-700'
+              : card.tone === 'blue'
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+        return (
+          <article key={card.label} className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">{card.label}</p>
+              <span className={cn('flex h-8 w-8 items-center justify-center rounded-md border', toneClass)}>
+                <Icon className="h-4 w-4" />
+              </span>
+            </div>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-stone-950">{formatNumber(card.value)}</p>
+            <p className="mt-1 truncate text-[11px] text-stone-500">{card.detail}</p>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
 function SendQueueMonitor({ dashboard }: { dashboard: OutreachDashboardResponse }) {
   const queue = dashboard.sendQueue;
   if (!queue) return null;
@@ -712,6 +829,20 @@ function PipelineCard({ contact }: { contact: OutreachDashboardContact }) {
         <p className={contact.overdue ? 'font-semibold text-red-600' : ''}>Due: {formatCompactDateTime(contact.nextFollowupAllowedAt)}</p>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
+        <span className={cn('rounded-md border px-1.5 py-0.5 text-[10px] font-semibold', bucketClass(contact.campaignBucket))}>
+          {bucketLabel(contact.campaignBucket)}
+        </span>
+        {contact.dueNow ? (
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Due now</span>
+        ) : null}
+        {contact.diagnostics?.length ? (
+          <span className="rounded-md border border-amber-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+            {contact.diagnostics.length} diagnostic
+          </span>
+        ) : null}
+      </div>
+      {contact.nextActionLabel ? <p className="mt-2 text-[11px] leading-4 text-stone-600">{contact.nextActionLabel}</p> : null}
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {contact.hubspotUrl ? (
           <a href={contact.hubspotUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-brand hover:underline">
             HubSpot
@@ -778,6 +909,166 @@ function PipelineBoard({
           ))}
         </div>
       </div>
+    </section>
+  );
+}
+
+function AllContactsAudit({
+  dashboard,
+  query,
+  agentFilter,
+  stageFilter,
+  bucketFilter,
+  diagnosticFilter,
+  membershipFilter,
+  terminalFilter,
+}: {
+  dashboard: OutreachDashboardResponse;
+  query: string;
+  agentFilter: string;
+  stageFilter: string;
+  bucketFilter: string;
+  diagnosticFilter: string;
+  membershipFilter: string;
+  terminalFilter: string;
+}) {
+  const q = query.trim().toLowerCase();
+  const rows = [...dashboard.contacts]
+    .filter((contact) => {
+      if (agentFilter !== 'all' && contact.agentId !== agentFilter) return false;
+      if (stageFilter !== 'all' && contact.stageId !== stageFilter) return false;
+      if (bucketFilter !== 'all' && contact.campaignBucket !== bucketFilter) return false;
+      if (diagnosticFilter !== 'all' && !(contact.diagnostics ?? []).includes(diagnosticFilter)) return false;
+      if (membershipFilter !== 'all' && contact.membershipSource !== membershipFilter) return false;
+      if (terminalFilter !== 'all' && contact.terminalReason !== terminalFilter) return false;
+      if (!q) return true;
+      return [
+        contact.agentName,
+        contact.name,
+        contact.email,
+        contact.company,
+        contact.stage,
+        contact.campaignBucket,
+        contact.terminalReason,
+        contact.nextActionLabel,
+        ...(contact.diagnostics ?? []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    })
+    .sort((a, b) => {
+      const aDiag = a.diagnostics?.length ? 0 : 1;
+      const bDiag = b.diagnostics?.length ? 0 : 1;
+      const aDue = a.dueNow ? 0 : 1;
+      const bDue = b.dueNow ? 0 : 1;
+      return aDiag - bDiag || aDue - bDue || (a.company ?? '').localeCompare(b.company ?? '') || a.email.localeCompare(b.email);
+    });
+
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-stone-200 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">All Contacts Audit</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">Canonical four-inbox state</h2>
+          <p className="mt-1 text-xs text-stone-500">
+            Showing {formatNumber(rows.length)} of {formatNumber(dashboard.contacts.length)} contacts from local state and membership snapshots.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-right text-xs">
+          <div>
+            <p className="font-semibold text-stone-950">{formatNumber(dashboard.audit?.inconsistent ?? 0)}</p>
+            <p className="text-stone-500">inconsistent</p>
+          </div>
+          <div>
+            <p className="font-semibold text-stone-950">{formatNumber(dashboard.audit?.localOnly ?? 0)}</p>
+            <p className="text-stone-500">local only</p>
+          </div>
+          <div>
+            <p className="font-semibold text-stone-950">{formatNumber(dashboard.audit?.missingHubSpotId ?? 0)}</p>
+            <p className="text-stone-500">missing ID</p>
+          </div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-[74rem] divide-y divide-stone-200 text-left text-xs">
+          <thead className="bg-stone-50 text-[10px] uppercase tracking-[0.14em] text-stone-500">
+            <tr>
+              <th className="px-4 py-2 font-semibold">Contact</th>
+              <th className="px-3 py-2 font-semibold">Agent</th>
+              <th className="px-3 py-2 font-semibold">Bucket</th>
+              <th className="px-3 py-2 font-semibold">Stage</th>
+              <th className="px-3 py-2 font-semibold">Membership</th>
+              <th className="px-3 py-2 font-semibold">Next action</th>
+              <th className="px-3 py-2 font-semibold">Diagnostics</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {rows.length ? (
+              rows.slice(0, 250).map((contact) => (
+                <tr key={`${contact.agentId}-${contact.email}`} className="align-top">
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-stone-950">{contact.name || contact.email}</p>
+                    <p className="mt-0.5 text-stone-500">{contact.email}</p>
+                    <p className="mt-0.5 truncate text-stone-500">{contact.company || 'Unknown company'}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className="font-medium text-stone-800">{contact.agentName || 'Agent'}</p>
+                    <p className="mt-0.5 text-stone-500">{contact.senderEmail || 'No sender'}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className={cn('inline-flex rounded-md border px-2 py-1 font-semibold', bucketClass(contact.campaignBucket))}>
+                      {bucketLabel(contact.campaignBucket)}
+                    </span>
+                    {contact.terminalReason ? <p className="mt-1 text-stone-500">{diagnosticLabel(contact.terminalReason)}</p> : null}
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className="font-medium text-stone-800">{contact.stage}</p>
+                    <p className="mt-0.5 text-stone-500">Touch {contact.touchCount}/4</p>
+                    <p className="mt-0.5 text-stone-500">Due {formatCompactDateTime(contact.nextFollowupAllowedAt)}</p>
+                  </td>
+                  <td className="px-3 py-3 text-stone-600">
+                    <p>{contact.isActiveListMember ? 'Active sender list' : 'Not active list'}</p>
+                    <p>{contact.isNurturedListMember ? 'Nurtured list' : 'Not nurtured list'}</p>
+                    <p className="mt-1 text-stone-400">{contact.membershipSource?.replaceAll('_', ' ') || 'unknown'}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className={cn('font-medium', contact.dueNow ? 'text-amber-700' : 'text-stone-700')}>
+                      {contact.nextActionLabel || 'Monitor state'}
+                    </p>
+                    <p className="mt-1 text-stone-500">Last {formatCompactDateTime(contact.lastOutboundAt)}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    {contact.diagnostics?.length ? (
+                      <div className="flex max-w-xs flex-wrap gap-1">
+                        {contact.diagnostics.slice(0, 4).map((diagnostic) => (
+                          <span key={diagnostic} className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            {diagnosticLabel(diagnostic)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-stone-400">None</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-stone-500">
+                  No contacts match the current audit filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 250 ? (
+        <p className="border-t border-stone-200 px-4 py-2 text-xs text-stone-500">
+          Showing first 250 matches. Narrow filters or search to inspect the rest.
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -1247,6 +1538,10 @@ export function OutreachCrmTab() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [agentFilter, setAgentFilter] = useState('all');
   const [stageFilter, setStageFilter] = useState('all');
+  const [bucketFilter, setBucketFilter] = useState('all');
+  const [diagnosticFilter, setDiagnosticFilter] = useState('all');
+  const [membershipFilter, setMembershipFilter] = useState('all');
+  const [terminalFilter, setTerminalFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [view, setView] = useState<OutreachView>('overview');
   const [templates, setTemplates] = useState<OutreachEmailTemplate[]>([]);
@@ -1398,7 +1693,7 @@ export function OutreachCrmTab() {
 
   useEffect(() => {
     setPage(0);
-  }, [agentFilter, query, stageFilter, statusFilter, view]);
+  }, [agentFilter, bucketFilter, diagnosticFilter, membershipFilter, query, stageFilter, statusFilter, terminalFilter, view]);
 
   const statusOptions = useMemo(() => {
     const statuses = new Set(dashboard?.replies.map((reply) => reply.status).filter(Boolean) ?? []);
@@ -1411,6 +1706,22 @@ export function OutreachCrmTab() {
 
   const stageOptions = useMemo(() => {
     return ['all', ...(dashboard?.pipelineColumns?.map((column) => column.id) ?? [])];
+  }, [dashboard]);
+
+  const bucketOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set((dashboard?.contacts ?? []).map((contact) => contact.campaignBucket).filter(Boolean).map(String))).sort()];
+  }, [dashboard]);
+
+  const diagnosticOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set((dashboard?.contacts ?? []).flatMap((contact) => contact.diagnostics ?? []))).sort()];
+  }, [dashboard]);
+
+  const membershipOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set((dashboard?.contacts ?? []).map((contact) => contact.membershipSource).filter(Boolean).map(String))).sort()];
+  }, [dashboard]);
+
+  const terminalOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set((dashboard?.contacts ?? []).map((contact) => contact.terminalReason).filter((value): value is string => Boolean(value)))).sort()];
   }, [dashboard]);
 
   const filteredReplies = useMemo(() => {
@@ -1477,6 +1788,7 @@ export function OutreachCrmTab() {
                 {[
                   { id: 'overview' as const, label: 'Executive Overview', icon: LayoutDashboard },
                   { id: 'pipeline' as const, label: 'Pipeline', icon: Send },
+                  { id: 'audit' as const, label: 'All Contacts Audit', icon: AlertTriangle },
                   { id: 'replies' as const, label: 'Reply Inbox', icon: Inbox },
                   { id: 'templates' as const, label: 'Email Templates', icon: FileText },
                 ].map((tab) => {
@@ -1507,11 +1819,11 @@ export function OutreachCrmTab() {
         {view !== 'templates' ? (
           <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
             <MetricCard label="Total Contacts" value={dashboard.kpis.totalContacts} icon={UsersRound} />
-            <MetricCard label="Active Campaigns" value={dashboard.kpis.activeCampaigns ?? 0} icon={UserCheck} tone="green" />
+            <MetricCard label="Active Pool" value={dashboard.audit?.buckets.active_pool ?? dashboard.kpis.active} icon={UserCheck} tone="green" />
+            <MetricCard label="Nurture" value={dashboard.audit?.buckets.nurture ?? 0} icon={CalendarDays} tone="green" />
             <MetricCard label="Sent Today" value={dashboard.kpis.emailsSentToday ?? 0} icon={Send} />
             <MetricCard label="Sent Total" value={dashboard.kpis.emailsSentTotal ?? dashboard.kpis.initialSent} icon={Send} />
             <MetricCard label="Replies" value={dashboard.kpis.replies} icon={MessageCircle} />
-            <MetricCard label="Positive" value={dashboard.kpis.positive} icon={ThumbsUp} tone="green" />
             <MetricCard label="Human Review" value={dashboard.kpis.humanReview ?? 0} icon={AlertTriangle} tone="amber" />
             <MetricCard label="Due Now" value={dashboard.kpis.dueFollowUp} icon={Clock3} tone="amber" />
           </section>
@@ -1548,7 +1860,7 @@ export function OutreachCrmTab() {
                 );
               })}
             </select>
-            {view === 'pipeline' ? (
+            {view === 'pipeline' || view === 'audit' ? (
               <select
                 value={stageFilter}
                 onChange={(event) => setStageFilter(event.target.value)}
@@ -1563,6 +1875,54 @@ export function OutreachCrmTab() {
                   );
                 })}
               </select>
+            ) : null}
+            {view === 'audit' ? (
+              <>
+                <select
+                  value={bucketFilter}
+                  onChange={(event) => setBucketFilter(event.target.value)}
+                  className="h-9 rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+                >
+                  {bucketOptions.map((bucket) => (
+                    <option key={bucket} value={bucket}>
+                      {bucket === 'all' ? 'All buckets' : bucketLabel(bucket)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={diagnosticFilter}
+                  onChange={(event) => setDiagnosticFilter(event.target.value)}
+                  className="h-9 rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+                >
+                  {diagnosticOptions.map((diagnostic) => (
+                    <option key={diagnostic} value={diagnostic}>
+                      {diagnostic === 'all' ? 'All diagnostics' : diagnosticLabel(diagnostic)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={membershipFilter}
+                  onChange={(event) => setMembershipFilter(event.target.value)}
+                  className="h-9 rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+                >
+                  {membershipOptions.map((membership) => (
+                    <option key={membership} value={membership}>
+                      {membership === 'all' ? 'All membership sources' : membership.replaceAll('_', ' ')}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={terminalFilter}
+                  onChange={(event) => setTerminalFilter(event.target.value)}
+                  className="h-9 rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 outline-none transition-colors focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
+                >
+                  {terminalOptions.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {reason === 'all' ? 'All terminal reasons' : diagnosticLabel(reason)}
+                    </option>
+                  ))}
+                </select>
+              </>
             ) : null}
             <select
               id="outreach-status-filter"
@@ -1639,6 +1999,7 @@ export function OutreachCrmTab() {
         ) : view === 'overview' ? (
           <div className="space-y-3">
             <AgentOverview dashboard={dashboard} />
+            <CanonicalStateOverview dashboard={dashboard} />
             <ActivityDigest dashboard={dashboard} />
             <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="space-y-3">
@@ -1669,6 +2030,17 @@ export function OutreachCrmTab() {
           </div>
         ) : view === 'pipeline' ? (
           <PipelineBoard columns={dashboard.pipelineColumns ?? []} agentFilter={agentFilter} stageFilter={stageFilter} />
+        ) : view === 'audit' ? (
+          <AllContactsAudit
+            dashboard={dashboard}
+            query={query}
+            agentFilter={agentFilter}
+            stageFilter={stageFilter}
+            bucketFilter={bucketFilter}
+            diagnosticFilter={diagnosticFilter}
+            membershipFilter={membershipFilter}
+            terminalFilter={terminalFilter}
+          />
         ) : (
           <section className="self-start rounded-lg border border-stone-200 bg-white shadow-sm">
             <div className="border-b border-stone-200 px-4 py-3">

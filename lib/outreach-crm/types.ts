@@ -6,6 +6,10 @@ export type FollowUpSeverity = 'success' | 'warning' | 'danger';
 
 export type OutreachAgentState = 'active' | 'paused' | 'needs_setup' | 'sending' | 'blocked';
 
+export type OutreachCampaignBucket = 'active_pool' | 'nurture' | 'terminal' | 'historical' | 'local_only' | 'inconsistent';
+
+export type OutreachMembershipSource = 'hubspot_membership' | 'state_fallback' | 'cache' | 'unknown';
+
 export type OutreachStageId =
   | 'drafted_ready'
   | 'initial_sent'
@@ -112,6 +116,16 @@ export interface OutreachDashboardContact {
   lastOutboundAt?: string;
   nextFollowupAllowedAt?: string;
   overdue?: boolean;
+  isActiveListMember?: boolean;
+  isNurturedListMember?: boolean;
+  campaignBucket?: OutreachCampaignBucket;
+  isTerminal?: boolean;
+  terminalReason?: string;
+  dueNow?: boolean;
+  nextActionLabel?: string;
+  diagnostics?: string[];
+  sourceStatePath?: string;
+  membershipSource?: OutreachMembershipSource;
   replyStatus?: string;
   lastReplyAt?: string;
   lastReplySubject?: string;
@@ -245,6 +259,31 @@ export interface OutreachDataFreshness {
   staleWarnings: string[];
 }
 
+export interface OutreachMembershipSummary {
+  source: OutreachMembershipSource;
+  fetchedAt?: string | null;
+  activeListMembers: number;
+  nurturedListMembers: number;
+  activeByAgent: Array<{ agentId: string; agentName: string; listName: string; count: number }>;
+  warnings: string[];
+}
+
+export interface OutreachDiagnosticsSummary {
+  total: number;
+  byReason: Array<{ reason: string; count: number }>;
+  contacts: Array<{ email: string; agentId?: string; agentName?: string; reasons: string[] }>;
+}
+
+export interface OutreachAuditSummary {
+  buckets: Record<OutreachCampaignBucket, number>;
+  dueNow: number;
+  scheduledNext7Days: number;
+  missingHubSpotId: number;
+  localOnly: number;
+  inconsistent: number;
+  terminal: number;
+}
+
 export interface OutreachDashboardResponse {
   generatedAt: string;
   lastSyncedAt: string | null;
@@ -262,6 +301,9 @@ export interface OutreachDashboardResponse {
   hubspotListHealth?: OutreachHubSpotListHealth[];
   deliverabilityHealth?: OutreachDeliverabilityHealth[];
   dataFreshness?: OutreachDataFreshness;
+  membership?: OutreachMembershipSummary;
+  diagnostics?: OutreachDiagnosticsSummary;
+  audit?: OutreachAuditSummary;
   dailyReportText?: string;
   replies: OutreachReply[];
   contacts: OutreachDashboardContact[];
@@ -285,6 +327,17 @@ export interface OutreachStateSnapshot {
   hubspot?: Record<string, unknown>;
   replyMonitorRuns?: Array<Record<string, unknown>>;
   raw?: Record<string, unknown>;
+}
+
+export interface OutreachMembershipSnapshot {
+  source: OutreachMembershipSource;
+  fetchedAt?: string | null;
+  activeListMemberIdsByAgent: Record<string, string[]>;
+  activeListNamesByAgent?: Record<string, string>;
+  nurturedListMemberIds: string[];
+  nurtureListName?: string;
+  nurtureListId?: string;
+  warnings?: string[];
 }
 
 export interface OutreachStateEvent {
@@ -323,6 +376,16 @@ export interface NormalizedOutreachContact {
   sentAt?: string;
   lastOutboundAt?: string;
   nextFollowupAllowedAt?: string;
+  isActiveListMember: boolean;
+  isNurturedListMember: boolean;
+  campaignBucket: OutreachCampaignBucket;
+  isTerminal: boolean;
+  terminalReason: string;
+  dueNow: boolean;
+  nextActionLabel: string;
+  diagnostics: string[];
+  sourceStatePath: string;
+  membershipSource: OutreachMembershipSource;
   replyStatus: string;
   lastReplyAt?: string;
   lastReplyFrom: string;
@@ -349,6 +412,11 @@ export interface NormalizedOutreachContact {
   hubspotCreatedAt?: string;
   hubspotUpdatedAt?: string;
   stateSyncedAt?: string;
+  hubspotArchivedAt?: string;
+  hubspotDeletedAt?: string;
+  nurturedAt?: string;
+  nurtureStatus: string;
+  activeOutreachListRemovedAt?: string;
 }
 
 export interface OutreachAgentConfig {

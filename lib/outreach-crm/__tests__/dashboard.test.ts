@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildOutreachDashboardFromSources } from '../dashboard';
-import type { HubSpotOutreachContact, OutreachStateSnapshot } from '../types';
+import { buildMultiAgentOutreachDashboardFromSnapshots, buildOutreachDashboardFromSources } from '../dashboard';
+import type { HubSpotOutreachContact, OutreachAgentConfig, OutreachMembershipSnapshot, OutreachStateSnapshot } from '../types';
 
 describe('Outreach CRM dashboard derivation', () => {
   it('merges HubSpot identity with Sasha outreach state and derives KPIs', () => {
@@ -69,7 +69,7 @@ describe('Outreach CRM dashboard derivation', () => {
     expect(dashboard.source).toBe('hubspot+state');
     expect(dashboard.kpis).toMatchObject({
       totalContacts: 4,
-      active: 3,
+      active: 2,
       initialSent: 4,
       replies: 2,
       positive: 1,
@@ -170,5 +170,182 @@ describe('Outreach CRM dashboard derivation', () => {
     });
     expect(dashboard.pipelineColumns?.find((column) => column.id === 'three_day_followup_sent')?.count).toBe(1);
     expect(dashboard.pipelineColumns?.find((column) => column.id === 'due_3_day_followup')?.count).toBe(1);
+  });
+
+  it('uses HubSpot membership to decide active, nurture, due, and terminal stages', () => {
+    const now = new Date('2026-05-12T15:00:00.000Z');
+    const agent: OutreachAgentConfig = {
+      id: 'sasha',
+      displayName: 'Sasha',
+      email: 'sasha@arrsys.com',
+      hubspotListName: 'Sasha-Outreach',
+      hubspotListId: '102',
+      enabled: true,
+      dailySendCap: 50,
+      sendDelaySeconds: 65,
+    };
+    const state: OutreachStateSnapshot = {
+      generatedAt: now.toISOString(),
+      agent,
+      sourcePath: '/tmp/sasha/state.json',
+      contacts: {
+        'active-due@example.com': {
+          email: 'active-due@example.com',
+          hubspot_contact_id: '1',
+          touch_count: 1,
+          last_outbound_at: '2026-05-08T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-11T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+        'active-future@example.com': {
+          email: 'active-future@example.com',
+          hubspot_contact_id: '2',
+          touch_count: 1,
+          last_outbound_at: '2026-05-11T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-14T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+        'nurture-due@example.com': {
+          email: 'nurture-due@example.com',
+          hubspot_contact_id: '3',
+          touch_count: 3,
+          last_outbound_at: '2026-04-01T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-01T14:00:00.000Z',
+          reply_status: 'no_reply',
+          nurture_status: 'nurtured',
+        },
+        'active-touch-three@example.com': {
+          email: 'active-touch-three@example.com',
+          hubspot_contact_id: '4',
+          touch_count: 3,
+          last_outbound_at: '2026-05-10T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-11T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+        'maxed@example.com': {
+          email: 'maxed@example.com',
+          hubspot_contact_id: '5',
+          touch_count: 4,
+          last_outbound_at: '2026-05-01T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+        'human@example.com': {
+          email: 'human@example.com',
+          hubspot_contact_id: '6',
+          touch_count: 1,
+          last_outbound_at: '2026-05-08T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-11T14:00:00.000Z',
+          reply_status: 'needs_review',
+          human_review_required: true,
+        },
+        'ooo@example.com': {
+          email: 'ooo@example.com',
+          hubspot_contact_id: '7',
+          touch_count: 1,
+          last_outbound_at: '2026-05-08T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-11T14:00:00.000Z',
+          reply_status: 'out_of_office',
+        },
+      },
+    };
+    const membership: OutreachMembershipSnapshot = {
+      source: 'hubspot_membership',
+      fetchedAt: now.toISOString(),
+      activeListMemberIdsByAgent: { sasha: ['1', '2', '4', '5', '6', '7'] },
+      nurturedListMemberIds: ['3'],
+    };
+
+    const dashboard = buildMultiAgentOutreachDashboardFromSnapshots({
+      agents: [agent],
+      snapshots: [state],
+      membership,
+      now,
+    });
+    const byEmail = new Map(dashboard.contacts.map((contact) => [contact.email, contact]));
+
+    expect(byEmail.get('active-due@example.com')).toMatchObject({
+      stageId: 'due_3_day_followup',
+      campaignBucket: 'active_pool',
+      dueNow: true,
+    });
+    expect(byEmail.get('active-future@example.com')).toMatchObject({
+      stageId: 'initial_sent',
+      campaignBucket: 'active_pool',
+      dueNow: false,
+    });
+    expect(byEmail.get('nurture-due@example.com')).toMatchObject({
+      stageId: 'due_30_day_followup',
+      campaignBucket: 'nurture',
+      dueNow: true,
+    });
+    expect(byEmail.get('active-touch-three@example.com')).toMatchObject({
+      stageId: 'five_day_followup_sent',
+      campaignBucket: 'inconsistent',
+      dueNow: false,
+    });
+    expect(byEmail.get('active-touch-three@example.com')?.diagnostics).toContain('touch_3_plus_still_in_active_list');
+    expect(byEmail.get('maxed@example.com')).toMatchObject({ stageId: 'thirty_day_followup_sent' });
+    expect(byEmail.get('human@example.com')).toMatchObject({
+      stageId: 'replied_needs_review',
+      campaignBucket: 'terminal',
+      isTerminal: true,
+    });
+    expect(byEmail.get('ooo@example.com')).toMatchObject({
+      stageId: 'out_of_office_paused',
+      campaignBucket: 'terminal',
+      isTerminal: true,
+    });
+  });
+
+  it('surfaces canonical membership diagnostics', () => {
+    const now = new Date('2026-05-12T15:00:00.000Z');
+    const agent: OutreachAgentConfig = {
+      id: 'sasha',
+      displayName: 'Sasha',
+      email: 'sasha@arrsys.com',
+      hubspotListName: 'Sasha-Outreach',
+      hubspotListId: '102',
+      enabled: true,
+      dailySendCap: 50,
+      sendDelaySeconds: 65,
+    };
+    const state: OutreachStateSnapshot = {
+      generatedAt: now.toISOString(),
+      agent,
+      contacts: {
+        'missing@example.com': {
+          email: 'missing@example.com',
+          touch_count: 1,
+          last_outbound_at: '2026-05-10T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+        'conflict@example.com': {
+          email: 'conflict@example.com',
+          hubspot_contact_id: '9',
+          touch_count: 2,
+          last_outbound_at: '2026-05-10T14:00:00.000Z',
+          next_followup_allowed_at: '2026-05-15T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+      },
+    };
+    const dashboard = buildMultiAgentOutreachDashboardFromSnapshots({
+      agents: [agent],
+      snapshots: [state],
+      membership: {
+        source: 'hubspot_membership',
+        fetchedAt: now.toISOString(),
+        activeListMemberIdsByAgent: { sasha: ['9'] },
+        nurturedListMemberIds: ['9'],
+      },
+      now,
+    });
+    const byEmail = new Map(dashboard.contacts.map((contact) => [contact.email, contact]));
+
+    expect(byEmail.get('missing@example.com')?.diagnostics).toContain('missing_hubspot_id');
+    expect(byEmail.get('conflict@example.com')?.diagnostics).toContain('active_and_nurtured_membership_conflict');
+    expect(byEmail.get('conflict@example.com')?.campaignBucket).toBe('inconsistent');
+    expect(dashboard.diagnostics?.total).toBe(2);
+    expect(dashboard.audit?.inconsistent).toBe(1);
   });
 });
