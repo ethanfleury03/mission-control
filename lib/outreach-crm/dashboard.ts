@@ -370,7 +370,7 @@ function hasInitialOutbound(contact: NormalizedContact): boolean {
   return (
     contact.touchCount >= 1 ||
     Boolean(contact.sentAt || contact.lastOutboundAt) ||
-    contact.events.some(eventIndicatesInitialOutbound)
+    (contact.events ?? []).some(eventIndicatesInitialOutbound)
   );
 }
 
@@ -382,7 +382,7 @@ function hasReply(contact: NormalizedContact): boolean {
     Boolean(contact.positiveReply && hasInboundEvidence) ||
     Boolean(contact.humanReviewRequired && hasInboundEvidence) ||
     Boolean(replyStatus && replyStatus !== 'no_reply' && replyStatus !== 'none' && hasInboundEvidence) ||
-    contact.events.some(eventIndicatesReply)
+    (contact.events ?? []).some(eventIndicatesReply)
   );
 }
 

@@ -9,7 +9,6 @@ import {
   buildOutreachDailyReport,
   deriveOutreachStage,
   fetchHubSpotOutreachContacts,
-  isDueForFollowUp,
   loadOutreachMembershipSnapshot,
   loadMultiAgentOutreachStateSnapshots,
   loadOutreachState,
@@ -328,8 +327,9 @@ function eventRowsFromDiff(prev: any | null, row: any, snapshot: JsonRecord, now
     });
   }
 
-  if (row.nextFollowupAllowedAt && row.active && !row.stopped && isDueForFollowUp(row as any, now)) {
-    const prevDue = prev?.nextFollowupAllowedAt && isDueForFollowUp(prev as any, now);
+  if (row.nextFollowupAllowedAt && row.active && !row.stopped && snapshot.dueNow === true) {
+    const prevSnapshot = parseJson<JsonRecord>(prev?.snapshotJson, {});
+    const prevDue = prevSnapshot.dueNow === true;
     if (!prevDue) {
       events.push({
         eventType: 'followup.due',

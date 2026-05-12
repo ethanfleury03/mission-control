@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMultiAgentOutreachDashboardFromSnapshots, buildOutreachDashboardFromSources } from '../dashboard';
+import { buildMultiAgentOutreachDashboardFromSnapshots, buildOutreachDashboardFromSources, deriveOutreachStage } from '../dashboard';
 import type { HubSpotOutreachContact, OutreachAgentConfig, OutreachMembershipSnapshot, OutreachStateSnapshot } from '../types';
 
 describe('Outreach CRM dashboard derivation', () => {
@@ -347,5 +347,30 @@ describe('Outreach CRM dashboard derivation', () => {
     expect(byEmail.get('conflict@example.com')?.campaignBucket).toBe('inconsistent');
     expect(dashboard.diagnostics?.total).toBe(2);
     expect(dashboard.audit?.inconsistent).toBe(1);
+  });
+
+  it('does not require event arrays when deriving a row-shaped contact stage', () => {
+    const now = new Date('2026-05-12T15:00:00.000Z');
+
+    expect(
+      deriveOutreachStage(
+        {
+          email: 'row-shaped@example.com',
+          touchCount: 1,
+          lastOutboundAt: '2026-05-08T14:00:00.000Z',
+          nextFollowupAllowedAt: '2026-05-11T14:00:00.000Z',
+          replyStatus: 'no_reply',
+          positiveReply: false,
+          humanReviewRequired: false,
+          stopped: false,
+          stopReason: '',
+          bounceReason: '',
+          status: '',
+          isEligible: true,
+          ineligibilityReasons: [],
+        } as any,
+        now,
+      ),
+    ).toBe('Due: 3-Day Follow-Up');
   });
 });
