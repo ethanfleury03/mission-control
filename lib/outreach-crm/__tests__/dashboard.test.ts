@@ -132,4 +132,43 @@ describe('Outreach CRM dashboard derivation', () => {
     expect(dashboard.replies.map((reply) => reply.email)).toEqual(['actual-reply@example.com']);
     expect(dashboard.followUpHealth.needsReview).toBe(0);
   });
+
+  it('keeps already-touched owner-assigned contacts in the four-touch lifecycle stages', () => {
+    const now = new Date('2026-05-12T15:00:00.000Z');
+    const state: OutreachStateSnapshot = {
+      generatedAt: '2026-05-12T15:00:00.000Z',
+      contacts: {
+        'followed-up@example.com': {
+          email: 'followed-up@example.com',
+          touch_count: 2,
+          last_outbound_at: '2026-05-11T20:28:23.545Z',
+          next_followup_allowed_at: '2026-05-16T20:28:23.545Z',
+          reply_status: 'no_reply',
+          hubspot_owner_id: '161787514',
+          hs_all_owner_ids: '161787514',
+        },
+        'due-owner@example.com': {
+          email: 'due-owner@example.com',
+          touch_count: 1,
+          last_outbound_at: '2026-05-08T15:00:00.000Z',
+          next_followup_allowed_at: '2026-05-11T15:00:00.000Z',
+          reply_status: 'no_reply',
+          hubspot_owner_id: '161787514',
+        },
+      },
+    };
+
+    const dashboard = buildOutreachDashboardFromSources({ hubspotContacts: [], state, now });
+
+    expect(dashboard.contacts.find((contact) => contact.email === 'followed-up@example.com')).toMatchObject({
+      stage: '3-Day Follow-Up Sent',
+      stageId: 'three_day_followup_sent',
+    });
+    expect(dashboard.contacts.find((contact) => contact.email === 'due-owner@example.com')).toMatchObject({
+      stage: 'Due: 3-Day Follow-Up',
+      stageId: 'due_3_day_followup',
+    });
+    expect(dashboard.pipelineColumns?.find((column) => column.id === 'three_day_followup_sent')?.count).toBe(1);
+    expect(dashboard.pipelineColumns?.find((column) => column.id === 'due_3_day_followup')?.count).toBe(1);
+  });
 });

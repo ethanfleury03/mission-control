@@ -35,6 +35,7 @@ const DEFAULT_HUBSPOT_LIST_NAME = 'Sasha-Outreach';
 const MAX_PROACTIVE_TOUCHES = 4;
 const STALE_SYNC_MS = 24 * 60 * 60 * 1000;
 const LIST_REFILL_TARGET = 50;
+const OUTREACH_LOCAL_TIME_ZONE = 'America/New_York';
 
 export const OUTREACH_STAGE_DEFINITIONS: Array<{ id: OutreachStageId; label: string; color: PipelineColor }> = [
   { id: 'drafted_ready', label: 'Drafted / Ready', color: 'blue' },
@@ -72,7 +73,7 @@ const DEFAULT_AGENT_CONFIGS: OutreachAgentConfig[] = [
     hubspotListName: 'Mark-Outreach',
     hubspotListId: '103',
     statePath: 'scripts/sasha_outreach/agents/mark/state.json',
-    enabled: false,
+    enabled: true,
     dailySendCap: 50,
     sendDelaySeconds: 65,
     role: 'new_agent_ready_for_draft_testing',
@@ -84,7 +85,7 @@ const DEFAULT_AGENT_CONFIGS: OutreachAgentConfig[] = [
     hubspotListName: 'Aaron-Outreach',
     hubspotListId: '104',
     statePath: 'scripts/sasha_outreach/agents/aaron/state.json',
-    enabled: false,
+    enabled: true,
     dailySendCap: 50,
     sendDelaySeconds: 65,
     role: 'new_agent_ready_for_draft_testing',
@@ -96,7 +97,7 @@ const DEFAULT_AGENT_CONFIGS: OutreachAgentConfig[] = [
     hubspotListName: 'Jordan-Outreach',
     hubspotListId: '105',
     statePath: 'scripts/sasha_outreach/agents/jordan/state.json',
-    enabled: false,
+    enabled: true,
     dailySendCap: 50,
     sendDelaySeconds: 65,
     role: 'new_agent_ready_for_draft_testing',
@@ -206,7 +207,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function todayKey(now: Date): string {
-  return now.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: OUTREACH_LOCAL_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function numberFromRecord(record: Record<string, unknown> | undefined, key: string): number {
@@ -238,10 +246,6 @@ function domainFromContact(contact: Pick<NormalizedContact, 'email' | 'website'>
   if (website) return website.toLowerCase();
   const emailDomain = contact.email.split('@')[1] ?? '';
   return emailDomain.toLowerCase();
-}
-
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
 function isStale(value: string | null | undefined, now: Date, maxAgeMs = STALE_SYNC_MS): boolean {
@@ -388,6 +392,7 @@ export function deriveOutreachStage(contact: NormalizedContact, now = new Date()
   const ineligibilityReasons = contact.ineligibilityReasons ?? contactIneligibilityReasons(contact);
   const isEligible = contact.isEligible ?? ineligibilityReasons.length === 0;
   const hardBlocked = ineligibilityReasons.some((reason) => reason === 'missing_email' || reason === 'removed_from_source_list');
+  const hasStartedOutreach = hasInitialOutbound(contact);
 
   if (isStoppedOrBounced(contact)) return 'Stopped / Bounced / Unsubscribed';
   if (isPositiveLike(contact)) return 'Positive / Meeting Path';
@@ -396,12 +401,17 @@ export function deriveOutreachStage(contact: NormalizedContact, now = new Date()
   if (replyStatus === 'delivery_delay') return 'Replied - Needs Review';
   if (replyStatus && replyStatus !== 'bounce' && replyStatus !== 'no_reply') return 'Replied - Needs Review';
   if (hardBlocked) return 'Blocked / Ineligible';
+
   if (isDueForFollowUp(contact, now)) {
     if (contact.touchCount === 1) return 'Due: 3-Day Follow-Up';
     if (contact.touchCount === 2) return 'Due: 5-Day Follow-Up';
     if (contact.touchCount === 3) return 'Due: 30-Day Final Follow-Up';
   }
-  if (!isEligible) return 'Blocked / Ineligible';
+
+  // Owner/assigned fields affect automation eligibility, not the historical drip
+  // lifecycle. Once outreach has started, keep the contact in its real touch stage
+  // so Mission Control does not hide followed-up contacts as merely ineligible.
+  if (!isEligible && !hasStartedOutreach) return 'Blocked / Ineligible';
   if (contact.touchCount <= 0) return contact.draftStatus ? 'Drafted / Ready' : 'Drafted / Ready';
   if (contact.touchCount === 1) return 'Initial Sent';
   if (contact.touchCount === 2) return '3-Day Follow-Up Sent';
@@ -627,7 +637,7 @@ function sentTodayFromSnapshot(snapshot: OutreachStateSnapshot | undefined, agen
   if (recorded > 0) return recorded;
   return agentContacts.filter((contact) => {
     const outboundAt = parseDate(contact.lastOutboundAt || contact.sentAt);
-    return Boolean(outboundAt && outboundAt.toISOString().slice(0, 10) === todayKey(now));
+    return Boolean(outboundAt && todayKey(outboundAt) === todayKey(now));
   }).length;
 }
 
@@ -995,10 +1005,9 @@ function buildDashboardFromNormalizedContacts(input: {
   const blockedIneligible = dashboardContacts.filter((contact) => contact.stageId === 'blocked_ineligible').length;
   const dueContacts = dashboardContacts.filter((contact) => isDueStage(contact.stageId ?? 'drafted_ready'));
   const dueFollowUp = dueContacts.length;
-  const dayStart = startOfUtcDay(now);
   const overdueFollowUp = dueContacts.filter((contact) => {
     const due = parseDate(contact.nextFollowupAllowedAt);
-    return Boolean(due && due.getTime() < dayStart.getTime());
+    return Boolean(due && todayKey(due) < todayKey(now));
   }).length;
   const scheduled = activeContacts.filter((contact) => {
     if (isPositiveLike(contact)) return false;
