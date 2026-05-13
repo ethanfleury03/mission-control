@@ -1227,6 +1227,7 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
 
     const existingRows = await db.outreachCrmContact.findMany({ where: { campaignName: OUTREACH_CAMPAIGN_ID } });
     const existingByEmail = new Map<string, any>(existingRows.map((row: any) => [row.email, row]));
+    const normalizedEmailSet = new Set(normalizedContacts.map((contact) => contact.email));
     let eventsCreated = 0;
 
     for (const contact of normalizedContacts) {
@@ -1331,6 +1332,34 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
           occurredAt: now,
         });
         if (created) eventsCreated += 1;
+      }
+    }
+
+    if (existingRows.some((row: any) => !normalizedEmailSet.has(row.email))) {
+      const refreshedRows = await db.outreachCrmContact.findMany({ where: { campaignName: OUTREACH_CAMPAIGN_ID } });
+      const preservedDashboard = dashboardFromCachedRows(
+        refreshedRows,
+        {
+          lastSyncedAt: now,
+          summaryJson: jsonString({
+            contactsSynced: normalizedContacts.length,
+            hubspotContacts: hubspotContactCount,
+            stateContacts: stateContactCount,
+            warnings,
+          }),
+        },
+        now,
+      );
+      if (preservedDashboard.contacts.length > dashboard.contacts.length) {
+        dashboard = {
+          ...preservedDashboard,
+          source: dashboard.source,
+          membership: dashboard.membership ?? preservedDashboard.membership,
+          sourceWarnings: [
+            ...(dashboard.sourceWarnings ?? []),
+            `Preserved ${preservedDashboard.contacts.length - normalizedContacts.length} cached deep-sync contact(s) outside the current HubSpot active lists.`,
+          ],
+        };
       }
     }
 
