@@ -51,16 +51,65 @@ upload_json() {
 
 upload_json "$STATE_PATH" "$STATE_OBJECT"
 [ -f "$OUTREACH_DIR/agents.json" ] && upload_json "$OUTREACH_DIR/agents.json" "$STATE_PREFIX/agents.json"
-for AGENT in mark aaron jordan; do
-  upload_json "$OUTREACH_DIR/agents/$AGENT/state.json" "$STATE_PREFIX/agents/$AGENT/state.json"
-done
+
+AGENT_MANIFEST="$OUTREACH_DIR/agents.json"
+if [ -f "$AGENT_MANIFEST" ]; then
+  while IFS=$'\t' read -r AGENT_ID AGENT_STATE_PATH; do
+    [ -n "$AGENT_ID" ] || continue
+    [ "$AGENT_ID" = "sasha" ] && continue
+    if [ -z "$AGENT_STATE_PATH" ] || [ "$AGENT_STATE_PATH" = "None" ]; then
+      AGENT_STATE_PATH="scripts/sasha_outreach/agents/$AGENT_ID/state.json"
+    fi
+    case "$AGENT_STATE_PATH" in
+      /*) SRC="$AGENT_STATE_PATH" ;;
+      scripts/sasha_outreach/*) SRC="$OUTREACH_DIR/${AGENT_STATE_PATH#scripts/sasha_outreach/}" ;;
+      *) SRC="$OUTREACH_DIR/$AGENT_STATE_PATH" ;;
+    esac
+    upload_json "$SRC" "$STATE_PREFIX/agents/$AGENT_ID/state.json"
+  done < <(
+    python3 - "$AGENT_MANIFEST" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for agent in manifest.get("agents", []):
+    if not isinstance(agent, dict) or agent.get("enabled") is False:
+        continue
+    agent_id = str(agent.get("id") or "").strip().lower()
+    if not agent_id:
+        continue
+    state_path = agent.get("state_path") or agent.get("statePath") or ""
+    print(f"{agent_id}\t{state_path}")
+PY
+  )
+else
+  for AGENT in mark aaron jordan ashton jaden josh tom emily; do
+    upload_json "$OUTREACH_DIR/agents/$AGENT/state.json" "$STATE_PREFIX/agents/$AGENT/state.json"
+  done
+fi
 
 cat <<EOF
 Uploaded Outreach state snapshots:
-  Sasha:  $STATE_PATH
-  Mark:   $OUTREACH_DIR/agents/mark/state.json
-  Aaron:  $OUTREACH_DIR/agents/aaron/state.json
-  Jordan: $OUTREACH_DIR/agents/jordan/state.json
+  Source: $OUTREACH_DIR
+  Agents: $(python3 - "$OUTREACH_DIR/agents.json" <<'PY' 2>/dev/null || printf 'Sasha, Mark, Aaron, Jordan, Ashton, Jaden, Josh, Tom, Emily'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+names = []
+for agent in manifest.get("agents", []):
+    if not isinstance(agent, dict) or agent.get("enabled") is False:
+        continue
+    names.append(str(agent.get("display_name") or agent.get("displayName") or agent.get("id") or "").strip())
+print(", ".join(name for name in names if name))
+PY
+)
 to:
   gs://$STATE_BUCKET/$STATE_PREFIX/
 EOF
