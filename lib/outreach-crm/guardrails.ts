@@ -132,7 +132,7 @@ function pushContactEligibilityBlocks(reasons: string[], contact: OutreachGuardr
     return;
   }
   if (!contact.email) reasons.push('contact_email_required');
-  if (!contact.inSourceList) reasons.push('contact_not_in_hubspot_sasha_outreach_list');
+  if (!contact.inSourceList) reasons.push('contact_not_in_configured_outreach_list');
   if (!contact.active || contact.stopped) reasons.push('contact_stopped_or_inactive');
   if (contact.stopReason) reasons.push('contact_has_stop_reason');
   if (contact.ownerId) reasons.push('hubspot_owner_id_must_be_empty');
@@ -164,7 +164,7 @@ export function evaluateOutreachActionGuardrails(input: OutreachGuardrailContext
   pushContactEligibilityBlocks(blockedReasons, contact);
 
   if (input.senderEmail && input.senderEmail.trim().toLowerCase() !== policy.senderEmail) {
-    blockedReasons.push('sender_must_be_sasha');
+    blockedReasons.push('sender_must_match_configured_outreach_sender');
   }
   if (!hasRequiredCc(input.ccEmails, policy.requiredCc)) blockedReasons.push('required_shaan_cc_missing');
   if (input.signatureRequired === false) blockedReasons.push('gmail_html_signature_required');

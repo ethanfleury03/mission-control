@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import {
+  buildMultiAgentOutreachDashboardFromAgentSources,
   buildMultiAgentOutreachDashboardFromSnapshots,
   buildMultiAgentOutreachDashboard,
   buildNormalizedOutreachContacts,
@@ -9,6 +10,7 @@ import {
   buildOutreachDailyReport,
   deriveOutreachStage,
   fetchHubSpotOutreachContacts,
+  fetchHubSpotOutreachContactsForList,
   loadOutreachMembershipSnapshot,
   loadMultiAgentOutreachStateSnapshots,
   loadOutreachState,
@@ -29,6 +31,7 @@ import { buildArrowSignature } from './service-auth';
 import type {
   HubSpotOutreachContact,
   NormalizedOutreachContact,
+  OutreachAgentConfig,
   OutreachDashboardResponse,
   OutreachMembershipSnapshot,
   OutreachStateContact,
@@ -44,10 +47,24 @@ const KNOWN_OUTREACH_AGENTS = {
   mark: { displayName: 'Mark', email: 'markodell@arrsys.com', hubspotListName: 'Mark-Outreach', hubspotListId: '103' },
   aaron: { displayName: 'Aaron', email: 'aaron@arrsys.com', hubspotListName: 'Aaron-Outreach', hubspotListId: '104' },
   jordan: { displayName: 'Jordan', email: 'jordan@arrsys.com', hubspotListName: 'Jordan-Outreach', hubspotListId: '105' },
+  ashton: { displayName: 'Ashton', email: 'ashton@arrsys.com', hubspotListName: 'Ashton-Outreach', hubspotListId: '107' },
+  jaden: { displayName: 'Jaden', email: 'jaden@arrsys.com', hubspotListName: 'Jaden-Outreach', hubspotListId: '108' },
+  josh: { displayName: 'Josh', email: 'josh@arrsys.com', hubspotListName: 'Josh-Outreach', hubspotListId: '109' },
+  tom: { displayName: 'Tom', email: 'tom@arrsys.com', hubspotListName: 'Tom-Outreach', hubspotListId: '110' },
+  emily: { displayName: 'Emily', email: 'emily@arrsys.com', hubspotListName: 'Emily-Outreach', hubspotListId: '111' },
 } as const;
 const REQUIRED_DEEP_SYNC_AGENT_IDS = Object.keys(KNOWN_OUTREACH_AGENTS);
+const REQUIRED_DEEP_SYNC_AGENT_NAMES = Object.values(KNOWN_OUTREACH_AGENTS).map((agent) => agent.displayName).join(', ');
+const REQUIRED_DEEP_SYNC_AGENT_ID_EXAMPLE = REQUIRED_DEEP_SYNC_AGENT_IDS.join(' | ');
+const REQUIRED_DEEP_SYNC_AGENT_NAME_EXAMPLE = Object.values(KNOWN_OUTREACH_AGENTS)
+  .map((agent) => agent.displayName)
+  .join(' | ');
 
 type JsonRecord = Record<string, unknown>;
+
+export function expectedOutreachAgentIds(): string[] {
+  return [...REQUIRED_DEEP_SYNC_AGENT_IDS];
+}
 
 export interface OutreachSyncResult {
   ok: boolean;
@@ -588,7 +605,7 @@ function dashboardFromCachedRows(rows: any[], syncState: any | null, now = new D
   const missingKnownAgents = REQUIRED_DEEP_SYNC_AGENT_IDS.filter((id) => !observedAgentIds.has(id));
   if (rows.length > 0 && missingKnownAgents.length > 0) {
     warnings.push(
-      `Cached outreach state is partial: missing ${missingKnownAgents.map(knownAgentName).join(', ')} from the four-inbox sync.`,
+      `Cached outreach state is partial: missing ${missingKnownAgents.map(knownAgentName).join(', ')} from the nine-inbox sync.`,
     );
   }
 
@@ -1076,13 +1093,15 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
     let hubspotContactCount = 0;
     const stateByEmail = new Map<string, OutreachStateContact>();
     let hubspotByEmail = new Map<string, HubSpotOutreachContact>();
+    let multiAgentState: Awaited<ReturnType<typeof loadMultiAgentOutreachStateSnapshots>> | null = null;
+    let membership: OutreachMembershipSnapshot | null = null;
 
     try {
-      const multiAgent = await loadMultiAgentOutreachStateSnapshots();
-      const membership = await loadOutreachMembershipSnapshot(multiAgent.agents);
-      warnings.push(...multiAgent.warnings);
+      multiAgentState = await loadMultiAgentOutreachStateSnapshots();
+      membership = await loadOutreachMembershipSnapshot(multiAgentState.agents);
+      warnings.push(...multiAgentState.warnings);
       warnings.push(...(membership.warnings ?? []));
-      normalizedContacts = multiAgent.snapshots.flatMap((snapshot) =>
+      normalizedContacts = multiAgentState.snapshots.flatMap((snapshot) =>
         buildNormalizedOutreachContacts({
           hubspotContacts: [],
           state: snapshot,
@@ -1091,15 +1110,15 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
           now,
         }),
       );
-      for (const snapshot of multiAgent.snapshots) {
+      for (const snapshot of multiAgentState.snapshots) {
         stateContactCount += Object.keys(snapshot.contacts).length;
         for (const [email, contact] of stateContactMap(snapshot)) {
           stateByEmail.set(email, contact);
         }
       }
       dashboard = buildMultiAgentOutreachDashboardFromSnapshots({
-        agents: multiAgent.agents,
-        snapshots: multiAgent.snapshots,
+        agents: multiAgentState.agents,
+        snapshots: multiAgentState.snapshots,
         membership,
         now,
         sourceWarnings: warnings,
@@ -1109,6 +1128,75 @@ export async function syncOutreachCrmCache(): Promise<OutreachSyncResult> {
       }
     } catch (error) {
       warnings.push(`Multi-agent state load skipped: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+
+    if (!dashboard) {
+      try {
+        multiAgentState ??= await loadMultiAgentOutreachStateSnapshots();
+        membership ??= await loadOutreachMembershipSnapshot(multiAgentState.agents);
+        warnings.push(...(membership.warnings ?? []));
+        const sources: Array<{
+          agent: OutreachAgentConfig;
+          state: OutreachStateSnapshot | null;
+          hubspotContacts: HubSpotOutreachContact[];
+        }> = [];
+        hubspotContacts = [];
+        hubspotByEmail = new Map<string, HubSpotOutreachContact>();
+
+        for (const agent of multiAgentState.agents) {
+          if (!agent.enabled) continue;
+          const listId = agent.hubspotListId?.trim();
+          if (!listId) {
+            warnings.push(`${agent.displayName} HubSpot list skipped: list ID missing.`);
+            sources.push({ agent, state: null, hubspotContacts: [] });
+            continue;
+          }
+          const contacts = await fetchHubSpotOutreachContactsForList(listId);
+          const state: OutreachStateSnapshot = {
+            generatedAt: membership.fetchedAt ?? now.toISOString(),
+            sourcePath: `hubspot_list_${listId}`,
+            agent,
+            contacts: {},
+            daily: {},
+            hubspot: {
+              list_id: listId,
+              list_name: agent.hubspotListName,
+              list_size: contacts.length,
+            },
+            replyMonitorRuns: [],
+            raw: {},
+          };
+          sources.push({ agent, state, hubspotContacts: contacts });
+          hubspotContacts.push(...contacts);
+          for (const contact of contacts) {
+            const email = normalizeOutreachEmail(contact.properties?.email);
+            if (email) hubspotByEmail.set(email, contact);
+          }
+        }
+
+        normalizedContacts = sources.flatMap((source) =>
+          buildNormalizedOutreachContacts({
+            hubspotContacts: source.hubspotContacts,
+            state: source.state,
+            agent: source.agent,
+            membership,
+            now,
+          }),
+        );
+        hubspotContactCount = hubspotContacts.length;
+        dashboard = buildMultiAgentOutreachDashboardFromAgentSources({
+          agents: multiAgentState.agents,
+          sources,
+          membership,
+          now,
+          sourceWarnings: warnings,
+        });
+        if (normalizedContacts.length === 0 && !dashboard.agents?.some((agent) => agent.contactsInList > 0)) {
+          dashboard = null;
+        }
+      } catch (error) {
+        warnings.push(`Nine-agent HubSpot list load skipped: ${error instanceof Error ? error.message : 'unknown error'}`);
+      }
     }
 
     if (!dashboard) {
@@ -1477,17 +1565,17 @@ function buildOpenClawPrompt(job: any, contact: any | null, request: OutreachAct
       `callbackUrl: ${callbackUrl()}`,
       '',
       'Task:',
-      '- Reconcile the full four-inbox Arrow Outreach state, not only Sasha.',
-      '- Expected agents are Sasha, Mark, Aaron, and Jordan. Read agents.json and every enabled/known agent state file.',
-      '- If no requested contacts are provided, return all contacts across all four agents.',
-      '- If requested contacts are provided, search across all four agent states by normalized email.',
+      '- Reconcile the full nine-inbox Arrow Outreach state, not only Sasha.',
+      `- Expected agents are ${REQUIRED_DEEP_SYNC_AGENT_NAMES}. Read agents.json and every enabled/known agent state file.`,
+      '- If no requested contacts are provided, return all contacts across all nine agents.',
+      '- If requested contacts are provided, search across all nine agent states by normalized email.',
       '- Prefer the local read-only helper when available: python3 /Users/sasha/.openclaw/workspace/scripts/sasha_outreach/deep_sync.py --message <JSON envelope below>.',
       '- Return strict JSON only and call the callback endpoint with HMAC headers.',
       '- Do not send email, draft email, modify Gmail, modify HubSpot, assign owners, or change lifecycle data.',
       '- Every returned contact must include agentId, agentName, and senderEmail metadata.',
-      '- If any expected agent cannot be read, return status needs_human or failed and explain the missing agent in rawOutput/sourceSummary instead of returning Sasha-only as completed.',
+      '- If any expected agent cannot be read, return status needs_human or failed and explain the missing agent in rawOutput/sourceSummary instead of returning a partial agent set as completed.',
       '',
-      'Expected four-inbox sources:',
+      'Expected nine-inbox sources:',
       ...agents.map(
         (agent) =>
           `- ${agent.name}: agentId=${agent.id}, sender=${agent.senderEmail}, HubSpot list=${agent.hubspotListName} (${agent.hubspotListId}), state=${agent.statePath}`,
@@ -1507,8 +1595,8 @@ function buildOpenClawPrompt(job: any, contact: any | null, request: OutreachAct
           contacts: [
             {
               email: 'normalized contact email',
-              agentId: 'sasha | mark | aaron | jordan',
-              agentName: 'Sasha | Mark | Aaron | Jordan',
+              agentId: REQUIRED_DEEP_SYNC_AGENT_ID_EXAMPLE,
+              agentName: REQUIRED_DEEP_SYNC_AGENT_NAME_EXAMPLE,
               senderEmail: 'agent sender inbox',
               touchCount: 1,
               lastOutboundAt: 'ISO timestamp or null',

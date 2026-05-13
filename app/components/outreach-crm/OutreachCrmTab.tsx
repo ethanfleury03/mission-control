@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Ban,
@@ -600,7 +600,7 @@ function FollowUpHealth({ dashboard }: { dashboard: OutreachDashboardResponse })
 function AgentCard({ agent }: { agent: OutreachAgentSummary }) {
   const healthOk = agent.healthChecks.filter((check) => check.ok).length;
   return (
-    <article className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+    <article className="h-full rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -659,12 +659,59 @@ function AgentCard({ agent }: { agent: OutreachAgentSummary }) {
 
 function AgentOverview({ dashboard }: { dashboard: OutreachDashboardResponse }) {
   const agents = dashboard.agents ?? [];
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   if (!agents.length) return null;
+  const totalSentToday = agents.reduce((sum, agent) => sum + agent.sentToday, 0);
+  const totalDue = agents.reduce((sum, agent) => sum + agent.dueFollowUps, 0);
+  const scrollAgents = (direction: 'previous' | 'next') => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const firstCard = scroller.querySelector<HTMLElement>('[data-agent-card]');
+    const step = firstCard ? firstCard.offsetWidth + 12 : Math.max(280, scroller.clientWidth * 0.8);
+    scroller.scrollBy({ left: direction === 'next' ? step : -step, behavior: 'smooth' });
+  };
   return (
-    <section className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
-      {agents.map((agent) => (
-        <AgentCard key={agent.id} agent={agent} />
-      ))}
+    <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Agent Command Rail</p>
+          <h2 className="mt-1 text-sm font-semibold text-stone-950">{agents.length} active outreach inboxes</h2>
+          <p className="mt-1 text-[11px] text-stone-500">
+            {formatNumber(totalSentToday)} sent today · {formatNumber(totalDue)} due now
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600">
+            1-{agents.length} agents
+          </span>
+          <button
+            type="button"
+            onClick={() => scrollAgents('previous')}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-stone-600 transition-colors hover:border-brand/30 hover:text-brand"
+            aria-label="Scroll agent cards left"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollAgents('next')}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-stone-200 bg-white text-stone-600 transition-colors hover:border-brand/30 hover:text-brand"
+            aria-label="Scroll agent cards right"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <div
+        ref={scrollerRef}
+        className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {agents.map((agent) => (
+          <div key={agent.id} data-agent-card className="min-w-[18rem] max-w-[18rem] snap-start sm:min-w-[20rem] sm:max-w-[20rem] 2xl:min-w-[21rem] 2xl:max-w-[21rem]">
+            <AgentCard agent={agent} />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -971,7 +1018,7 @@ function AllContactsAudit({
       <div className="flex flex-col gap-2 border-b border-stone-200 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">All Contacts Audit</p>
-          <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">Canonical four-inbox state</h2>
+          <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-stone-950">Canonical nine-inbox state</h2>
           <p className="mt-1 text-xs text-stone-500">
             Showing {formatNumber(rows.length)} of {formatNumber(dashboard.contacts.length)} contacts from local state and membership snapshots.
           </p>
@@ -1401,7 +1448,7 @@ function TemplateEditor({
           <input
             value={form.description}
             onChange={(event) => onChange({ description: event.target.value })}
-            placeholder="When Sasha should use this template"
+            placeholder="When outreach agents should use this template"
             className="mt-1 h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none transition-colors placeholder:text-stone-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
           />
         </label>
@@ -1780,7 +1827,7 @@ export function OutreachCrmTab() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand">Email Outreach CRM</p>
               <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.05em] text-stone-950">Arrow Outreach Command Center</h1>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-                Read-only four-inbox operating cockpit for Sasha, Mark, Aaron, and Jordan across local outreach state and cache.
+                Read-only nine-inbox operating cockpit across local outreach state, HubSpot membership, and cache.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

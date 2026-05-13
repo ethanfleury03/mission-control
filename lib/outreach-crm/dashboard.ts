@@ -127,6 +127,66 @@ const DEFAULT_AGENT_CONFIGS: OutreachAgentConfig[] = [
     sendDelaySeconds: 65,
     role: 'new_agent_ready_for_draft_testing',
   },
+  {
+    id: 'ashton',
+    displayName: 'Ashton',
+    email: 'ashton@arrsys.com',
+    hubspotListName: 'Ashton-Outreach',
+    hubspotListId: '107',
+    statePath: 'scripts/sasha_outreach/agents/ashton/state.json',
+    enabled: true,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_pending_gmail_auth_and_draft_testing',
+  },
+  {
+    id: 'jaden',
+    displayName: 'Jaden',
+    email: 'jaden@arrsys.com',
+    hubspotListName: 'Jaden-Outreach',
+    hubspotListId: '108',
+    statePath: 'scripts/sasha_outreach/agents/jaden/state.json',
+    enabled: true,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_pending_gmail_auth_and_draft_testing',
+  },
+  {
+    id: 'josh',
+    displayName: 'Josh',
+    email: 'josh@arrsys.com',
+    hubspotListName: 'Josh-Outreach',
+    hubspotListId: '109',
+    statePath: 'scripts/sasha_outreach/agents/josh/state.json',
+    enabled: true,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_pending_gmail_auth_and_draft_testing',
+  },
+  {
+    id: 'tom',
+    displayName: 'Tom',
+    email: 'tom@arrsys.com',
+    hubspotListName: 'Tom-Outreach',
+    hubspotListId: '110',
+    statePath: 'scripts/sasha_outreach/agents/tom/state.json',
+    enabled: true,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_pending_gmail_auth_and_draft_testing',
+  },
+  {
+    id: 'emily',
+    displayName: 'Emily',
+    email: 'emily@arrsys.com',
+    hubspotListName: 'Emily-Outreach',
+    hubspotListId: '111',
+    statePath: 'scripts/sasha_outreach/agents/emily/state.json',
+    enabled: true,
+    dailySendCap: 50,
+    sendDelaySeconds: 65,
+    role: 'new_agent_pending_gmail_auth_and_draft_testing',
+  },
 ];
 
 const CONTACT_PROPERTIES = [
@@ -1576,6 +1636,46 @@ export function buildMultiAgentOutreachDashboardFromSnapshots(input: {
   });
 }
 
+export function buildMultiAgentOutreachDashboardFromAgentSources(input: {
+  agents: OutreachAgentConfig[];
+  sources: Array<{
+    agent: OutreachAgentConfig;
+    state: OutreachStateSnapshot | null;
+    hubspotContacts: HubSpotOutreachContact[];
+  }>;
+  membership?: OutreachMembershipSnapshot | null;
+  now?: Date;
+  sourceWarnings?: string[];
+}): OutreachDashboardResponse {
+  const now = input.now ?? new Date();
+  const contacts = input.sources.flatMap((source) =>
+    buildNormalizedOutreachContacts({
+      hubspotContacts: source.hubspotContacts,
+      state: source.state,
+      agent: source.agent,
+      membership: input.membership,
+      now,
+    }),
+  );
+  const snapshots = input.sources
+    .map((source) => source.state)
+    .filter((snapshot): snapshot is OutreachStateSnapshot => Boolean(snapshot));
+  const lastSyncedAt = maxIso([
+    ...snapshots.map((snapshot) => snapshot.generatedAt),
+    ...contacts.flatMap((contact) => [contact.stateSyncedAt, contact.hubspotUpdatedAt]),
+  ]);
+  return buildDashboardFromNormalizedContacts({
+    contacts,
+    snapshots,
+    agents: input.agents,
+    membership: input.membership,
+    now,
+    lastSyncedAt,
+    source: input.membership?.source === 'hubspot_membership' && contacts.length > 0 ? 'hubspot+state' : sourceFor(contacts.length, 0),
+    sourceWarnings: [...(input.sourceWarnings ?? []), ...(input.membership?.warnings ?? [])],
+  });
+}
+
 function stateContactsFromJson(json: unknown): Record<string, OutreachStateContact> {
   if (!json || typeof json !== 'object') return {};
   const contacts = (json as { contacts?: unknown }).contacts;
@@ -1963,9 +2063,8 @@ async function fetchHubSpotOutreachContactsByMembership(listId: string): Promise
   }
 }
 
-export async function fetchHubSpotOutreachContacts(state: OutreachStateSnapshot | null): Promise<HubSpotOutreachContact[]> {
-  if (!hubspotAccessToken()) return [];
-  const listId = resolveListId(state);
+export async function fetchHubSpotOutreachContactsForList(listId: string): Promise<HubSpotOutreachContact[]> {
+  if (!hubspotAccessToken() || !asString(listId)) return [];
   let properties = CONTACT_PROPERTIES;
   const contacts: HubSpotOutreachContact[] = [];
   let after: string | undefined;
@@ -1994,6 +2093,12 @@ export async function fetchHubSpotOutreachContacts(state: OutreachStateSnapshot 
   } while (after);
 
   return contacts.length > 0 ? contacts : fetchHubSpotOutreachContactsByMembership(listId);
+}
+
+export async function fetchHubSpotOutreachContacts(state: OutreachStateSnapshot | null): Promise<HubSpotOutreachContact[]> {
+  if (!hubspotAccessToken()) return [];
+  const listId = resolveListId(state);
+  return fetchHubSpotOutreachContactsForList(listId);
 }
 
 export async function buildSashaOutreachDashboard(): Promise<OutreachDashboardResponse> {

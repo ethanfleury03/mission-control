@@ -32,7 +32,7 @@ describe('Outreach CRM send guardrails', () => {
     });
 
     expect(decision.allowed).toBe(false);
-    expect(decision.blockedReasons).toContain('contact_not_in_hubspot_sasha_outreach_list');
+    expect(decision.blockedReasons).toContain('contact_not_in_configured_outreach_list');
   });
 
   it('blocks assigned or owned HubSpot contacts', () => {

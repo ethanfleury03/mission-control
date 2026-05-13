@@ -1,9 +1,90 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildMultiAgentOutreachDashboardFromSnapshots, buildOutreachDashboardFromSources, deriveOutreachStage } from '../dashboard';
+import {
+  buildMultiAgentOutreachDashboardFromSnapshots,
+  buildOutreachDashboardFromSources,
+  deriveOutreachStage,
+  loadOutreachAgentConfigs,
+} from '../dashboard';
+import { expectedOutreachAgentIds } from '../service';
 import type { HubSpotOutreachContact, OutreachAgentConfig, OutreachMembershipSnapshot, OutreachStateSnapshot } from '../types';
 
+const ORIGINAL_ENV = { ...process.env };
+const NINE_AGENT_IDS = ['sasha', 'mark', 'aaron', 'jordan', 'ashton', 'jaden', 'josh', 'tom', 'emily'];
+const NINE_AGENT_LIST_IDS = ['102', '103', '104', '105', '107', '108', '109', '110', '111'];
+
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+});
+
 describe('Outreach CRM dashboard derivation', () => {
+  it('loads all nine hardcoded outreach agents when the registry is unavailable', async () => {
+    process.env.OUTREACH_CRM_AGENTS_PATH = '/tmp/mission-control-missing-agents-registry.json';
+
+    const { agents } = await loadOutreachAgentConfigs();
+
+    expect(agents.map((agent) => agent.id)).toEqual(NINE_AGENT_IDS);
+    expect(agents.map((agent) => agent.hubspotListId)).toEqual(NINE_AGENT_LIST_IDS);
+    expect(agents.find((agent) => agent.id === 'emily')).toMatchObject({
+      displayName: 'Emily',
+      email: 'emily@arrsys.com',
+      hubspotListName: 'Emily-Outreach',
+      statePath: 'scripts/sasha_outreach/agents/emily/state.json',
+      enabled: true,
+      dailySendCap: 50,
+      sendDelaySeconds: 65,
+    });
+  });
+
+  it('requires all nine outreach agents for deep sync completeness', () => {
+    expect(expectedOutreachAgentIds()).toEqual(NINE_AGENT_IDS);
+  });
+
+  it('summarizes HubSpot membership for all nine agent lists', () => {
+    const now = new Date('2026-05-13T16:00:00.000Z');
+    const agents = NINE_AGENT_IDS.map((id, index): OutreachAgentConfig => {
+      const displayName = id.charAt(0).toUpperCase() + id.slice(1);
+      return {
+        id,
+        displayName,
+        email: id === 'mark' ? 'markodell@arrsys.com' : `${id}@arrsys.com`,
+        hubspotListName: `${displayName}-Outreach`,
+        hubspotListId: NINE_AGENT_LIST_IDS[index],
+        statePath: id === 'sasha' ? 'scripts/sasha_outreach/state.json' : `scripts/sasha_outreach/agents/${id}/state.json`,
+        enabled: true,
+        dailySendCap: 50,
+        sendDelaySeconds: 65,
+      };
+    });
+    const snapshots: OutreachStateSnapshot[] = agents.map((agent, index) => ({
+      generatedAt: now.toISOString(),
+      agent,
+      contacts: {
+        [`${agent.id}@example.com`]: {
+          email: `${agent.id}@example.com`,
+          hubspot_contact_id: `hubspot-${index}`,
+          touch_count: 1,
+          last_outbound_at: '2026-05-13T14:00:00.000Z',
+          reply_status: 'no_reply',
+        },
+      },
+    }));
+    const membership: OutreachMembershipSnapshot = {
+      source: 'hubspot_membership',
+      fetchedAt: now.toISOString(),
+      activeListMemberIdsByAgent: Object.fromEntries(agents.map((agent, index) => [agent.id, [`hubspot-${index}`]])),
+      activeListNamesByAgent: Object.fromEntries(agents.map((agent) => [agent.id, agent.hubspotListName])),
+      nurturedListMemberIds: [],
+    };
+
+    const dashboard = buildMultiAgentOutreachDashboardFromSnapshots({ agents, snapshots, membership, now });
+
+    expect(dashboard.agents?.map((agent) => agent.id)).toEqual(NINE_AGENT_IDS);
+    expect(dashboard.membership?.activeByAgent.map((agent) => agent.agentId)).toEqual(NINE_AGENT_IDS);
+    expect(dashboard.membership?.activeByAgent.map((agent) => agent.count)).toEqual(Array(9).fill(1));
+    expect(dashboard.membership?.activeListMembers).toBe(9);
+  });
+
   it('merges HubSpot identity with Sasha outreach state and derives KPIs', () => {
     const now = new Date('2026-05-05T16:00:00.000Z');
     const hubspotContacts: HubSpotOutreachContact[] = [
