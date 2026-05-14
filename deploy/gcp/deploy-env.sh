@@ -42,8 +42,33 @@ secret_exists() {
   gcloud secrets describe "$secret" --project="$PROJECT_ID" >/dev/null 2>&1
 }
 
+grant_web_secret_access() {
+  local secret="$1"
+  if secret_exists "$secret"; then
+    gcloud secrets add-iam-policy-binding "$secret" --project="$PROJECT_ID" \
+      --member="serviceAccount:${MC_WEB_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+      --role=roles/secretmanager.secretAccessor \
+      --condition=None >/dev/null 2>&1 || true
+  fi
+}
+
 for REQUIRED_SECRET in "$MC_API_DB_SECRET" "$MC_APP_DB_SECRET" "$MC_DB_PASSWORD_SECRET" "$MC_AUTH_SECRET" "$MC_GOOGLE_ID_SECRET" "$MC_GOOGLE_SECRET_SECRET"; do
   require_secret "$REQUIRED_SECRET"
+done
+
+for RETELL_SECRET in \
+  "$MC_RETELL_API_SECRET" \
+  "$MC_PHONE_RETELL_AGENT_IDS_SECRET" \
+  "$MC_PHONE_RETELL_AGENT_ID_SECRET" \
+  "$MC_PHONE_RETELL_PROFILE_KEY_SECRET" \
+  "$MC_PHONE_RETELL_PROFILE_LABEL_SECRET" \
+  "$MC_PHONE_RETELL_CONVERSATION_FLOW_ID_SECRET" \
+  "$MC_PHONE_RETELL_OUTBOUND_NUMBER_SECRET" \
+  "$MC_PHONE_RETELL_OUTBOUND_NUMBER_LABEL_SECRET" \
+  "$MC_PHONE_RETELL_VOICE_LABEL_SECRET" \
+  "$MC_PHONE_RETELL_WEBHOOK_STATUS_SECRET"
+do
+  grant_web_secret_access "$RETELL_SECRET"
 done
 
 if [ "$MC_ENV" = "stage" ]; then
