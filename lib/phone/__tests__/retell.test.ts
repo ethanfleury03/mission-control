@@ -44,7 +44,7 @@ describe('buildRetellListCallsPayload', () => {
         agent: [{ agent_id: 'agent_1' }, { agent_id: 'agent_2' }],
         start_timestamp: {
           type: 'number',
-          op: 'gte',
+          op: 'ge',
           value: 1714608475945,
         },
       },

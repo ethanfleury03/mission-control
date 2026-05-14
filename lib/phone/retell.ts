@@ -79,13 +79,13 @@ export function buildRetellListCallsPayload(input: {
   if (input.lowerThresholdMs) {
     filterCriteria.start_timestamp = {
       type: 'number',
-      op: 'gte',
+      op: 'ge',
       value: input.lowerThresholdMs,
     };
   } else if (input.upperThresholdMs) {
     filterCriteria.start_timestamp = {
       type: 'number',
-      op: 'lte',
+      op: 'le',
       value: input.upperThresholdMs,
     };
   }
