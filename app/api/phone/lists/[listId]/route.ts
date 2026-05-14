@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deletePhoneList, getPhoneListById, updatePhoneList } from '@/lib/phone/service';
+import { getPhoneListById } from '@/lib/phone/service';
 import { withActiveUser } from '../../../_lib/with-active-user';
 
 export const runtime = 'nodejs';
@@ -16,44 +16,23 @@ async function GETHandler(
 }
 
 async function PATCHHandler(
-  request: NextRequest,
-  context: { params: Promise<{ listId: string }> },
+  _request: NextRequest,
+  _context: { params: Promise<{ listId: string }> },
 ) {
-  const { listId } = await context.params;
-
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
-
-  try {
-    const updated = await updatePhoneList(listId, {
-      displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
-      notes: typeof body.notes === 'string' ? body.notes : undefined,
-      status: typeof body.status === 'string' ? (body.status as 'active' | 'archived') : undefined,
-    });
-    return NextResponse.json(updated);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Could not update phone list' },
-      { status: 400 },
-    );
-  }
+  return NextResponse.json(
+    { error: 'Phone list management is disabled. Lists live in the CRM.' },
+    { status: 410 },
+  );
 }
 
 async function DELETEHandler(
   _request: NextRequest,
-  context: { params: Promise<{ listId: string }> },
+  _context: { params: Promise<{ listId: string }> },
 ) {
-  const { listId } = await context.params;
-  try {
-    await deletePhoneList(listId);
-    return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
+  return NextResponse.json(
+    { error: 'Phone list management is disabled. Lists live in the CRM.' },
+    { status: 410 },
+  );
 }
 
 export const GET = withActiveUser(GETHandler);

@@ -135,13 +135,33 @@ export interface PhoneCall {
   contactName: string;
   phoneNumber: string;
   agentProfileKey: string;
+  agentId: string;
+  agentName: string;
+  agentVersion: number | null;
+  callType: string;
+  direction: string;
+  fromNumber: string;
+  toNumber: string;
   providerStatus: string;
   disposition: PhoneCallDisposition;
   bookedFlag: boolean;
   summary: string;
   transcript: string;
   recordingUrl: string;
+  recordingMultiChannelUrl: string;
+  publicLogUrl: string;
+  knowledgeBaseRetrievedContentsUrl: string;
   disconnectionReason: string;
+  userSentiment: string;
+  callSuccessful: boolean | null;
+  inVoicemail: boolean | null;
+  costCents: number | null;
+  cost: {
+    combinedCents: number | null;
+    totalDurationSeconds: number | null;
+    totalDurationUnitPrice: number | null;
+    productCosts: PhoneCallCostProduct[];
+  };
   dynamicVariables: Record<string, string>;
   metadata: Record<string, unknown>;
   analysis: Record<string, unknown>;
@@ -152,6 +172,13 @@ export interface PhoneCall {
   createdAt: string;
   updatedAt: string;
   events?: PhoneCallEvent[];
+}
+
+export interface PhoneCallCostProduct {
+  product: string;
+  costCents: number | null;
+  unitPrice: number | null;
+  isTransferLegCost: boolean | null;
 }
 
 export interface PhoneSettings {
@@ -168,6 +195,7 @@ export interface PhoneSettings {
   autoPauseAfterRepeatedFailures: boolean;
   defaultSourceBehavior: string;
   lastRetellSyncAt: string | null;
+  lastRetellAgentSyncAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -188,12 +216,16 @@ export interface PhoneProviderInfo {
   providerName: string;
   agentProfileLabel: string;
   agentId: string;
+  configuredAgentIds: string[];
   conversationFlowId: string;
   outboundNumberLabel: string;
   outboundNumber: string;
   voiceLabel: string;
   webhookStatus: string;
   lastSyncTime: string | null;
+  lastAgentSyncTime: string | null;
+  apiStatus: 'configured' | 'missing_api_key';
+  webhookUrl: string;
 }
 
 export interface PhoneCallsByDayPoint {
@@ -213,13 +245,16 @@ export interface PhoneBookedTrendPoint {
 }
 
 export interface PhoneHomeSummary {
-  totalDialableContacts: number;
-  activeListSize: number;
+  totalCalls: number;
+  liveCalls: number;
   callsToday: number;
   connectRate: number;
+  successfulRate: number;
   bookedRate: number;
-  doNotCallRate: number;
   averageCallDurationMs: number;
+  totalCostCents: number;
+  averageCostCents: number;
+  todayCostCents: number;
 }
 
 export interface PhoneCampaignBanner extends PhoneCampaign {
@@ -239,44 +274,97 @@ export interface PhoneConnectorCard {
 
 export interface PhoneHomeData {
   summary: PhoneHomeSummary;
-  activeCampaign: PhoneCampaignBanner | null;
   charts: {
     callsByDay: PhoneCallsByDayPoint[];
     outcomesByDisposition: PhoneOutcomePoint[];
     bookedTrend: PhoneBookedTrendPoint[];
+    costByDay: PhoneCostByDayPoint[];
   };
-  lists: PhoneList[];
-  campaigns: PhoneCampaign[];
+  liveCalls: PhoneCall[];
   recentCalls: PhoneCall[];
+  agentSummaries: PhoneAgentSummary[];
+  costSummary: PhoneCostSummary;
   agentProfiles: PhoneAgentProfile[];
+  retellAgents: PhoneRetellAgent[];
   settings: PhoneSettings;
-  futureSources: PhoneConnectorCard[];
+  providerInfo: PhoneProviderInfo;
 }
 
 export interface PhoneCallFilters {
   from?: string;
   to?: string;
-  listId?: string;
-  campaignId?: string;
+  agentId?: string;
+  callStatus?: string;
+  direction?: string;
   disposition?: PhoneCallDisposition | '';
   answered?: 'answered' | 'not_connected' | '';
   bookedOnly?: boolean;
+  successfulOnly?: boolean;
+  sentiment?: string;
+  minCostCents?: number;
+  maxCostCents?: number;
   q?: string;
 }
 
 export interface PhoneCallLogResponse {
   items: PhoneCall[];
   filterOptions: {
-    lists: Pick<PhoneList, 'id' | 'displayName'>[];
-    campaigns: Pick<PhoneCampaign, 'id' | 'name'>[];
+    agents: Pick<PhoneRetellAgent, 'agentId' | 'agentName' | 'version'>[];
+    statuses: string[];
+    directions: string[];
+    sentiments: string[];
   };
 }
 
 export interface PhoneSettingsResponse {
   settings: PhoneSettings;
   agentProfiles: PhoneAgentProfile[];
+  retellAgents: PhoneRetellAgent[];
   providerInfo: PhoneProviderInfo;
   futureSources: PhoneConnectorCard[];
+}
+
+export interface PhoneRetellAgent {
+  id: string;
+  agentId: string;
+  version: number;
+  agentName: string;
+  voiceId: string;
+  voiceModel: string;
+  responseEngine: Record<string, unknown>;
+  rawPayload: Record<string, unknown>;
+  isPublished: boolean;
+  lastModifiedAt: string | null;
+  syncedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PhoneAgentSummary {
+  agentId: string;
+  agentName: string;
+  version: number | null;
+  totalCalls: number;
+  liveCalls: number;
+  connectedCalls: number;
+  successfulCalls: number;
+  bookedCalls: number;
+  averageDurationMs: number;
+  totalCostCents: number;
+  averageCostCents: number;
+  lastCallAt: string | null;
+}
+
+export interface PhoneCostSummary {
+  totalCostCents: number;
+  averageCostCents: number;
+  todayCostCents: number;
+  productCosts: PhoneCallCostProduct[];
+}
+
+export interface PhoneCostByDayPoint {
+  day: string;
+  costCents: number;
 }
 
 export interface PhoneCsvColumnMap {

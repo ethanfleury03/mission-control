@@ -4,26 +4,21 @@ import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   BarChart3,
+  Bot,
   CheckCircle2,
   Clock3,
-  Database,
-  LayoutDashboard,
+  DollarSign,
   PhoneCall as PhoneCallIcon,
-  PlayCircle,
-  Shield,
+  Radio,
   Target,
-  Users,
+  TrendingUp,
 } from 'lucide-react';
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -33,20 +28,17 @@ import { formatTimeAgo } from '../../lib/utils';
 import { fetchPhoneHome } from '@/lib/phone/api';
 import type { PhoneHomeData, PhonePage } from '@/lib/phone/types';
 import {
-  BannerStat,
   ChartCard,
   MetricCard,
   PageError,
   PageLoading,
   SectionHeader,
   StatusPill,
+  formatCurrencyFromCents,
   formatDuration,
   formatInteger,
   formatPercent,
-  resolveAgentLabel,
 } from './shared';
-
-const PIE_COLORS = ['#C41E3A', '#0f766e'];
 
 export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) => void }) {
   const [data, setData] = useState<PhoneHomeData | null>(null);
@@ -69,171 +61,119 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
     void load();
   }, []);
 
-  if (loading) return <PageLoading label="Loading Phone home" />;
+  if (loading) return <PageLoading label="Loading Retell dashboard" />;
   if (!data) return <PageError label={error ?? 'Phone home is unavailable right now.'} onRetry={() => void load()} />;
 
   return (
     <div className="max-w-7xl p-6">
-      <div className="mb-6">
-        <div className="mb-2 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10">
-            <LayoutDashboard className="h-5 w-5 text-brand" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-neutral-900">Phone Home</h1>
-            <p className="text-sm text-neutral-500">
-              Reporting-first cold calling operations with queue health, pacing visibility, and recent outcomes.
-            </p>
-          </div>
-        </div>
-        <p className="max-w-3xl text-xs text-neutral-500">
-          Keep this page focused on signal. Campaign creation lives in Create Call, list ownership lives in Lists,
-          and this dashboard stays tuned for managers who want a fast read on what is running and what is changing.
-        </p>
-      </div>
-
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <MetricCard
-          icon={Users}
-          label="Dialable Contacts"
-          value={formatInteger(data.summary.totalDialableContacts)}
-          detail="Valid numbers queued"
-          tone="brand"
-        />
-        <MetricCard
-          icon={Database}
-          label="Active List Size"
-          value={formatInteger(data.summary.activeListSize)}
-          detail="Current list focus"
-          tone="blue"
-        />
-        <MetricCard
-          icon={PhoneCallIcon}
-          label="Calls Today"
-          value={formatInteger(data.summary.callsToday)}
-          detail="Local log count"
-          tone="green"
-        />
-        <MetricCard
-          icon={Target}
-          label="Connect Rate"
-          value={formatPercent(data.summary.connectRate)}
-          detail="7-day trend"
-          tone="brand"
-        />
-        <MetricCard
-          icon={CheckCircle2}
-          label="Booked Rate"
-          value={formatPercent(data.summary.bookedRate)}
-          detail="7-day trend"
-          tone="green"
-        />
-        <MetricCard
-          icon={Shield}
-          label="Do-Not-Call"
-          value={formatPercent(data.summary.doNotCallRate)}
-          detail="Keep this low"
-          tone="amber"
-        />
-        <MetricCard
-          icon={Clock3}
-          label="Avg Duration"
-          value={formatDuration(data.summary.averageCallDurationMs)}
-          detail="Connected calls"
-          tone="neutral"
-        />
-      </div>
-
-      <div className="mb-6 overflow-hidden rounded-xl border border-hub-border bg-white shadow-sm">
-        <div className="border-b border-hub-border bg-gradient-to-r from-brand/10 via-white to-white p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="mb-1 flex items-center gap-2">
-                <span className={`status-dot ${data.activeCampaign ? 'status-active' : 'status-idle'}`} />
-                <h2 className="text-sm font-semibold text-neutral-900">Active Campaign</h2>
-                <StatusPill status={data.activeCampaign?.status ?? 'draft'} />
-              </div>
-              {data.activeCampaign ? (
-                <>
-                  <p className="text-lg font-semibold text-neutral-900">{data.activeCampaign.name}</p>
-                  <p className="text-xs text-neutral-500">
-                    {data.activeCampaign.listName} · {data.activeCampaign.callsCompleted} completed ·{' '}
-                    {data.activeCampaign.callsRemaining} remaining
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-lg font-semibold text-neutral-900">No active campaign running</p>
-                  <p className="text-xs text-neutral-500">
-                    Build the next outbound run in Create Call when you are ready to move from reporting to action.
-                  </p>
-                </>
-              )}
+      <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10">
+              <Radio className="h-5 w-5 text-brand" />
             </div>
-            <button
-              type="button"
-              onClick={() => onNavigate('create-call')}
-              className="inline-flex items-center gap-1.5 self-start rounded-md bg-brand px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-brand-hover"
-            >
-              <PlayCircle className="h-4 w-4" />
-              Open Create Call
-            </button>
+            <div>
+              <h1 className="text-xl font-bold text-neutral-900">Retell Phone Home</h1>
+              <p className="text-sm text-neutral-500">
+                Transparent call monitoring, outcomes, agent performance, and actual Retell cost.
+              </p>
+            </div>
+          </div>
+          <p className="max-w-3xl text-xs text-neutral-500">
+            Calls originate in Retell and CRM-owned workflows. This tab observes what happened and what is happening now.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate('call-log')}
+          className="inline-flex items-center gap-1.5 self-start rounded-md border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-800 transition-colors hover:bg-neutral-50"
+        >
+          Open Call Log
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+        <MetricCard icon={PhoneCallIcon} label="Calls Today" value={formatInteger(data.summary.callsToday)} detail="Retell call count" tone="green" />
+        <MetricCard icon={Radio} label="Live Calls" value={formatInteger(data.summary.liveCalls)} detail="Registered or ongoing" tone="brand" />
+        <MetricCard icon={TrendingUp} label="30-Day Calls" value={formatInteger(data.summary.totalCalls)} detail="Synced history" tone="blue" />
+        <MetricCard icon={Target} label="Connect Rate" value={formatPercent(data.summary.connectRate)} detail="7-day window" tone="brand" />
+        <MetricCard icon={CheckCircle2} label="Success Rate" value={formatPercent(data.summary.successfulRate)} detail="Retell analysis" tone="green" />
+        <MetricCard icon={CheckCircle2} label="Booked Rate" value={formatPercent(data.summary.bookedRate)} detail="Detected outcome" tone="green" />
+        <MetricCard icon={Clock3} label="Avg Duration" value={formatDuration(data.summary.averageCallDurationMs)} detail="Completed calls" tone="neutral" />
+        <MetricCard icon={DollarSign} label="Avg Cost" value={formatCurrencyFromCents(data.summary.averageCostCents)} detail="Per synced call" tone="amber" />
+      </div>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <div className="card p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SectionHeader
+              icon={Radio}
+              title="Live Retell Calls"
+              description="Current registered or ongoing calls from synced Retell events."
+            />
+          </div>
+          {data.liveCalls.length ? (
+            <div className="overflow-hidden rounded-lg border border-neutral-200">
+              <table className="w-full text-xs">
+                <thead className="bg-neutral-50 text-neutral-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Call</th>
+                    <th className="px-3 py-2 text-left font-medium">Agent</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.liveCalls.map((call) => (
+                    <tr key={call.id} className="border-t border-neutral-100 text-neutral-700">
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-neutral-900">{call.toNumber || call.phoneNumber || 'Unknown number'}</div>
+                        <div className="text-2xs text-neutral-500 capitalize">{call.direction || 'phone call'}</div>
+                      </td>
+                      <td className="px-3 py-2">{call.agentName || call.agentId || 'Unknown agent'}</td>
+                      <td className="px-3 py-2">
+                        <StatusPill status={call.providerStatus} subtle />
+                      </td>
+                      <td className="px-3 py-2">{formatTimeAgo(call.startedAt ?? call.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center">
+              <p className="text-sm font-medium text-neutral-800">No live calls right now</p>
+              <p className="mt-1 text-xs text-neutral-500">When Retell sends start or ongoing events, they will surface here.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <SectionHeader
+            icon={DollarSign}
+            title="Cost Summary"
+            description="Retell call_cost combined cost and product-level breakdown."
+          />
+          <div className="grid grid-cols-3 gap-3">
+            <CostTile label="30 days" value={formatCurrencyFromCents(data.costSummary.totalCostCents)} />
+            <CostTile label="Today" value={formatCurrencyFromCents(data.costSummary.todayCostCents)} />
+            <CostTile label="Average" value={formatCurrencyFromCents(data.costSummary.averageCostCents)} />
+          </div>
+          <div className="mt-4 space-y-2">
+            {data.costSummary.productCosts.slice(0, 6).map((item) => (
+              <div key={item.product} className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
+                <span className="truncate text-neutral-700">{item.product.replace(/_/g, ' ')}</span>
+                <span className="font-medium text-neutral-900">{formatCurrencyFromCents(item.costCents)}</span>
+              </div>
+            ))}
+            {!data.costSummary.productCosts.length && (
+              <p className="rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-3 py-4 text-center text-xs text-neutral-500">
+                Cost data will appear after analyzed Retell calls include call_cost.
+              </p>
+            )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4 p-5 lg:grid-cols-4">
-          <BannerStat label="Pacing" value={data.activeCampaign?.pacingStatus ?? 'Not running'} />
-          <BannerStat
-            label="Last Call"
-            value={data.activeCampaign?.lastCallTime ? formatTimeAgo(data.activeCampaign.lastCallTime) : 'None yet'}
-          />
-          <BannerStat
-            label="Next Retry"
-            value={data.activeCampaign?.nextRetryWindow ? formatTimeAgo(data.activeCampaign.nextRetryWindow) : 'None queued'}
-          />
-          <BannerStat
-            label="Agent Profile"
-            value={resolveAgentLabel(data.activeCampaign?.agentProfileKey ?? '', data.agentProfiles)}
-          />
-        </div>
-      </div>
-
-      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <OverviewCard
-          title="Queue Depth"
-          body={`${formatInteger(data.summary.totalDialableContacts)} dialable contacts are available across ${formatInteger(data.lists.length)} lists.`}
-          detail={`Current focus list contains ${formatInteger(data.summary.activeListSize)} records.`}
-        />
-        <OverviewCard
-          title="Campaign Coverage"
-          body={`${formatInteger(data.campaigns.length)} campaigns are configured with ${formatInteger(data.agentProfiles.length)} locked agent profiles available.`}
-          detail={data.activeCampaign ? `Active status: ${data.activeCampaign.status.replace(/_/g, ' ')}` : 'No campaign is active right now.'}
-        />
-        <OverviewCard
-          title="Recent Signal"
-          body={`${formatInteger(data.recentCalls.length)} recent call outcomes are already persisted for quick review.`}
-          detail={`${formatInteger(data.summary.callsToday)} calls were logged today.`}
-        />
-      </div>
-
-      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <QuickLinkCard
-          title="Create Call"
-          description="Create a campaign, choose the list, pick the locked agent profile, and control start, pause, or resume."
-          icon={PlayCircle}
-          onClick={() => onNavigate('create-call')}
-        />
-        <QuickLinkCard
-          title="Lists"
-          description="Import CSVs, create manual lists, inspect list health, and review lead-level queue status."
-          icon={Database}
-          onClick={() => onNavigate('lists')}
-        />
-        <QuickLinkCard
-          title="Call Log"
-          description="Drill into transcripts, outcomes, analysis, and exported call history from the local source of truth."
-          icon={PhoneCallIcon}
-          onClick={() => onNavigate('call-log')}
-        />
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -244,18 +184,24 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
               <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#737373' }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#737373' }} />
               <Tooltip />
-              <Line
-                type="monotone"
-                dataKey="calls"
-                stroke="#C41E3A"
-                strokeWidth={2.5}
-                dot={{ r: 3, fill: '#C41E3A' }}
-              />
+              <Line type="monotone" dataKey="calls" stroke="#C41E3A" strokeWidth={2.5} dot={{ r: 3, fill: '#C41E3A' }} />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Outcomes by Disposition" icon={Target}>
+        <ChartCard title="Cost by Day" icon={DollarSign}>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={data.charts.costByDay}>
+              <CartesianGrid stroke="rgba(0,0,0,0.08)" strokeDasharray="3 3" />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#737373' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#737373' }} tickFormatter={(value) => `$${Number(value / 100).toFixed(2)}`} />
+              <Tooltip formatter={(value) => formatCurrencyFromCents(Number(value))} />
+              <Bar dataKey="costCents" fill="#0f766e" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Outcomes" icon={Target}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.charts.outcomesByDisposition}>
               <CartesianGrid stroke="rgba(0,0,0,0.08)" strokeDasharray="3 3" />
@@ -266,45 +212,62 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
+      </div>
 
-        <ChartCard title="Booked vs Not Booked" icon={CheckCircle2}>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={data.charts.bookedTrend.reduce(
-                  (acc, point) => {
-                    acc[0].value += point.booked;
-                    acc[1].value += point.notBooked;
-                    return acc;
-                  },
-                  [
-                    { name: 'Booked', value: 0 },
-                    { name: 'Not Booked', value: 0 },
-                  ],
-                )}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={45}
-                outerRadius={70}
-                paddingAngle={3}
-              >
-                {PIE_COLORS.map((color) => (
-                  <Cell key={color} fill={color} />
+      <div className="mb-6 card p-5">
+        <SectionHeader
+          icon={Bot}
+          title="Agent Performance"
+          description="Synced Retell agents grouped by call activity and cost."
+        />
+        {data.agentSummaries.length ? (
+          <div className="overflow-hidden rounded-lg border border-neutral-200">
+            <table className="w-full text-xs">
+              <thead className="bg-neutral-50 text-neutral-500">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Agent</th>
+                  <th className="px-3 py-2 text-left font-medium">Calls</th>
+                  <th className="px-3 py-2 text-left font-medium">Live</th>
+                  <th className="px-3 py-2 text-left font-medium">Connected</th>
+                  <th className="px-3 py-2 text-left font-medium">Successful</th>
+                  <th className="px-3 py-2 text-left font-medium">Booked</th>
+                  <th className="px-3 py-2 text-left font-medium">Cost</th>
+                  <th className="px-3 py-2 text-left font-medium">Last Call</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.agentSummaries.map((agent) => (
+                  <tr key={`${agent.agentId}-${agent.version ?? 'latest'}`} className="border-t border-neutral-100 text-neutral-700">
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-neutral-900">{agent.agentName}</div>
+                      <div className="font-mono text-2xs text-neutral-500">{agent.agentId || 'unknown'}</div>
+                    </td>
+                    <td className="px-3 py-2">{formatInteger(agent.totalCalls)}</td>
+                    <td className="px-3 py-2">{formatInteger(agent.liveCalls)}</td>
+                    <td className="px-3 py-2">{formatInteger(agent.connectedCalls)}</td>
+                    <td className="px-3 py-2">{formatInteger(agent.successfulCalls)}</td>
+                    <td className="px-3 py-2">{formatInteger(agent.bookedCalls)}</td>
+                    <td className="px-3 py-2">{formatCurrencyFromCents(agent.totalCostCents)}</td>
+                    <td className="px-3 py-2">{agent.lastCallAt ? formatTimeAgo(agent.lastCallAt) : '—'}</td>
+                  </tr>
                 ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center">
+            <p className="text-sm font-medium text-neutral-800">No Retell calls synced yet</p>
+            <p className="mt-1 text-xs text-neutral-500">An admin can refresh Retell history from Settings.</p>
+          </div>
+        )}
       </div>
 
       <div className="card p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SectionHeader
             icon={PhoneCallIcon}
-            title="Recent Call Outcomes"
-            description="Most recent persisted call records from the Phone log."
+            title="Recent Calls"
+            description="Latest Retell call outcomes, costs, and analysis status."
           />
           <button
             type="button"
@@ -321,9 +284,10 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
             <table className="w-full text-xs">
               <thead className="bg-neutral-50 text-neutral-500">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium">Contact</th>
-                  <th className="px-3 py-2 text-left font-medium">Campaign</th>
+                  <th className="px-3 py-2 text-left font-medium">Call</th>
+                  <th className="px-3 py-2 text-left font-medium">Agent</th>
                   <th className="px-3 py-2 text-left font-medium">Outcome</th>
+                  <th className="px-3 py-2 text-left font-medium">Cost</th>
                   <th className="px-3 py-2 text-left font-medium">When</th>
                 </tr>
               </thead>
@@ -331,13 +295,14 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
                 {data.recentCalls.map((call) => (
                   <tr key={call.id} className="border-t border-neutral-100 text-neutral-700">
                     <td className="px-3 py-2">
-                      <div className="font-medium text-neutral-900">{call.contactName || 'Unknown contact'}</div>
-                      <div className="text-2xs text-neutral-500">{call.companyName || call.phoneNumber || '—'}</div>
+                      <div className="font-medium text-neutral-900">{call.toNumber || call.phoneNumber || 'Unknown number'}</div>
+                      <div className="text-2xs text-neutral-500">{call.summary || call.providerCallId}</div>
                     </td>
-                    <td className="px-3 py-2">{call.campaignName || '—'}</td>
+                    <td className="px-3 py-2">{call.agentName || call.agentId || '—'}</td>
                     <td className="px-3 py-2">
                       <StatusPill status={call.disposition} subtle />
                     </td>
+                    <td className="px-3 py-2">{formatCurrencyFromCents(call.costCents)}</td>
                     <td className="px-3 py-2">{formatTimeAgo(call.startedAt ?? call.createdAt)}</td>
                   </tr>
                 ))}
@@ -346,10 +311,8 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center">
-            <p className="text-sm font-medium text-neutral-800">No recent calls yet</p>
-            <p className="mt-1 text-xs text-neutral-500">
-              Once campaigns start running, recent outcomes will surface here for a quick executive read.
-            </p>
+            <p className="text-sm font-medium text-neutral-800">No calls yet</p>
+            <p className="mt-1 text-xs text-neutral-500">Retell webhook and backfill data will appear here after sync.</p>
           </div>
         )}
       </div>
@@ -357,49 +320,11 @@ export function PhoneHomePage({ onNavigate }: { onNavigate: (page: PhonePage) =>
   );
 }
 
-function OverviewCard({
-  title,
-  body,
-  detail,
-}: {
-  title: string;
-  body: string;
-  detail: string;
-}) {
+function CostTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="card p-4">
-      <p className="text-2xs font-semibold uppercase tracking-wider text-neutral-500">{title}</p>
-      <p className="mt-2 text-sm font-medium text-neutral-900">{body}</p>
-      <p className="mt-1 text-2xs text-neutral-500">{detail}</p>
+    <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+      <p className="text-2xs uppercase tracking-wider text-neutral-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-neutral-900">{value}</p>
     </div>
-  );
-}
-
-function QuickLinkCard({
-  title,
-  description,
-  icon: Icon,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  icon: typeof PlayCircle;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="card group p-4 text-left transition-colors hover:border-brand/30 hover:bg-brand/5"
-    >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-brand/10 text-brand">
-          <Icon className="h-4 w-4" />
-        </div>
-        <ArrowRight className="h-4 w-4 text-neutral-400 transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
-      </div>
-      <p className="text-sm font-semibold text-neutral-900">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-neutral-500">{description}</p>
-    </button>
   );
 }

@@ -4,15 +4,18 @@ import type {
   PhoneCampaign as PrismaPhoneCampaign,
   PhoneList as PrismaPhoneList,
   PhoneListEntry as PrismaPhoneListEntry,
+  PhoneRetellAgent as PrismaPhoneRetellAgent,
   PhoneSettings as PrismaPhoneSettings,
 } from '@prisma/client';
 import type {
   PhoneCall,
+  PhoneCallCostProduct,
   PhoneCallDisposition,
   PhoneCampaign,
   PhoneCampaignSettings,
   PhoneList,
   PhoneListEntry,
+  PhoneRetellAgent,
   PhoneSettings,
   PhoneWeekday,
 } from './types';
@@ -82,6 +85,34 @@ function parseCampaignSettings(value: string): PhoneCampaignSettings {
       typeof parsed.defaultSourceBehavior === 'string'
         ? parsed.defaultSourceBehavior
         : DEFAULT_PHONE_SETTINGS.defaultSourceBehavior,
+  };
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function parseCost(value: string, fallbackCostCents: number | null): PhoneCall['cost'] {
+  const parsed = parseObject(value);
+  const productCosts = Array.isArray(parsed.product_costs)
+    ? parsed.product_costs
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .map(
+          (item): PhoneCallCostProduct => ({
+            product: typeof item.product === 'string' ? item.product : '',
+            costCents: numberOrNull(item.cost),
+            unitPrice: numberOrNull(item.unit_price),
+            isTransferLegCost:
+              typeof item.is_transfer_leg_cost === 'boolean' ? item.is_transfer_leg_cost : null,
+          }),
+        )
+    : [];
+
+  return {
+    combinedCents: numberOrNull(parsed.combined_cost) ?? fallbackCostCents,
+    totalDurationSeconds: numberOrNull(parsed.total_duration_seconds),
+    totalDurationUnitPrice: numberOrNull(parsed.total_duration_unit_price),
+    productCosts,
   };
 }
 
@@ -182,15 +213,32 @@ export function prismaPhoneCallToDomain(
     listEntryId: call.listEntryId ?? null,
     companyName: call.listEntry?.companyName ?? String(metadata.companyName ?? ''),
     contactName: call.listEntry?.contactName ?? String(metadata.contactName ?? ''),
-    phoneNumber: call.listEntry?.phoneNormalized ?? String(metadata.phoneNumber ?? ''),
+    phoneNumber:
+      call.listEntry?.phoneNormalized ??
+      (call.toNumber || String(metadata.phoneNumber ?? metadata.to_number ?? '')),
     agentProfileKey: call.agentProfileKey,
+    agentId: call.agentId,
+    agentName: call.agentName,
+    agentVersion: call.agentVersion ?? null,
+    callType: call.callType,
+    direction: call.direction,
+    fromNumber: call.fromNumber,
+    toNumber: call.toNumber,
     providerStatus: call.providerStatus,
     disposition: call.disposition as PhoneCallDisposition,
     bookedFlag: call.bookedFlag,
     summary: call.summary,
     transcript: call.transcript,
     recordingUrl: call.recordingUrl,
+    recordingMultiChannelUrl: call.recordingMultiChannelUrl,
+    publicLogUrl: call.publicLogUrl,
+    knowledgeBaseRetrievedContentsUrl: call.knowledgeBaseRetrievedContentsUrl,
     disconnectionReason: call.disconnectionReason,
+    userSentiment: call.userSentiment,
+    callSuccessful: call.callSuccessful ?? null,
+    inVoicemail: call.inVoicemail ?? null,
+    costCents: call.costCents ?? null,
+    cost: parseCost(call.costJson, call.costCents ?? null),
     dynamicVariables: Object.fromEntries(
       Object.entries(parseObject(call.dynamicVariablesJson)).map(([key, value]) => [key, String(value)]),
     ),
@@ -221,7 +269,26 @@ export function prismaPhoneSettingsToDomain(settings: PrismaPhoneSettings): Phon
     autoPauseAfterRepeatedFailures: settings.autoPauseAfterRepeatedFailures,
     defaultSourceBehavior: settings.defaultSourceBehavior,
     lastRetellSyncAt: settings.lastRetellSyncAt?.toISOString() ?? null,
+    lastRetellAgentSyncAt: settings.lastRetellAgentSyncAt?.toISOString() ?? null,
     createdAt: settings.createdAt.toISOString(),
     updatedAt: settings.updatedAt.toISOString(),
+  };
+}
+
+export function prismaPhoneRetellAgentToDomain(agent: PrismaPhoneRetellAgent): PhoneRetellAgent {
+  return {
+    id: agent.id,
+    agentId: agent.agentId,
+    version: agent.version,
+    agentName: agent.agentName,
+    voiceId: agent.voiceId,
+    voiceModel: agent.voiceModel,
+    responseEngine: parseObject(agent.responseEngineJson),
+    rawPayload: parseObject(agent.rawPayloadJson),
+    isPublished: agent.isPublished,
+    lastModifiedAt: agent.lastModifiedAt?.toISOString() ?? null,
+    syncedAt: agent.syncedAt.toISOString(),
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
   };
 }

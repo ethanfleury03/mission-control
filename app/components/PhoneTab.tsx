@@ -1,50 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import {
-  Database,
   LayoutDashboard,
   PhoneCall as PhoneCallIcon,
-  PlayCircle,
   Settings2,
 } from 'lucide-react';
+import { isAdminEmail } from '@/lib/auth/constants';
 import { cn } from '../lib/utils';
 import type { PhonePage } from '@/lib/phone/types';
 import { PhoneCallLogPage } from './phone/PhoneCallLogPage';
-import { PhoneCreateCallPage } from './phone/PhoneCreateCallPage';
 import { PhoneHomePage } from './phone/PhoneHomePage';
-import { PhoneListsPage } from './phone/PhoneListsPage';
 import { PhoneSettingsPage } from './phone/PhoneSettingsPage';
 
 type NavItem = {
   id: PhonePage;
   label: string;
   icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', icon: LayoutDashboard },
-  { id: 'create-call', label: 'Create Call', icon: PlayCircle },
-  { id: 'lists', label: 'Lists', icon: Database },
   { id: 'call-log', label: 'Call Log', icon: PhoneCallIcon },
-  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'settings', label: 'Settings', icon: Settings2, adminOnly: true },
 ];
 
 export function PhoneTab() {
+  const { data: session } = useSession();
+  const isAdmin = isAdminEmail(session?.user?.email);
   const [activePage, setActivePage] = useState<PhonePage>('home');
+  const navItems = useMemo(
+    () => NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin),
+    [isAdmin],
+  );
+  const resolvedPage = activePage === 'settings' && !isAdmin ? 'home' : activePage;
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="flex w-52 shrink-0 flex-col border-r border-hub-border bg-white">
         <div className="border-b border-hub-border p-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-900">Phone</h2>
-          <p className="mt-0.5 text-2xs text-neutral-500">Cold calling & operations</p>
+          <p className="mt-0.5 text-2xs text-neutral-500">Retell call observability</p>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-2">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activePage === item.id;
+            const isActive = resolvedPage === item.id;
             return (
               <button
                 key={item.id}
@@ -66,22 +70,18 @@ export function PhoneTab() {
 
         <div className="border-t border-hub-border p-3">
           <div className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-            <p className="text-2xs font-medium text-neutral-800">Manager-first</p>
+            <p className="text-2xs font-medium text-neutral-800">Retell-first</p>
             <p className="mt-0.5 text-2xs text-neutral-500">
-              Separate reporting, campaign control, lists, and safe defaults without leaving the Phone workspace.
+              Reps can watch calls, outcomes, recordings, analysis, and cost without launching outreach.
             </p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto bg-bg-primary">
-        {activePage === 'home' ? (
+        {resolvedPage === 'home' ? (
           <PhoneHomePage onNavigate={setActivePage} />
-        ) : activePage === 'create-call' ? (
-          <PhoneCreateCallPage onNavigate={setActivePage} />
-        ) : activePage === 'lists' ? (
-          <PhoneListsPage onNavigate={setActivePage} />
-        ) : activePage === 'call-log' ? (
+        ) : resolvedPage === 'call-log' ? (
           <PhoneCallLogPage />
         ) : (
           <PhoneSettingsPage />

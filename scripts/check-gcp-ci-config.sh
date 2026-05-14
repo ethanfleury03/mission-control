@@ -25,7 +25,9 @@ for required in \
   'DATABASE_URL=${_APP_DB_SECRET}:latest' \
   'AUTH_SECRET=${_AUTH_SECRET}:latest' \
   'AUTH_GOOGLE_ID=${_GOOGLE_ID_SECRET}:latest' \
-  'AUTH_GOOGLE_SECRET=${_GOOGLE_SECRET_SECRET}:latest'
+  'AUTH_GOOGLE_SECRET=${_GOOGLE_SECRET_SECRET}:latest' \
+  '_RETELL_API_SECRET: mc-retell-api-key' \
+  'RETELL_API_KEY=${_RETELL_API_SECRET}'
 do
   grep -Fq "$required" "$web_config" || fail "$web_config is missing required secret mapping: $required"
 done
@@ -50,6 +52,7 @@ done
 grep -Fq "mc-web-stage" deploy/gcp/env-config.sh || fail "env-config.sh must define staging web service"
 grep -Fq "missioncontrol_app_stage" deploy/gcp/env-config.sh || fail "env-config.sh must define staging app database"
 grep -Fq "mc-stage-app-db-url" deploy/gcp/env-config.sh || fail "env-config.sh must define staging app DB secret"
+grep -Fq "mc-stage-retell-api-key" deploy/gcp/env-config.sh || fail "env-config.sh must define staging Retell API secret"
 grep -Fq "mc_require_prod_branch" deploy/gcp/deploy-env.sh || fail "deploy-env.sh must guard production deploy branch"
 
 if grep -R --line-number "TURSO_" .github/workflows deploy/gcp/cloudbuild*.yaml deploy/gcp/bootstrap.sh 2>/dev/null; then

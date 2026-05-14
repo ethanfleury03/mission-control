@@ -474,13 +474,28 @@ model PhoneCall {
   listEntry            PhoneListEntry? @relation(fields: [listEntryId], references: [id], onDelete: SetNull)
   providerCallId       String          @unique
   agentProfileKey      String          @default("")
+  agentId              String          @default("")
+  agentName            String          @default("")
+  agentVersion         Int?
+  callType             String          @default("phone_call")
+  direction            String          @default("")
+  fromNumber           String          @default("")
+  toNumber             String          @default("")
   providerStatus       String          @default("registered")
   disposition          String          @default("unknown")
   bookedFlag           Boolean         @default(false)
   summary              String          @default("")
   transcript           String          @default("")
   recordingUrl         String          @default("")
+  recordingMultiChannelUrl String      @default("")
+  publicLogUrl         String          @default("")
+  knowledgeBaseRetrievedContentsUrl String @default("")
   disconnectionReason  String          @default("")
+  userSentiment        String          @default("")
+  callSuccessful       Boolean?
+  inVoicemail          Boolean?
+  costCents            Float?
+  costJson             String          @default("{}")
   dynamicVariablesJson String          @default("{}")
   metadataJson         String          @default("{}")
   analysisJson         String          @default("{}")
@@ -496,6 +511,9 @@ model PhoneCall {
   @@index([campaignId])
   @@index([listId])
   @@index([listEntryId])
+  @@index([agentId])
+  @@index([agentName])
+  @@index([direction])
   @@index([providerStatus])
   @@index([disposition])
   @@index([startedAt])
@@ -529,10 +547,32 @@ model PhoneSettings {
   autoPauseAfterRepeatedFailures Boolean   @default(true)
   defaultSourceBehavior          String    @default("retain_duplicates_mark_invalid")
   lastRetellSyncAt               DateTime?
+  lastRetellAgentSyncAt          DateTime?
   createdAt                      DateTime  @default(now())
   updatedAt                      DateTime  @updatedAt
 
   @@map("phone_settings")
+}
+
+model PhoneRetellAgent {
+  id                String   @id @default(cuid())
+  agentId           String
+  version           Int      @default(0)
+  agentName         String   @default("")
+  voiceId           String   @default("")
+  voiceModel        String   @default("")
+  responseEngineJson String  @default("{}")
+  rawPayloadJson    String   @default("{}")
+  isPublished       Boolean  @default(false)
+  lastModifiedAt    DateTime?
+  syncedAt          DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([agentId, version])
+  @@index([agentId])
+  @@index([agentName])
+  @@map("phone_retell_agents")
 }
 
 // --- Outreach CRM / Sasha email automation ---------------------------------

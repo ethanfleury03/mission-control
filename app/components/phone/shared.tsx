@@ -2,7 +2,10 @@
 
 import type { ComponentType, ReactNode } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
+import { formatCurrencyFromCents } from '@/lib/phone/formatting';
 import { cn } from '../../lib/utils';
+
+export { formatCurrencyFromCents };
 
 type IconType = ComponentType<{ className?: string }>;
 
@@ -247,6 +250,7 @@ export function formatDuration(value: number | null | undefined) {
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds}s`;
 }
+
 
 export function formatSourceType(value: string) {
   return value.replace(/_/g, ' ');

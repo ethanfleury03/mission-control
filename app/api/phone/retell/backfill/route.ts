@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { backfillRetellHistory } from '@/lib/phone/service';
-import { withActiveUser } from '../../../_lib/with-active-user';
+import { requireAdmin } from '@/lib/auth/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function POSTHandler(request: NextRequest) {
+  const admin = await requireAdmin();
+  if (admin.response) return admin.response;
+
   let body: Record<string, unknown> = {};
   try {
     body = await request.json();
@@ -25,4 +28,4 @@ async function POSTHandler(request: NextRequest) {
   }
 }
 
-export const POST = withActiveUser(POSTHandler);
+export const POST = POSTHandler;

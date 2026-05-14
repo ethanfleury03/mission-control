@@ -20,8 +20,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const call = await ingestRetellWebhook(rawBody, payload);
-    return NextResponse.json({ ok: true, callId: call.id });
+    await ingestRetellWebhook(rawBody, payload);
+    return new NextResponse(null, { status: 204 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Could not ingest webhook' },
