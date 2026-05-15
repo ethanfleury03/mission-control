@@ -1120,84 +1120,6 @@ function AllContactsAudit({
   );
 }
 
-function HealthPanels({ dashboard }: { dashboard: OutreachDashboardResponse }) {
-  return (
-    <section className="grid gap-3 xl:grid-cols-2">
-      <div className="rounded-lg border border-stone-200 bg-white shadow-sm">
-        <div className="border-b border-stone-200 px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">HubSpot Hygiene</p>
-          <h2 className="mt-1 text-sm font-semibold text-stone-950">List health</h2>
-        </div>
-        <div className="divide-y divide-stone-200">
-          {(dashboard.hubspotListHealth ?? []).map((list) => (
-            <article key={list.agentId} className="px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-stone-950">{list.listName}</h3>
-                  <p className="text-[11px] text-stone-500">{list.agentName}</p>
-                </div>
-                <span className={cn('rounded-md border px-2 py-1 text-[10px] font-semibold', list.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')}>
-                  {list.warnings.length ? list.warnings[0] : 'Healthy'}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                {[
-                  ['Size', list.currentListSize],
-                  ['Eligible', list.eligibleContacts],
-                  ['Ineligible', list.ineligibleContacts],
-                  ['Owner', list.withOwner],
-                  ['Assigned', list.withAssignedTo],
-                  ['Cleanup', list.needingCleanup],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-md bg-stone-50 px-2 py-1.5">
-                    <p className="text-[10px] text-stone-500">{label}</p>
-                    <p className="font-semibold text-stone-950">{formatNumber(Number(value))}</p>
-                  </div>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-stone-200 bg-white shadow-sm">
-        <div className="border-b border-stone-200 px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">Deliverability</p>
-          <h2 className="mt-1 text-sm font-semibold text-stone-950">Quality guardrails</h2>
-        </div>
-        <div className="divide-y divide-stone-200">
-          {(dashboard.deliverabilityHealth ?? []).map((agent) => (
-            <article key={agent.agentId} className="px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-stone-950">{agent.agentName}</h3>
-                  <p className="text-[11px] text-stone-500">{agent.sendsToday} sends today</p>
-                </div>
-                <span className={cn('rounded-md border px-2 py-1 text-[10px] font-semibold', agent.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')}>
-                  {agent.warnings.length ? agent.warnings[0] : 'Compliant'}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
-                {[
-                  ['Bounce', `${formatPercent(agent.bounceRate)}`],
-                  ['Reply', `${formatPercent(agent.replyRate)}`],
-                  ['Positive', `${formatPercent(agent.positiveRate)}`],
-                  ['OOO', `${formatPercent(agent.outOfOfficeRate)}`],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-md bg-stone-50 px-2 py-1.5">
-                    <p className="text-[10px] text-stone-500">{label}</p>
-                    <p className="font-semibold text-stone-950">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function DailyReport({ dashboard }: { dashboard: OutreachDashboardResponse }) {
   if (!dashboard.dailyReportText) return null;
   return (
@@ -2056,7 +1978,6 @@ export function OutreachCrmTab() {
                   agentFilter={agentFilter}
                   stageFilter="all"
                 />
-                <HealthPanels dashboard={dashboard} />
                 <DailyReport dashboard={dashboard} />
               </div>
               <aside className="space-y-3">
